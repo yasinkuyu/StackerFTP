@@ -42,6 +42,21 @@ export interface FTPConfig {
   secureOptions?: any;
   passive?: boolean;
   hop?: HopConfig | HopConfig[];
+  // Remote-FS Integration: reference to a remote defined in user settings
+  remote?: string;
+}
+
+// Remote-FS Integration: Remote definition in user settings
+export interface RemoteFsConfig {
+  name: string;
+  host: string;
+  port?: number;
+  protocol?: Protocol;
+  username?: string;
+  password?: string;
+  privateKeyPath?: string;
+  passphrase?: string;
+  remotePath?: string;
 }
 
 export interface FileEntry {

@@ -5,7 +5,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { FTPConfig } from '../types';
+import { FTPConfig, RemoteFsConfig } from '../types';
 import { logger } from '../utils/logger';
 
 const CONFIG_FILE_NAME = 'sftp.json';
@@ -41,17 +41,22 @@ export class ConfigManager {
       // Handle both single config and array of configs
       const configs: FTPConfig[] = Array.isArray(parsed) ? parsed : [parsed];
       
-      // Set defaults
-      const configsWithDefaults = configs.map(config => ({
-        port: config.protocol === 'sftp' ? 22 : 21,
-        uploadOnSave: false,
-        syncMode: 'update' as const,
-        connTimeout: 10000,
-        keepalive: 10000,
-        passive: true,
-        secure: false,
-        ...config
-      }));
+      // Resolve Remote-FS references and set defaults
+      const configsWithDefaults = configs.map(config => {
+        // Remote-FS Integration: resolve remote reference from user settings
+        const resolvedConfig = this.resolveRemoteFsConfig(config);
+        
+        return {
+          port: resolvedConfig.protocol === 'sftp' ? 22 : 21,
+          uploadOnSave: false,
+          syncMode: 'update' as const,
+          connTimeout: 10000,
+          keepalive: 10000,
+          passive: true,
+          secure: false,
+          ...resolvedConfig
+        };
+      });
 
       this.configs.set(workspaceRoot, configsWithDefaults);
       logger.info(`Loaded ${configsWithDefaults.length} configuration(s) from ${configPath}`);
@@ -147,6 +152,54 @@ export class ConfigManager {
       profiles: config.profiles,
       defaultProfile: config.defaultProfile
     };
+  }
+
+  /**
+   * Remote-FS Integration: Resolve remote reference from user settings
+   * If config has "remote": "myserver", it will look for the remote definition
+   * in user settings under "stackerftp.remotes.myserver"
+   */
+  private resolveRemoteFsConfig(config: FTPConfig): FTPConfig {
+    if (!config.remote) {
+      return config;
+    }
+
+    const remoteName = config.remote;
+    const vsConfig = vscode.workspace.getConfiguration('stackerftp');
+    const remotes = vsConfig.get<{ [key: string]: RemoteFsConfig }>('remotes') || {};
+    
+    const remoteConfig = remotes[remoteName];
+    if (!remoteConfig) {
+      logger.warn(`Remote-FS: Remote "${remoteName}" not found in user settings. Add it to "stackerftp.remotes.${remoteName}" in settings.json`);
+      return config;
+    }
+
+    logger.info(`Remote-FS: Resolved remote "${remoteName}" from user settings`);
+    
+    // Merge remote config with local config (local overrides remote)
+    return {
+      ...remoteConfig,
+      ...config,
+      // Ensure host comes from remote if not specified locally
+      host: config.host || remoteConfig.host,
+      username: config.username || remoteConfig.username || '',
+      protocol: config.protocol || remoteConfig.protocol || 'sftp',
+      remotePath: config.remotePath || remoteConfig.remotePath || '/',
+      name: config.name || remoteConfig.name || remoteName
+    };
+  }
+
+  /**
+   * Get all available remotes from user settings
+   */
+  getAvailableRemotes(): { name: string; config: RemoteFsConfig }[] {
+    const vsConfig = vscode.workspace.getConfiguration('stackerftp');
+    const remotes = vsConfig.get<{ [key: string]: RemoteFsConfig }>('remotes') || {};
+    
+    return Object.entries(remotes).map(([name, config]) => ({
+      name,
+      config
+    }));
   }
 
   setProfile(workspaceRoot: string, profileName: string): void {
