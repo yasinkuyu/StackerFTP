@@ -26,6 +26,7 @@ export interface FTPConfig {
   localPath?: string;
   uploadOnSave?: boolean;
   downloadOnOpen?: boolean;
+  remoteExplorerOrder?: 'name' | 'size' | 'date' | 'type';
   syncMode?: 'update' | 'full';
   ignore?: string[];
   watcher?: {

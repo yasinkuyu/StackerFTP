@@ -5,6 +5,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { configManager } from '../core/config';
 import { connectionManager } from '../core/connection-manager';
 import { transferManager } from '../core/transfer-manager';
@@ -1862,42 +1863,44 @@ export function registerCommands(
     try {
       const connection = await connectionManager.ensureConnection(config);
       const remotePath = item.entry.path;
+      const fileName = path.basename(remotePath);
       
-      // Calculate relative path correctly
-      const configRemotePath = config.remotePath || '/';
-      let relativePath = remotePath;
-      
-      // If remote path starts with config's remotePath, strip it
-      if (remotePath.startsWith(configRemotePath)) {
-        relativePath = remotePath.substring(configRemotePath.length);
+      // Create temp directory for editing
+      const tempDir = path.join(os.tmpdir(), 'stackerftp-edit', config.name || config.host);
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
       }
       
-      // Remove leading slashes
-      relativePath = relativePath.replace(/^\/+/, '');
-      
-      // Build local path
-      const localPath = path.join(workspaceRoot, relativePath);
-      const localDir = path.dirname(localPath);
+      // Use unique temp file name to avoid conflicts
+      const uniqueId = Date.now().toString(36);
+      const tempFileName = `${path.basename(fileName, path.extname(fileName))}_${uniqueId}${path.extname(fileName)}`;
+      const tempPath = path.join(tempDir, tempFileName);
 
-      // Ensure local directory exists
-      if (!fs.existsSync(localDir)) {
-        fs.mkdirSync(localDir, { recursive: true });
-      }
-
-      // Download file to local
+      // Download file to temp
       await vscode.window.withProgress({
         location: vscode.ProgressLocation.Notification,
-        title: `Downloading ${path.basename(remotePath)}...`,
+        title: `Downloading ${fileName}...`,
         cancellable: false
       }, async () => {
-        await transferManager.downloadFile(connection, remotePath, localPath);
+        await transferManager.downloadFile(connection, remotePath, tempPath);
       });
 
       // Open in editor
-      const doc = await vscode.workspace.openTextDocument(localPath);
-      await vscode.window.showTextDocument(doc);
+      const doc = await vscode.workspace.openTextDocument(tempPath);
+      const editor = await vscode.window.showTextDocument(doc);
 
-      vscode.window.showInformationMessage(`Editing: ${path.basename(localPath)} (synced from remote)`);
+      // Store mapping for upload on save
+      const metadata = {
+        remotePath,
+        configName: config.name,
+        config
+      };
+      
+      // Store in extension context for later use
+      (global as any).stackerftpEditMappings = (global as any).stackerftpEditMappings || new Map();
+      (global as any).stackerftpEditMappings.set(tempPath, metadata);
+
+      vscode.window.showInformationMessage(`Editing: ${fileName} - Save to upload changes`);
     } catch (error: any) {
       vscode.window.showErrorMessage(`Failed to edit file: ${error.message}`);
     }

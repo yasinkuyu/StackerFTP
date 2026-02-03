@@ -174,6 +174,20 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       
+      // Check if this is a temp file from Edit Local
+      const editMappings = (global as any).stackerftpEditMappings;
+      if (editMappings && editMappings.has(document.fileName)) {
+        const metadata = editMappings.get(document.fileName);
+        try {
+          const connection = await connectionManager.ensureConnection(metadata.config);
+          await transferManager.uploadFile(connection, document.fileName, metadata.remotePath, metadata.config);
+          vscode.window.showInformationMessage(`Uploaded: ${path.basename(metadata.remotePath)}`);
+        } catch (error: any) {
+          vscode.window.showErrorMessage(`Failed to upload: ${error.message}`);
+        }
+        return;
+      }
+      
       // Handle upload on save
       handleFileSave(document, workspaceRoot);
     })

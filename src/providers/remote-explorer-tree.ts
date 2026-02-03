@@ -226,12 +226,36 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
   }
   
   private sortEntries(entries: FileEntry[], config: FTPConfig, conn?: BaseConnection): RemoteTreeItem[] {
-    // Sort directories first, then files alphabetically
+    // Get sort order from config or VS Code settings
+    const vsConfig = vscode.workspace.getConfiguration('stackerftp');
+    const sortOrder = config.remoteExplorerOrder || vsConfig.get<string>('remoteExplorerSortOrder', 'name');
+    
     const sorted = entries.sort((a, b) => {
-      if (a.type === b.type) {
-        return a.name.localeCompare(b.name);
+      // Always sort directories first
+      if (a.type !== b.type) {
+        return a.type === 'directory' ? -1 : 1;
       }
-      return a.type === 'directory' ? -1 : 1;
+      
+      // Then sort by specified order
+      switch (sortOrder) {
+        case 'size':
+          return (b.size || 0) - (a.size || 0); // Largest first
+        case 'date':
+          const aTime = a.modifyTime?.getTime() || 0;
+          const bTime = b.modifyTime?.getTime() || 0;
+          return bTime - aTime; // Newest first
+        case 'type':
+          // Within same type, sort by extension then name
+          const aExt = a.name.includes('.') ? a.name.split('.').pop() || '' : '';
+          const bExt = b.name.includes('.') ? b.name.split('.').pop() || '' : '';
+          if (aExt !== bExt) {
+            return aExt.localeCompare(bExt);
+          }
+          return a.name.localeCompare(b.name);
+        case 'name':
+        default:
+          return a.name.localeCompare(b.name);
+      }
     });
     
     return sorted.map(entry => {
@@ -310,16 +334,17 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
     }
 
     try {
-      // Check user preference
+      // Check user preference - first from sftp.json config, then from VS Code settings
+      const downloadOnOpen = config.downloadOnOpen ?? false;
       const vsConfig = vscode.workspace.getConfiguration('stackerftp');
-      const downloadToWorkspace = vsConfig.get<boolean>('downloadWhenOpenInRemoteExplorer', false);
+      const downloadToWorkspace = downloadOnOpen || vsConfig.get<boolean>('downloadWhenOpenInRemoteExplorer', false);
 
       const os = require('os');
       const fs = require('fs');
       let targetPath: string;
 
       if (downloadToWorkspace) {
-        // Download to workspace (original behavior)
+        // Download to workspace (original behavior - from downloadOnOpen config)
         const relativePath = path.relative(config.remotePath || '/', item.entry.path);
         targetPath = path.join(this.workspaceRoot, relativePath);
       } else {
