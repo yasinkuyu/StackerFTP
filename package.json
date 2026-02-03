@@ -115,6 +115,50 @@
             "Sort by file type (folders first)"
           ],
           "description": "Default sort order for Remote Explorer"
+        },
+        "stackerftp.remotes": {
+          "type": "object",
+          "default": {},
+          "description": "Remote-FS Integration: Define reusable remote server configurations. Reference them in sftp.json with \"remote\": \"name\"",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Display name for the remote"
+              },
+              "host": {
+                "type": "string",
+                "description": "Hostname or IP address"
+              },
+              "port": {
+                "type": "number",
+                "description": "Port number"
+              },
+              "protocol": {
+                "type": "string",
+                "enum": ["sftp", "ftp", "ftps"],
+                "description": "Connection protocol"
+              },
+              "username": {
+                "type": "string",
+                "description": "Username for authentication"
+              },
+              "password": {
+                "type": "string",
+                "description": "Password for authentication"
+              },
+              "privateKeyPath": {
+                "type": "string",
+                "description": "Path to SSH private key"
+              },
+              "remotePath": {
+                "type": "string",
+                "description": "Default remote path"
+              }
+            },
+            "required": ["host"]
+          }
         }
       }
     },
