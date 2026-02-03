@@ -1,7 +1,7 @@
 /**
  * StackerFTP - Git Integration
  * 
- * Git repository ile entegrasyon - değişen dosyaları tespit etme
+ * Git repository integration - detecting changed files
  */
 
 import * as vscode from 'vscode';
@@ -23,7 +23,7 @@ export class GitIntegration {
   }
 
   /**
-   * Git repository olup olmadığını kontrol et
+   * Check if it's a Git repository
    */
   isGitRepository(): boolean {
     const gitDir = path.join(this.workspaceRoot, '.git');
@@ -31,7 +31,7 @@ export class GitIntegration {
   }
 
   /**
-   * Değişen dosyaları al (staged + unstaged)
+   * Get changed files (staged + unstaged)
    */
   async getChangedFiles(): Promise<GitChangedFile[]> {
     if (!this.isGitRepository()) {
@@ -47,7 +47,7 @@ export class GitIntegration {
       }
 
       const git = gitExtension.exports.getAPI(1);
-      const repo = git.repositories.find((r: any) => 
+      const repo = git.repositories.find((r: any) =>
         r.rootUri.fsPath === this.workspaceRoot
       );
 
@@ -87,7 +87,7 @@ export class GitIntegration {
   }
 
   /**
-   * Sadece staged dosyaları al
+   * Get only staged files
    */
   async getStagedFiles(): Promise<GitChangedFile[]> {
     if (!this.isGitRepository()) {
@@ -101,7 +101,7 @@ export class GitIntegration {
       }
 
       const git = gitExtension.exports.getAPI(1);
-      const repo = git.repositories.find((r: any) => 
+      const repo = git.repositories.find((r: any) =>
         r.rootUri.fsPath === this.workspaceRoot
       );
 
@@ -127,12 +127,12 @@ export class GitIntegration {
   }
 
   /**
-   * CLI üzerinden değişen dosyaları al (fallback)
+   * Get changed files via CLI (fallback)
    */
   private async getChangedFilesFromCLI(): Promise<GitChangedFile[]> {
     return new Promise((resolve) => {
       const { exec } = require('child_process');
-      
+
       exec(
         'git status --porcelain',
         { cwd: this.workspaceRoot },
@@ -165,7 +165,7 @@ export class GitIntegration {
   }
 
   /**
-   * VS Code Git status'unu map et
+   * Map VS Code Git status
    */
   private mapGitStatus(status: number): GitChangedFile['status'] {
     // VS Code Git Status enum values
@@ -183,7 +183,7 @@ export class GitIntegration {
   }
 
   /**
-   * Git porcelain status kodunu map et
+   * Map Git porcelain status code
    */
   private mapStatusCode(code: string): GitChangedFile['status'] {
     switch (code) {
@@ -200,11 +200,11 @@ export class GitIntegration {
   }
 
   /**
-   * Uploadable dosyaları filtrele (deleted hariç)
+   * Filter uploadable files (excluding deleted)
    */
   filterUploadable(files: GitChangedFile[]): GitChangedFile[] {
-    return files.filter(f => 
-      f.status !== 'deleted' && 
+    return files.filter(f =>
+      f.status !== 'deleted' &&
       fs.existsSync(f.absolutePath) &&
       fs.statSync(f.absolutePath).isFile()
     );

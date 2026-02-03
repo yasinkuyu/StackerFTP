@@ -704,29 +704,48 @@ export function registerCommands(
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      vscode.window.showErrorMessage('No SFTP configuration found');
-      return;
-    }
-
     try {
       let localPath: string;
       let remotePath: string;
       let fileName: string;
+      let activeConfig: any;
 
-      if (uri && !item) {
+      if (item && item.entry) {
+        // Called from remote explorer - use item's config
+        activeConfig = item.config;
+        if (!activeConfig) {
+          vscode.window.showErrorMessage('No configuration found for this connection');
+          return;
+        }
+        remotePath = item.entry.path;
+        if (!remotePath) {
+          vscode.window.showErrorMessage('Remote path is undefined');
+          return;
+        }
+        fileName = item.entry.name || path.basename(remotePath);
+        
+        // Calculate relative path from remote root
+        const remoteRoot = activeConfig.remotePath || '/';
+        let relativePath = remotePath;
+        if (remotePath.startsWith(remoteRoot)) {
+          relativePath = remotePath.substring(remoteRoot.length);
+        }
+        // Remove leading slash
+        if (relativePath.startsWith('/')) {
+          relativePath = relativePath.substring(1);
+        }
+        localPath = path.join(workspaceRoot, relativePath);
+      } else if (uri) {
         // Called from local file
+        activeConfig = configManager.getActiveConfig(workspaceRoot);
+        if (!activeConfig) {
+          vscode.window.showErrorMessage('No SFTP configuration found');
+          return;
+        }
         localPath = uri.fsPath;
         const relativePath = path.relative(workspaceRoot, localPath);
-        remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
+        remotePath = normalizeRemotePath(path.posix.join(activeConfig.remotePath, relativePath.replace(/\\/g, '/')));
         fileName = path.basename(localPath);
-      } else if (item) {
-        // Called from remote explorer
-        remotePath = item.entry.path;
-        const relativePath = path.relative(config.remotePath, remotePath);
-        localPath = path.join(workspaceRoot, relativePath);
-        fileName = item.entry.name;
       } else {
         vscode.window.showErrorMessage('No file selected');
         return;
@@ -734,17 +753,17 @@ export function registerCommands(
 
       // Check if local file exists
       if (!fs.existsSync(localPath)) {
-        vscode.window.showErrorMessage(`Local file not found: ${fileName}`);
+        vscode.window.showErrorMessage(`Local file not found: ${fileName}. Download the file first to compare.`);
         return;
       }
 
       // Download remote file to temp
-      const connection = await connectionManager.ensureConnection(config);
+      const connection = await connectionManager.ensureConnection(activeConfig);
       const tempDir = path.join(require('os').tmpdir(), 'stackerftp-diff');
       if (!fs.existsSync(tempDir)) {
         fs.mkdirSync(tempDir, { recursive: true });
       }
-      const tempRemotePath = path.join(tempDir, `${fileName}.remote`);
+      const tempRemotePath = path.join(tempDir, `${Date.now()}-${fileName}.remote`);
 
       await connection.download(remotePath, tempRemotePath);
 

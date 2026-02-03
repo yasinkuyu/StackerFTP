@@ -1,7 +1,7 @@
 /**
  * StackerFTP - Connection Form WebView Provider
  *
- * Native VS Code UI ile uyumlu minimalist baglanti formu
+ * Minimalist connection form compatible with native VS Code UI
  */
 
 import * as vscode from 'vscode';
@@ -94,7 +94,7 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
 
       const configs = configManager.getConfigs(workspaceRoot);
       logger.info(`_sendConfigs: loaded ${configs.length} configs from ${workspaceRoot}`);
-      
+
       const configsWithStatus = configs.map((config, index) => ({
         ...config,
         index,

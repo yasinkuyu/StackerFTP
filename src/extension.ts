@@ -61,9 +61,39 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      const uri = RemoteDocumentProvider.createUri(item.entry.path);
-      const doc = await vscode.workspace.openTextDocument(uri);
-      await vscode.window.showTextDocument(doc, { preview: true });
+      const remotePath = item.entry.path;
+      const fileName = item.entry.name || path.basename(remotePath);
+
+      // Check for system files
+      if (RemoteDocumentProvider.isSystemFile(remotePath)) {
+        vscode.window.showWarningMessage(`Cannot view system file: ${fileName}`);
+        return;
+      }
+
+      // Check for binary files
+      if (RemoteDocumentProvider.isBinaryFile(remotePath)) {
+        const choice = await vscode.window.showWarningMessage(
+          `"${fileName}" is a binary file and cannot be viewed as text. Would you like to download it instead?`,
+          'Download', 'Cancel'
+        );
+        if (choice === 'Download') {
+          vscode.commands.executeCommand('stackerftp.tree.download', item);
+        }
+        return;
+      }
+
+      // Store config for multi-connection support
+      if (item.config) {
+        RemoteDocumentProvider.setConfigForPath(remotePath, item.config);
+      }
+
+      try {
+        const uri = RemoteDocumentProvider.createUri(remotePath);
+        const doc = await vscode.workspace.openTextDocument(uri);
+        await vscode.window.showTextDocument(doc, { preview: true });
+      } catch (error: any) {
+        vscode.window.showErrorMessage(`Failed to open file: ${error.message}`);
+      }
     })
   );
 
