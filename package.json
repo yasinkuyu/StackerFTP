@@ -1,0 +1,888 @@
+{
+  "name": "stackerftp",
+  "displayName": "StackerFTP - SFTP/FTP/FTPS Client",
+  "description": "Professional SFTP, FTP & FTPS client with connection wizard, file manager, web master tools, and remote explorer for VS Code and forks",
+  "version": "1.0.0",
+  "publisher": "stackerftp",
+  "author": "StackerFTP Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/stackerftp.git"
+  },
+  "homepage": "https://github.com/yourusername/stackerftp",
+  "bugs": {
+    "url": "https://github.com/yourusername/stackerftp/issues"
+  },
+  "icon": "resources/icon.png",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other",
+    "Debuggers",
+    "Visualization"
+  ],
+  "keywords": [
+    "ftp",
+    "sftp",
+    "ftps",
+    "remote",
+    "sync",
+    "upload",
+    "download",
+    "deploy",
+    "webmaster",
+    "file manager"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:stackerftp.remoteExplorer",
+    "onCommand:stackerftp.config",
+    "onView:stackerftp.remoteExplorer"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "type": "object",
+      "title": "StackerFTP",
+      "properties": {
+        "stackerftp.showHiddenFiles": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show hidden files in remote explorer"
+        },
+        "stackerftp.confirmDelete": {
+          "type": "boolean",
+          "default": true,
+          "description": "Confirm before deleting remote files"
+        },
+        "stackerftp.confirmSync": {
+          "type": "boolean",
+          "default": true,
+          "description": "Confirm before syncing directories"
+        },
+        "stackerftp.autoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto refresh remote explorer after operations"
+        },
+        "stackerftp.transferConcurrency": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 20,
+          "description": "Number of concurrent file transfers"
+        },
+        "stackerftp.showWebMasterTools": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show web master tools in explorer"
+        },
+        "stackerftp.enableFileWatcher": {
+          "type": "boolean",
+          "default": false,
+          "description": "Watch local files for changes"
+        },
+        "stackerftp.defaultSyntaxHighlighting": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable syntax highlighting for remote files"
+        },
+        "stackerftp.useNativeTreeView": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use native TreeView with File Icon Theme support (requires reload). Disable to use WebView with preview support."
+        },
+        "stackerftp.downloadWhenOpenInRemoteExplorer": {
+          "type": "boolean",
+          "default": false,
+          "description": "Download file instead of view content when opening in Remote Explorer"
+        },
+        "stackerftp.remoteExplorerSortOrder": {
+          "type": "string",
+          "default": "name",
+          "enum": [
+            "name",
+            "size",
+            "date",
+            "type"
+          ],
+          "enumDescriptions": [
+            "Sort by file name",
+            "Sort by file size",
+            "Sort by modification date",
+            "Sort by file type (folders first)"
+          ],
+          "description": "Default sort order for Remote Explorer"
+        }
+      }
+    },
+    "submenus": [
+      {
+        "id": "stackerftp.submenu",
+        "label": "SFTP/FTP",
+        "icon": "$(cloud)"
+      },
+      {
+        "id": "stackerftp.editor.submenu",
+        "label": "SFTP/FTP",
+        "icon": "$(cloud)"
+      }
+    ],
+    "commands": [
+      {
+        "command": "stackerftp.config",
+        "title": "SFTP: Config",
+        "category": "StackerFTP"
+      },
+      {
+        "command": "stackerftp.tree.openFile",
+        "title": "Open File",
+        "category": "StackerFTP",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "stackerftp.tree.download",
+        "title": "Download",
+        "category": "StackerFTP",
+        "icon": "resources/connect.png"
+      },
+      {
+        "command": "stackerftp.tree.delete",
+        "title": "Delete",
+        "category": "StackerFTP",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "stackerftp.tree.refresh",
+        "title": "Refresh",
+        "category": "StackerFTP",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "stackerftp.connect",
+        "title": "SFTP: Connect",
+        "category": "StackerFTP",
+        "icon": "resources/connect.png"
+      },
+      {
+        "command": "stackerftp.disconnect",
+        "title": "SFTP: Disconnect",
+        "category": "StackerFTP",
+        "icon": "resources/disconnect.png"
+      },
+      {
+        "command": "stackerftp.upload",
+        "title": "Upload",
+        "category": "StackerFTP",
+        "icon": "resources/disconnect.png"
+      },
+      {
+        "command": "stackerftp.uploadCurrentFile",
+        "title": "SFTP: Upload Current File",
+        "category": "StackerFTP"
+      },
+      {
+        "command": "stackerftp.download",
+        "title": "Download",
+        "category": "StackerFTP",
+        "icon": "resources/connect.png"
+      },
+      {
+        "command": "stackerftp.syncToRemote",
+        "title": "SFTP: Sync Local → Remote",
+        "category": "StackerFTP",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "stackerftp.syncToLocal",
+        "title": "SFTP: Sync Remote → Local",
+        "category": "StackerFTP",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "stackerftp.syncBothWays",
+        "title": "SFTP: Sync Both Directions",
+        "category": "StackerFTP",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "stackerftp.deleteRemote",
+        "title": "Delete",
+        "category": "StackerFTP",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "stackerftp.refresh",
+        "title": "Refresh",
+        "category": "StackerFTP",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "stackerftp.openRemoteFile",
+        "title": "Open Remote File",
+        "category": "StackerFTP"
+      },
+      {
+        "command": "stackerftp.diff",
+        "title": "SFTP: Diff with Remote",
+        "category": "StackerFTP",
+        "icon": "$(git-compare)"
+      },
+      {
+        "command": "stackerftp.newFolder",
+        "title": "New Folder",
+        "category": "StackerFTP",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "stackerftp.newFile",
+        "title": "New File",
+        "category": "StackerFTP",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "stackerftp.rename",
+        "title": "Rename",
+        "category": "StackerFTP",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "stackerftp.duplicate",
+        "title": "Duplicate",
+        "category": "StackerFTP",
+        "icon": "$(files)"
+      },
+      {
+        "command": "stackerftp.collapseAll",
+        "title": "Collapse All",
+        "category": "StackerFTP",
+        "icon": "$(collapse-all)"
+      },
+      {
+        "command": "stackerftp.setProfile",
+        "title": "SFTP: Set Profile",
+        "category": "StackerFTP"
+      },
+      {
+        "command": "stackerftp.cancelTransfer",
+        "title": "SFTP: Cancel Transfer",
+        "category": "StackerFTP",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "stackerftp.downloadProject",
+        "title": "SFTP: Download Project",
+        "category": "StackerFTP",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "stackerftp.uploadProject",
+        "title": "SFTP: Upload Project",
+        "category": "StackerFTP",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "stackerftp.terminal",
+        "title": "SFTP: Open Remote Terminal",
+        "category": "StackerFTP",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "stackerftp.viewLogs",
+        "title": "SFTP: View Logs",
+        "category": "StackerFTP"
+      },
+      {
+        "command": "stackerftp.clearLogs",
+        "title": "SFTP: Clear Logs",
+        "category": "StackerFTP"
+      },
+      {
+        "command": "stackerftp.webmaster.chmod",
+        "title": "Change Permissions (chmod)",
+        "category": "StackerFTP - WebMaster",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "stackerftp.webmaster.checksum",
+        "title": "Calculate Checksum",
+        "category": "StackerFTP - WebMaster",
+        "icon": "$(check)"
+      },
+      {
+        "command": "stackerftp.webmaster.search",
+        "title": "Search in Remote Files",
+        "category": "StackerFTP - WebMaster",
+        "icon": "$(search)"
+      },
+      {
+        "command": "stackerftp.webmaster.replace",
+        "title": "Find and Replace in Remote Files",
+        "category": "StackerFTP - WebMaster",
+        "icon": "$(replace)"
+      },
+      {
+        "command": "stackerftp.webmaster.backup",
+        "title": "Create Backup",
+        "category": "StackerFTP - WebMaster",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "stackerftp.webmaster.compareFolders",
+        "title": "Compare Local and Remote Folders",
+        "category": "StackerFTP - WebMaster",
+        "icon": "$(git-compare)"
+      },
+      {
+        "command": "stackerftp.webmaster.fileInfo",
+        "title": "File Information",
+        "category": "StackerFTP - WebMaster",
+        "icon": "$(info)"
+      },
+      {
+        "command": "stackerftp.webmaster.purgeCache",
+        "title": "Purge Remote Cache",
+        "category": "StackerFTP - WebMaster",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "stackerftp.transferQueue",
+        "title": "SFTP: Show Transfer Queue",
+        "category": "StackerFTP",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "stackerftp.newConnection",
+        "title": "SFTP: New Connection (Wizard)",
+        "category": "StackerFTP",
+        "icon": "$(add)"
+      },
+      {
+        "command": "stackerftp.switchProtocol",
+        "title": "SFTP: Switch Protocol",
+        "category": "StackerFTP"
+      },
+      {
+        "command": "stackerftp.quickConnect",
+        "title": "SFTP: Quick Connect",
+        "category": "StackerFTP",
+        "icon": "resources/connect.png"
+      },
+      {
+        "command": "stackerftp.uploadToAllProfiles",
+        "title": "Upload File To All Profiles",
+        "category": "StackerFTP",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "stackerftp.uploadFolder",
+        "title": "Upload Folder",
+        "category": "StackerFTP",
+        "icon": "$(folder)"
+      },
+      {
+        "command": "stackerftp.downloadFolder",
+        "title": "Download Folder",
+        "category": "StackerFTP",
+        "icon": "$(folder)"
+      },
+      {
+        "command": "stackerftp.editInLocal",
+        "title": "Edit in Local",
+        "category": "StackerFTP",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "stackerftp.revealInExplorer",
+        "title": "Reveal in Explorer",
+        "category": "StackerFTP",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "stackerftp.forceUpload",
+        "title": "Force Upload (Overwrite)",
+        "category": "StackerFTP",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "stackerftp.forceDownload",
+        "title": "Force Download (Overwrite)",
+        "category": "StackerFTP",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "stackerftp.listRemoteRevisions",
+        "title": "SFTP: List Remote Revisions",
+        "category": "StackerFTP",
+        "icon": "$(history)"
+      },
+      {
+        "command": "stackerftp.uploadChangedFiles",
+        "title": "Upload Changed Files",
+        "category": "StackerFTP",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "stackerftp.uploadProject",
+        "title": "Upload Project",
+        "category": "StackerFTP",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "stackerftp.list",
+        "title": "List Remote Files",
+        "category": "StackerFTP",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "stackerftp.listAll",
+        "title": "List All Remote Files (Recursive)",
+        "category": "StackerFTP",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "stackerftp.refreshActiveFile",
+        "title": "Refresh Active File from Remote",
+        "category": "StackerFTP",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "stackerftp.viewContent",
+        "title": "View Content (Read-Only)",
+        "category": "StackerFTP",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "stackerftp.revealInRemoteExplorer",
+        "title": "Reveal in Remote Explorer",
+        "category": "StackerFTP",
+        "icon": "$(remote-explorer)"
+      },
+      {
+        "command": "stackerftp.copyToOtherRemote",
+        "title": "Copy to Other Remote",
+        "category": "StackerFTP",
+        "icon": "$(files)"
+      },
+      {
+        "command": "stackerftp.compareRemotes",
+        "title": "Compare with Other Remote",
+        "category": "StackerFTP",
+        "icon": "$(git-compare)"
+      },
+      {
+        "command": "stackerftp.syncBetweenRemotes",
+        "title": "Sync to Other Remote",
+        "category": "StackerFTP",
+        "icon": "$(sync)"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "stackerftp.upload",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "stackerftp.download",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "stackerftp.newConnection",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "stackerftp.quickConnect",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "stackerftp.switchProtocol",
+          "when": "workspaceFolderCount > 0"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "stackerftp.upload",
+          "group": "7_stackerftp@1",
+          "when": "!explorerResourceIsFolder"
+        },
+        {
+          "command": "stackerftp.download",
+          "group": "7_stackerftp@2",
+          "when": "!explorerResourceIsFolder"
+        },
+        {
+          "command": "stackerftp.uploadFolder",
+          "group": "7_stackerftp@1",
+          "when": "explorerResourceIsFolder"
+        },
+        {
+          "command": "stackerftp.downloadFolder",
+          "group": "7_stackerftp@2",
+          "when": "explorerResourceIsFolder"
+        },
+        {
+          "submenu": "stackerftp.submenu",
+          "group": "7_stackerftp@9"
+        }
+      ],
+      "stackerftp.submenu": [
+        {
+          "command": "stackerftp.upload",
+          "group": "1_transfer@1",
+          "when": "explorerResourceIsFile"
+        },
+        {
+          "command": "stackerftp.uploadToAllProfiles",
+          "group": "1_transfer@2",
+          "when": "explorerResourceIsFile"
+        },
+        {
+          "command": "stackerftp.download",
+          "group": "1_transfer@3",
+          "when": "explorerResourceIsFile"
+        },
+        {
+          "command": "stackerftp.uploadFolder",
+          "group": "1_transfer@4",
+          "when": "explorerResourceIsFolder"
+        },
+        {
+          "command": "stackerftp.downloadFolder",
+          "group": "1_transfer@5",
+          "when": "explorerResourceIsFolder"
+        },
+        {
+          "command": "stackerftp.revealInRemoteExplorer",
+          "group": "1_transfer@6"
+        },
+        {
+          "command": "stackerftp.diff",
+          "group": "2_compare@1",
+          "when": "explorerResourceIsFile"
+        },
+        {
+          "command": "stackerftp.webmaster.compareFolders",
+          "group": "2_compare@2",
+          "when": "explorerResourceIsFolder"
+        },
+        {
+          "command": "stackerftp.syncToRemote",
+          "group": "3_sync@1"
+        },
+        {
+          "command": "stackerftp.syncToLocal",
+          "group": "3_sync@2"
+        },
+        {
+          "command": "stackerftp.syncBothWays",
+          "group": "3_sync@3"
+        },
+        {
+          "command": "stackerftp.forceUpload",
+          "group": "4_force@1",
+          "when": "explorerResourceIsFile"
+        },
+        {
+          "command": "stackerftp.forceDownload",
+          "group": "4_force@2",
+          "when": "explorerResourceIsFile"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "stackerftp.uploadCurrentFile",
+          "group": "7_stackerftp@1",
+          "when": "resourceScheme == file"
+        },
+        {
+          "command": "stackerftp.download",
+          "group": "7_stackerftp@2",
+          "when": "resourceScheme == file"
+        },
+        {
+          "submenu": "stackerftp.editor.submenu",
+          "group": "7_stackerftp@9",
+          "when": "resourceScheme == file"
+        }
+      ],
+      "stackerftp.editor.submenu": [
+        {
+          "command": "stackerftp.uploadToAllProfiles",
+          "group": "1_upload@1"
+        },
+        {
+          "command": "stackerftp.diff",
+          "group": "2_compare@1"
+        },
+        {
+          "command": "stackerftp.forceUpload",
+          "group": "3_force@1"
+        },
+        {
+          "command": "stackerftp.forceDownload",
+          "group": "3_force@2"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "stackerftp.newConnection",
+          "when": "view == stackerftp.connectionForm",
+          "group": "navigation@1"
+        },
+        {
+          "command": "stackerftp.newFile",
+          "when": "view == stackerftp.remoteExplorer || view == stackerftp.remoteExplorerTree",
+          "group": "navigation@1"
+        },
+        {
+          "command": "stackerftp.newFolder",
+          "when": "view == stackerftp.remoteExplorer || view == stackerftp.remoteExplorerTree",
+          "group": "navigation@2"
+        },
+        {
+          "command": "stackerftp.refresh",
+          "when": "view == stackerftp.remoteExplorer || view == stackerftp.remoteExplorerTree",
+          "group": "navigation@3"
+        },
+        {
+          "command": "stackerftp.collapseAll",
+          "when": "view == stackerftp.remoteExplorerTree",
+          "group": "navigation@4"
+        },
+        {
+          "command": "stackerftp.quickConnect",
+          "when": "view == stackerftp.remoteExplorer || view == stackerftp.remoteExplorerTree",
+          "group": "1_connection@1"
+        },
+        {
+          "command": "stackerftp.disconnect",
+          "when": "view == stackerftp.remoteExplorer || view == stackerftp.remoteExplorerTree",
+          "group": "1_connection@2"
+        },
+        {
+          "command": "stackerftp.newFolder",
+          "when": "view == stackerftp.remoteExplorer || view == stackerftp.remoteExplorerTree",
+          "group": "2_files@1"
+        },
+        {
+          "command": "stackerftp.newFile",
+          "when": "view == stackerftp.remoteExplorer || view == stackerftp.remoteExplorerTree",
+          "group": "2_files@2"
+        },
+        {
+          "command": "stackerftp.config",
+          "when": "view == stackerftp.remoteExplorer || view == stackerftp.remoteExplorerTree",
+          "group": "3_settings@1"
+        },
+        {
+          "command": "stackerftp.viewLogs",
+          "when": "view == stackerftp.remoteExplorer || view == stackerftp.remoteExplorerTree",
+          "group": "3_settings@2"
+        },
+        {
+          "command": "stackerftp.terminal",
+          "when": "view == stackerftp.remoteExplorer || view == stackerftp.remoteExplorerTree",
+          "group": "3_settings@3"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "stackerftp.tree.openFile",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem == file",
+          "group": "1_open@1"
+        },
+        {
+          "command": "stackerftp.viewContent",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem == file",
+          "group": "1_open@2"
+        },
+        {
+          "command": "stackerftp.editInLocal",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem == file",
+          "group": "1_open@3"
+        },
+        {
+          "command": "stackerftp.tree.download",
+          "when": "view == stackerftp.remoteExplorerTree",
+          "group": "2_transfer@1"
+        },
+        {
+          "command": "stackerftp.upload",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem == directory",
+          "group": "2_transfer@2"
+        },
+        {
+          "command": "stackerftp.diff",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem == file",
+          "group": "3_compare@1"
+        },
+        {
+          "command": "stackerftp.copyToOtherRemote",
+          "when": "view == stackerftp.remoteExplorerTree",
+          "group": "4_remote@1"
+        },
+        {
+          "command": "stackerftp.compareRemotes",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem == file",
+          "group": "4_remote@2"
+        },
+        {
+          "command": "stackerftp.syncBetweenRemotes",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem == directory",
+          "group": "4_remote@3"
+        },
+        {
+          "command": "stackerftp.rename",
+          "when": "view == stackerftp.remoteExplorerTree",
+          "group": "5_modify@1"
+        },
+        {
+          "command": "stackerftp.chmod",
+          "when": "view == stackerftp.remoteExplorerTree",
+          "group": "5_modify@2"
+        },
+        {
+          "command": "stackerftp.fileInfo",
+          "when": "view == stackerftp.remoteExplorerTree",
+          "group": "5_modify@3"
+        },
+        {
+          "command": "stackerftp.tree.delete",
+          "when": "view == stackerftp.remoteExplorerTree",
+          "group": "6_danger@1"
+        },
+        {
+          "command": "stackerftp.revealInExplorer",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem == file",
+          "group": "7_navigation@1"
+        },
+        {
+          "command": "stackerftp.tree.refresh",
+          "when": "view == stackerftp.remoteExplorerTree",
+          "group": "7_navigation@2"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "stackerftp.uploadChangedFiles",
+          "group": "stackerftp",
+          "when": "scmProvider == git"
+        }
+      ],
+      "scm/resourceGroup/context": [
+        {
+          "command": "stackerftp.uploadChangedFiles",
+          "group": "inline",
+          "when": "scmProvider == git && scmResourceGroup == workingTree"
+        },
+        {
+          "command": "stackerftp.uploadChangedFiles",
+          "group": "stackerftp",
+          "when": "scmProvider == git && scmResourceGroup == workingTree"
+        },
+        {
+          "command": "stackerftp.uploadChangedFiles",
+          "group": "inline",
+          "when": "scmProvider == git && scmResourceGroup == index"
+        },
+        {
+          "command": "stackerftp.uploadChangedFiles",
+          "group": "stackerftp",
+          "when": "scmProvider == git && scmResourceGroup == index"
+        }
+      ]
+    },
+    "views": {
+      "stackerftp-explorer": [
+        {
+          "type": "webview",
+          "id": "stackerftp.connectionForm",
+          "name": "Connections",
+          "when": "workspaceFolderCount > 0",
+          "contextualTitle": "StackerFTP",
+          "visibility": "visible",
+          "icon": "$(plug)"
+        },
+        {
+          "id": "stackerftp.remoteExplorerTree",
+          "name": "Remote Explorer",
+          "when": "workspaceFolderCount > 0",
+          "contextualTitle": "StackerFTP",
+          "visibility": "visible",
+          "icon": "$(folder-opened)"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "stackerftp-explorer",
+          "title": "StackerFTP",
+          "icon": "resources/activity-bar-icon.svg"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "stackerftp.uploadCurrentFile",
+        "key": "ctrl+shift+u",
+        "mac": "cmd+shift+u",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "stackerftp.download",
+        "key": "ctrl+shift+d",
+        "mac": "cmd+shift+d"
+      },
+      {
+        "command": "stackerftp.syncToRemote",
+        "key": "ctrl+shift+alt+u",
+        "mac": "cmd+shift+alt+u"
+      },
+      {
+        "command": "stackerftp.syncToLocal",
+        "key": "ctrl+shift+alt+d",
+        "mac": "cmd+shift+alt+d"
+      },
+      {
+        "command": "stackerftp.uploadChangedFiles",
+        "key": "ctrl+alt+u",
+        "mac": "cmd+alt+u",
+        "when": "workspaceFolderCount > 0"
+      }
+    ],
+    "jsonValidation": [
+      {
+        "fileMatch": ".vscode/sftp.json",
+        "url": "./schema/sftp.schema.json"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/ssh2": "^1.11.0",
+    "@types/vscode": "^1.74.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vsce": "^2.15.0"
+  },
+  "dependencies": {
+    "basic-ftp": "^5.0.0",
+    "ssh2": "^1.15.0",
+    "minimatch": "^9.0.0",
+    "ignore": "^5.3.0",
+    "@vscode/codicons": "^0.0.35"
+  }
+}

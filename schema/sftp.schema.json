@@ -1,0 +1,233 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "StackerFTP Configuration",
+  "description": "Configuration file for StackerFTP VS Code extension",
+  "oneOf": [
+    { "$ref": "#/definitions/config" },
+    {
+      "type": "array",
+      "items": { "$ref": "#/definitions/config" },
+      "description": "Multiple server configurations"
+    }
+  ],
+  "definitions": {
+    "config": {
+      "type": "object",
+      "required": ["host", "username"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "A friendly name for this connection"
+        },
+        "host": {
+          "type": "string",
+          "description": "Hostname or IP address of the remote server"
+        },
+        "port": {
+          "type": "integer",
+          "default": 22,
+          "description": "Port number (22 for SFTP, 21 for FTP)"
+        },
+        "protocol": {
+          "type": "string",
+          "enum": ["sftp", "ftp", "ftps"],
+          "default": "sftp",
+          "description": "Transfer protocol to use"
+        },
+        "username": {
+          "type": "string",
+          "description": "Username for authentication"
+        },
+        "password": {
+          "type": "string",
+          "description": "Password for authentication (consider using privateKeyPath for SFTP)"
+        },
+        "privateKeyPath": {
+          "type": "string",
+          "description": "Path to private key file for SFTP authentication"
+        },
+        "passphrase": {
+          "type": "string",
+          "description": "Passphrase for the private key"
+        },
+        "agent": {
+          "type": "string",
+          "description": "Path to SSH agent socket"
+        },
+        "remotePath": {
+          "type": "string",
+          "default": "/",
+          "description": "The remote directory path to sync with"
+        },
+        "context": {
+          "type": "string",
+          "description": "Local context path (subdirectory to sync)"
+        },
+        "uploadOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically upload files when saved"
+        },
+        "downloadOnOpen": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically download files when opened"
+        },
+        "syncOption": {
+          "type": "object",
+          "properties": {
+            "delete": {
+              "type": "boolean",
+              "default": false,
+              "description": "Delete files on target that don't exist on source"
+            },
+            "skipCreate": {
+              "type": "boolean",
+              "default": false,
+              "description": "Skip creating new files"
+            },
+            "ignoreExisting": {
+              "type": "boolean",
+              "default": false,
+              "description": "Ignore existing files"
+            },
+            "update": {
+              "type": "boolean",
+              "default": false,
+              "description": "Only update files that are newer"
+            }
+          }
+        },
+        "watcher": {
+          "oneOf": [
+            { "type": "boolean" },
+            {
+              "type": "object",
+              "properties": {
+                "files": {
+                  "type": "string",
+                  "description": "Glob pattern for files to watch"
+                },
+                "autoUpload": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Automatically upload on file change"
+                },
+                "autoDelete": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "Automatically delete remote file on local delete"
+                }
+              }
+            }
+          ],
+          "description": "File watcher configuration"
+        },
+        "ignore": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [".vscode", ".git", ".DS_Store", "node_modules"],
+          "description": "Glob patterns of files to ignore"
+        },
+        "ignoreFile": {
+          "type": "string",
+          "description": "Path to a .gitignore style file for ignore patterns"
+        },
+        "secure": {
+          "oneOf": [
+            { "type": "boolean" },
+            { "type": "string", "enum": ["control", "implicit"] }
+          ],
+          "description": "Use secure connection (for FTP/FTPS)"
+        },
+        "secureOptions": {
+          "type": "object",
+          "description": "TLS/SSL options for secure connections"
+        },
+        "passive": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use passive mode for FTP connections"
+        },
+        "interactiveAuth": {
+          "oneOf": [
+            { "type": "boolean" },
+            {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          ],
+          "description": "Enable keyboard-interactive authentication"
+        },
+        "connectTimeout": {
+          "type": "integer",
+          "default": 10000,
+          "description": "Connection timeout in milliseconds"
+        },
+        "hop": {
+          "oneOf": [
+            { "$ref": "#/definitions/hopConfig" },
+            {
+              "type": "array",
+              "items": { "$ref": "#/definitions/hopConfig" }
+            }
+          ],
+          "description": "Jump host configuration for connection hopping"
+        },
+        "profiles": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "description": "Profile-specific overrides"
+          },
+          "description": "Named profiles with configuration overrides"
+        },
+        "defaultProfile": {
+          "type": "string",
+          "description": "Default profile to use"
+        },
+        "remoteExplorer": {
+          "type": "object",
+          "properties": {
+            "order": {
+              "type": "integer",
+              "default": 0,
+              "description": "Order in the Remote Explorer view"
+            }
+          }
+        }
+      }
+    },
+    "hopConfig": {
+      "type": "object",
+      "required": ["host", "username"],
+      "properties": {
+        "host": {
+          "type": "string",
+          "description": "Hostname of the jump server"
+        },
+        "port": {
+          "type": "integer",
+          "default": 22,
+          "description": "SSH port of the jump server"
+        },
+        "username": {
+          "type": "string",
+          "description": "Username for the jump server"
+        },
+        "password": {
+          "type": "string",
+          "description": "Password for the jump server"
+        },
+        "privateKeyPath": {
+          "type": "string",
+          "description": "Path to private key for the jump server"
+        },
+        "passphrase": {
+          "type": "string",
+          "description": "Passphrase for the private key"
+        }
+      }
+    }
+  }
+}

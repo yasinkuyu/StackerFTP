@@ -1,0 +1,56 @@
+# VS Code Extension GitIgnore
+
+# Compiled output
+out/
+dist/
+build/
+
+# Dependencies
+node_modules/
+
+# Test artifacts
+.vscode-test/
+coverage/
+.nyc_output/
+
+# VS Code specific
+vsc-extension-quickstart.md
+.history/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Extension packaging
+*.vsix
+
+# OS specific
+.DS_Store
+Thumbs.db
+.Spotlight-V100
+.Trashes
+
+# IDE / Editor
+.idea/
+.project
+.settings/
+*.swp
+*.swo
+*~
+.vscode/*
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# TypeScript
+*.tsbuildinfo
+
+DEVELOPMENT.md
+FEATURE_PLAN.md
+FEATURES.md
