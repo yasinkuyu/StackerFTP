@@ -1,18 +1,18 @@
 {
   "name": "stackerftp",
   "displayName": "StackerFTP - SFTP/FTP/FTPS Client",
-  "description": "Professional SFTP, FTP & FTPS client with connection wizard, file manager, web master tools, and remote explorer for VS Code and forks",
+  "description": "Advanced SFTP/FTP/FTPS client with native Remote Explorer and Connection Wizard. Streamline your remote workflow with built-in Webmaster tools and bi-directional Sync.",
   "version": "1.0.0",
-  "publisher": "stackerftp",
-  "author": "StackerFTP Team",
+  "publisher": "yasinkuyu",
+  "author": "Insya, Yasin Kuyu",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/stackerftp.git"
+    "url": "https://github.com/yasinkuyu/StackerFTP.git"
   },
-  "homepage": "https://github.com/yourusername/stackerftp",
+  "homepage": "https://github.com/yasinkuyu/StackerFTP",
   "bugs": {
-    "url": "https://github.com/yourusername/stackerftp/issues"
+    "url": "https://github.com/yasinkuyu/StackerFTP/issues"
   },
   "icon": "resources/icon.png",
   "engines": {
@@ -221,7 +221,7 @@
       },
       {
         "command": "stackerftp.openRemoteFile",
-        "title": "Open Remote File",
+        "title": "View (Read Only)",
         "category": "StackerFTP"
       },
       {
@@ -390,7 +390,7 @@
       },
       {
         "command": "stackerftp.editInLocal",
-        "title": "Edit in Local",
+        "title": "Download & Edit in Workspace",
         "category": "StackerFTP",
         "icon": "$(edit)"
       },

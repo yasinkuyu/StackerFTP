@@ -301,6 +301,14 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       return;
     }
 
+    const fileName = item.entry.name || path.basename(item.entry.path);
+
+    // Check for system files
+    if (this.isSystemFile(item.entry.path)) {
+      vscode.window.showWarningMessage(`Cannot open system file: ${fileName}`);
+      return;
+    }
+
     try {
       // Check user preference
       const vsConfig = vscode.workspace.getConfiguration('stackerftp');
@@ -335,8 +343,19 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       logger.info(`Opened remote file: ${item.entry.path} -> ${targetPath}`);
     } catch (error: any) {
       logger.error('Failed to open file', error);
-      vscode.window.showErrorMessage(`Failed to open file: ${error.message}`);
+      
+      // Handle specific FTP errors
+      if (error.message?.includes('550')) {
+        vscode.window.showErrorMessage(`Cannot open "${fileName}": This may be a special file type (symlink, socket, etc.)`);
+      } else {
+        vscode.window.showErrorMessage(`Failed to open file: ${error.message}`);
+      }
     }
+  }
+
+  private isSystemFile(filePath: string): boolean {
+    const systemPatterns = ['__MACOSX', '.DS_Store', 'Thumbs.db'];
+    return systemPatterns.some(pattern => filePath.includes(pattern));
   }
   
   private getLanguageId(fileName: string): string {
