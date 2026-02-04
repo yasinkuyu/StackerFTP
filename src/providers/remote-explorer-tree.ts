@@ -531,32 +531,40 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
     
     if (confirm !== 'Delete') return;
     
-    try {
-      // Mark item as loading and refresh to show spinner
-      this.loadingItems.add(item.entry.path);
-      this._onDidChangeTreeData.fire(item);
-      
-      if (item.entry.type === 'directory') {
-        await conn.rmdir(item.entry.path, true);
-      } else {
-        await conn.delete(item.entry.path);
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: `Deleting ${item.entry.name}...`,
+      cancellable: false
+    }, async (progress) => {
+      try {
+        // Mark item as loading and refresh to show spinner
+        this.loadingItems.add(item.entry.path);
+        this._onDidChangeTreeData.fire(item);
+        
+        progress.report({ message: 'Removing files...' });
+        
+        if (item.entry.type === 'directory') {
+          await conn.rmdir(item.entry.path, true);
+        } else {
+          await conn.delete(item.entry.path);
+        }
+        
+        // Remove from loading and refresh parent
+        this.loadingItems.delete(item.entry.path);
+        
+        // Clear cache for parent directory
+        const parentPath = path.dirname(item.entry.path);
+        this.fileCache.delete(parentPath);
+        
+        this.refresh();
+        vscode.window.showInformationMessage(`Deleted: ${item.entry.name}`);
+      } catch (error: any) {
+        this.loadingItems.delete(item.entry.path);
+        this._onDidChangeTreeData.fire(item);
+        logger.error('Failed to delete', error);
+        vscode.window.showErrorMessage(`Failed to delete: ${error.message}`);
       }
-      
-      // Remove from loading and refresh parent
-      this.loadingItems.delete(item.entry.path);
-      
-      // Clear cache for parent directory
-      const parentPath = path.dirname(item.entry.path);
-      this.fileCache.delete(parentPath);
-      
-      this.refresh();
-      vscode.window.showInformationMessage(`Deleted: ${item.entry.name}`);
-    } catch (error: any) {
-      this.loadingItems.delete(item.entry.path);
-      this._onDidChangeTreeData.fire(item);
-      logger.error('Failed to delete', error);
-      vscode.window.showErrorMessage(`Failed to delete: ${error.message}`);
-    }
+    });
   }
   
   // Check if an item is currently loading

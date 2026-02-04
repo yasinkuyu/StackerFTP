@@ -295,31 +295,40 @@ export class SFTPConnection extends BaseConnection {
     return this.enqueue(() => this._rmdir(remotePath, recursive));
   }
 
-  private _rmdir(remotePath: string, recursive = false): Promise<void> {
-    return new Promise(async (resolve, reject) => {
-      if (!this.sftp) {
-        reject(new Error('Not connected'));
-        return;
-      }
+  private async _rmdir(remotePath: string, recursive = false): Promise<void> {
+    if (!this.sftp) {
+      throw new Error('Not connected');
+    }
 
-      if (recursive) {
-        try {
-          const entries = await this._list(remotePath);
-          for (const entry of entries) {
-            const entryPath = normalizeRemotePath(path.join(remotePath, entry.name));
-            if (entry.type === 'directory') {
-              await this._rmdir(entryPath, true);
-            } else {
-              await this._delete(entryPath);
-            }
-          }
-        } catch (err) {
-          reject(err);
-          return;
-        }
+    if (recursive) {
+      const entries = await this._list(remotePath);
+      
+      // Separate files and directories
+      const files = entries.filter(e => e.type !== 'directory');
+      const dirs = entries.filter(e => e.type === 'directory');
+      
+      // Delete files in parallel (batch of 10)
+      const batchSize = 10;
+      for (let i = 0; i < files.length; i += batchSize) {
+        const batch = files.slice(i, i + batchSize);
+        await Promise.all(batch.map(entry => {
+          const entryPath = normalizeRemotePath(path.join(remotePath, entry.name));
+          return this._delete(entryPath).catch(() => {}); // Ignore individual errors
+        }));
       }
+      
+      // Delete subdirectories in parallel (batch of 5)
+      for (let i = 0; i < dirs.length; i += 5) {
+        const batch = dirs.slice(i, i + 5);
+        await Promise.all(batch.map(entry => {
+          const entryPath = normalizeRemotePath(path.join(remotePath, entry.name));
+          return this._rmdir(entryPath, true).catch(() => {}); // Ignore individual errors
+        }));
+      }
+    }
 
-      this.sftp.rmdir(remotePath, (err: any) => {
+    return new Promise((resolve, reject) => {
+      this.sftp!.rmdir(remotePath, (err: any) => {
         if (err) reject(err);
         else resolve();
       });
