@@ -1079,19 +1079,36 @@ export function registerCommands(
   });
 
   const backupCommand = vscode.commands.registerCommand('stackerftp.webmaster.backup', async (item: any) => {
+    if (!item?.entry) {
+      statusBar.error('No file or folder selected');
+      return;
+    }
+
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) return;
+    // Use item's config if available, otherwise get active config
+    const config = item.config || configManager.getActiveConfig(workspaceRoot);
+    if (!config) {
+      statusBar.error('No configuration found');
+      return;
+    }
+
+    // Check if protocol supports exec (SFTP only)
+    if (config.protocol !== 'sftp') {
+      statusBar.warn('Backup requires SFTP protocol');
+      return;
+    }
 
     const backupName = await vscode.window.showInputBox({
       prompt: 'Enter backup name (optional)',
       placeHolder: `backup-${new Date().toISOString().split('T')[0]}`
     });
 
+    if (backupName === undefined) return; // User cancelled
+
     try {
-      const connection = await connectionManager.ensureConnection(config);
+      const connection = item.connectionRef || await connectionManager.ensureConnection(config);
       const backupPath = await webMasterTools.createBackup(connection, item.entry.path, backupName || undefined);
       statusBar.success(`Backup created: ${backupPath}`);
     } catch (error: any) {

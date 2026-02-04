@@ -728,11 +728,6 @@
           "group": "navigation@2"
         },
         {
-          "command": "stackerftp.collapseAll",
-          "when": "view == stackerftp.remoteExplorerTree",
-          "group": "navigation@3"
-        },
-        {
           "command": "stackerftp.quickConnect",
           "when": "view == stackerftp.remoteExplorer || view == stackerftp.remoteExplorerTree",
           "group": "1_connection@1"
