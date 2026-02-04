@@ -83,6 +83,10 @@ export class SFTPConnection extends BaseConnection {
   }
 
   async list(remotePath: string): Promise<FileEntry[]> {
+    return this.enqueue(() => this._list(remotePath));
+  }
+
+  private _list(remotePath: string): Promise<FileEntry[]> {
     return new Promise((resolve, reject) => {
       if (!this.sftp) {
         reject(new Error('Not connected'));
@@ -112,7 +116,7 @@ export class SFTPConnection extends BaseConnection {
               type = 'symlink';
               // For symlinks, try to determine if they point to a directory
               try {
-                const targetStat = await this.statFollowLink(entryPath);
+                const targetStat = await this._statFollowLink(entryPath);
                 if (targetStat && targetStat.type === 'directory') {
                   isSymlinkToDirectory = true;
                 }
@@ -148,7 +152,7 @@ export class SFTPConnection extends BaseConnection {
     });
   }
 
-  private statFollowLink(remotePath: string): Promise<FileEntry | null> {
+  private _statFollowLink(remotePath: string): Promise<FileEntry | null> {
     return new Promise((resolve) => {
       if (!this.sftp) {
         resolve(null);
@@ -174,6 +178,10 @@ export class SFTPConnection extends BaseConnection {
   }
 
   async download(remotePath: string, localPath: string): Promise<void> {
+    return this.enqueue(() => this._download(remotePath, localPath));
+  }
+
+  private _download(remotePath: string, localPath: string): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.sftp) {
         reject(new Error('Not connected'));
@@ -211,6 +219,10 @@ export class SFTPConnection extends BaseConnection {
   }
 
   async upload(localPath: string, remotePath: string): Promise<void> {
+    return this.enqueue(() => this._upload(localPath, remotePath));
+  }
+
+  private _upload(localPath: string, remotePath: string): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.sftp) {
         reject(new Error('Not connected'));
@@ -244,6 +256,10 @@ export class SFTPConnection extends BaseConnection {
   }
 
   async delete(remotePath: string): Promise<void> {
+    return this.enqueue(() => this._delete(remotePath));
+  }
+
+  private _delete(remotePath: string): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.sftp) {
         reject(new Error('Not connected'));
@@ -258,6 +274,10 @@ export class SFTPConnection extends BaseConnection {
   }
 
   async mkdir(remotePath: string): Promise<void> {
+    return this.enqueue(() => this._mkdir(remotePath));
+  }
+
+  private _mkdir(remotePath: string): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.sftp) {
         reject(new Error('Not connected'));
@@ -272,6 +292,10 @@ export class SFTPConnection extends BaseConnection {
   }
 
   async rmdir(remotePath: string, recursive = false): Promise<void> {
+    return this.enqueue(() => this._rmdir(remotePath, recursive));
+  }
+
+  private _rmdir(remotePath: string, recursive = false): Promise<void> {
     return new Promise(async (resolve, reject) => {
       if (!this.sftp) {
         reject(new Error('Not connected'));
@@ -280,13 +304,13 @@ export class SFTPConnection extends BaseConnection {
 
       if (recursive) {
         try {
-          const entries = await this.list(remotePath);
+          const entries = await this._list(remotePath);
           for (const entry of entries) {
             const entryPath = normalizeRemotePath(path.join(remotePath, entry.name));
             if (entry.type === 'directory') {
-              await this.rmdir(entryPath, true);
+              await this._rmdir(entryPath, true);
             } else {
-              await this.delete(entryPath);
+              await this._delete(entryPath);
             }
           }
         } catch (err) {
@@ -303,6 +327,10 @@ export class SFTPConnection extends BaseConnection {
   }
 
   async rename(oldPath: string, newPath: string): Promise<void> {
+    return this.enqueue(() => this._rename(oldPath, newPath));
+  }
+
+  private _rename(oldPath: string, newPath: string): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.sftp) {
         reject(new Error('Not connected'));
@@ -326,6 +354,10 @@ export class SFTPConnection extends BaseConnection {
   }
 
   async stat(remotePath: string): Promise<FileEntry | null> {
+    return this.enqueue(() => this._stat(remotePath));
+  }
+
+  private _stat(remotePath: string): Promise<FileEntry | null> {
     return new Promise((resolve, reject) => {
       if (!this.sftp) {
         reject(new Error('Not connected'));
@@ -363,6 +395,10 @@ export class SFTPConnection extends BaseConnection {
   }
 
   async chmod(remotePath: string, mode: number | string): Promise<void> {
+    return this.enqueue(() => this._chmod(remotePath, mode));
+  }
+
+  private _chmod(remotePath: string, mode: number | string): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.sftp) {
         reject(new Error('Not connected'));
@@ -379,6 +415,10 @@ export class SFTPConnection extends BaseConnection {
   }
 
   async readFile(remotePath: string): Promise<Buffer> {
+    return this.enqueue(() => this._readFile(remotePath));
+  }
+
+  private _readFile(remotePath: string): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       if (!this.sftp) {
         reject(new Error('Not connected'));
@@ -393,6 +433,10 @@ export class SFTPConnection extends BaseConnection {
   }
 
   async writeFile(remotePath: string, content: Buffer | string): Promise<void> {
+    return this.enqueue(() => this._writeFile(remotePath, content));
+  }
+
+  private _writeFile(remotePath: string, content: Buffer | string): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.sftp) {
         reject(new Error('Not connected'));
@@ -409,6 +453,10 @@ export class SFTPConnection extends BaseConnection {
   }
 
   async exec(command: string): Promise<{ stdout: string; stderr: string; code: number }> {
+    return this.enqueue(() => this._exec(command));
+  }
+
+  private _exec(command: string): Promise<{ stdout: string; stderr: string; code: number }> {
     return new Promise((resolve, reject) => {
       if (!this.client) {
         reject(new Error('Not connected'));

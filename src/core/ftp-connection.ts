@@ -53,64 +53,62 @@ export class FTPConnection extends BaseConnection {
   }
 
   async list(remotePath: string): Promise<FileEntry[]> {
-    try {
-      const list = await this.client.list(remotePath);
-      
-      const entries: FileEntry[] = [];
-      
-      for (const item of list) {
-        try {
-          // Skip invalid entries
-          if (!item.name || item.name === '.' || item.name === '..') {
-            continue;
-          }
-          
-          const user = item.permissions?.user;
-          const group = item.permissions?.group;
-          const other = item.permissions?.world;
-          let type = this.mapFileType(item.type);
-          let isSymlinkToDirectory: boolean | undefined = undefined;
-          
-          // For symlinks in FTP, try to determine if it's a directory
-          if (type === 'symlink') {
-            try {
-              // Try to list the symlink path - if it works, it's a directory
-              const symlinkPath = normalizeRemotePath(path.join(remotePath, item.name));
-              await this.client.list(symlinkPath);
-              isSymlinkToDirectory = true;
-            } catch {
-              // If list fails, it's probably a file symlink
-              isSymlinkToDirectory = false;
+    return this.enqueue(async () => {
+      try {
+        const list = await this.client.list(remotePath);
+        
+        const entries: FileEntry[] = [];
+        
+        for (const item of list) {
+          try {
+            // Skip invalid entries
+            if (!item.name || item.name === '.' || item.name === '..') {
+              continue;
             }
+            
+            const user = item.permissions?.user;
+            const group = item.permissions?.group;
+            const other = item.permissions?.world;
+            let type = this.mapFileType(item.type);
+            let isSymlinkToDirectory: boolean | undefined = undefined;
+            
+            // For symlinks in FTP, try to determine if it's a directory
+            // Note: symlink check is done inline to avoid extra queue operations
+            if (type === 'symlink') {
+              try {
+                const symlinkPath = normalizeRemotePath(path.join(remotePath, item.name));
+                await this.client.list(symlinkPath);
+                isSymlinkToDirectory = true;
+              } catch {
+                isSymlinkToDirectory = false;
+              }
+            }
+            
+            entries.push({
+              name: item.name,
+              type,
+              size: item.size || 0,
+              modifyTime: item.modifiedAt || new Date(),
+              rights: {
+                user: user !== undefined ? String(user) : '',
+                group: group !== undefined ? String(group) : '',
+                other: other !== undefined ? String(other) : ''
+              },
+              path: normalizeRemotePath(path.join(remotePath, item.name)),
+              target: item.link || undefined,
+              isSymlinkToDirectory
+            });
+          } catch (itemErr) {
+            logger.warn(`Skipping problematic FTP entry: ${item.name}`, itemErr);
           }
-          
-          entries.push({
-            name: item.name,
-            type,
-            size: item.size || 0,
-            modifyTime: item.modifiedAt || new Date(),
-            rights: {
-              user: user !== undefined ? String(user) : '',
-              group: group !== undefined ? String(group) : '',
-              other: other !== undefined ? String(other) : ''
-            },
-            path: normalizeRemotePath(path.join(remotePath, item.name)),
-            // For FTP symlinks, we can't easily determine target
-            // but basic-ftp may provide link info
-            target: item.link || undefined,
-            isSymlinkToDirectory
-          });
-        } catch (itemErr) {
-          // Skip problematic entries
-          logger.warn(`Skipping problematic FTP entry: ${item.name}`, itemErr);
         }
+        
+        return entries;
+      } catch (error) {
+        logger.error('FTP list error', error);
+        throw error;
       }
-      
-      return entries;
-    } catch (error) {
-      logger.error('FTP list error', error);
-      throw error;
-    }
+    });
   }
 
   private mapFileType(type: unknown): FileEntry['type'] {
@@ -139,159 +137,179 @@ export class FTPConnection extends BaseConnection {
   }
 
   async download(remotePath: string, localPath: string): Promise<void> {
-    try {
-      this.emit('transferStart', { direction: 'download', remotePath, localPath });
-      
-      // Ensure directory exists
-      const localDir = path.dirname(localPath);
-      if (!fs.existsSync(localDir)) {
-        fs.mkdirSync(localDir, { recursive: true });
-      }
+    return this.enqueue(async () => {
+      try {
+        this.emit('transferStart', { direction: 'download', remotePath, localPath });
+        
+        // Ensure directory exists
+        const localDir = path.dirname(localPath);
+        if (!fs.existsSync(localDir)) {
+          fs.mkdirSync(localDir, { recursive: true });
+        }
 
-      await this.client.downloadTo(localPath, remotePath);
-      
-      this.emit('transferComplete', { direction: 'download', remotePath, localPath });
-    } catch (error) {
-      logger.error('FTP download error', error);
-      throw error;
-    }
+        await this.client.downloadTo(localPath, remotePath);
+        
+        this.emit('transferComplete', { direction: 'download', remotePath, localPath });
+      } catch (error) {
+        logger.error('FTP download error', error);
+        throw error;
+      }
+    });
   }
 
   async upload(localPath: string, remotePath: string): Promise<void> {
-    try {
-      this.emit('transferStart', { direction: 'upload', localPath, remotePath });
-      await this.client.uploadFrom(localPath, remotePath);
-      this.emit('transferComplete', { direction: 'upload', localPath, remotePath });
-    } catch (error) {
-      logger.error('FTP upload error', error);
-      throw error;
-    }
+    return this.enqueue(async () => {
+      try {
+        this.emit('transferStart', { direction: 'upload', localPath, remotePath });
+        await this.client.uploadFrom(localPath, remotePath);
+        this.emit('transferComplete', { direction: 'upload', localPath, remotePath });
+      } catch (error) {
+        logger.error('FTP upload error', error);
+        throw error;
+      }
+    });
   }
 
   async delete(remotePath: string): Promise<void> {
-    try {
-      await this.client.remove(remotePath);
-    } catch (error) {
-      logger.error('FTP delete error', error);
-      throw error;
-    }
+    return this.enqueue(async () => {
+      try {
+        await this.client.remove(remotePath);
+      } catch (error) {
+        logger.error('FTP delete error', error);
+        throw error;
+      }
+    });
   }
 
   async mkdir(remotePath: string): Promise<void> {
-    try {
-      await this.client.ensureDir(remotePath);
-    } catch (error) {
-      logger.error('FTP mkdir error', error);
-      throw error;
-    }
+    return this.enqueue(async () => {
+      try {
+        await this.client.ensureDir(remotePath);
+      } catch (error) {
+        logger.error('FTP mkdir error', error);
+        throw error;
+      }
+    });
   }
 
   async rmdir(remotePath: string, recursive = false): Promise<void> {
-    try {
-      if (recursive) {
-        // removeDir recursively removes directory and all contents
-        await this.client.removeDir(remotePath);
-      } else {
-        // Non-recursive: only remove empty directory using RMD command
-        await this.client.send(`RMD ${remotePath}`);
+    return this.enqueue(async () => {
+      try {
+        if (recursive) {
+          await this.client.removeDir(remotePath);
+        } else {
+          await this.client.send(`RMD ${remotePath}`);
+        }
+      } catch (error) {
+        logger.error('FTP rmdir error', error);
+        throw error;
       }
-    } catch (error) {
-      logger.error('FTP rmdir error', error);
-      throw error;
-    }
+    });
   }
 
   async rename(oldPath: string, newPath: string): Promise<void> {
-    try {
-      await this.client.rename(oldPath, newPath);
-    } catch (error) {
-      logger.error('FTP rename error', error);
-      throw error;
-    }
+    return this.enqueue(async () => {
+      try {
+        await this.client.rename(oldPath, newPath);
+      } catch (error) {
+        logger.error('FTP rename error', error);
+        throw error;
+      }
+    });
   }
 
   async exists(remotePath: string): Promise<boolean> {
-    try {
-      await this.client.size(remotePath);
-      return true;
-    } catch {
+    return this.enqueue(async () => {
       try {
-        await this.client.cd(remotePath);
+        await this.client.size(remotePath);
         return true;
       } catch {
-        return false;
+        try {
+          await this.client.cd(remotePath);
+          return true;
+        } catch {
+          return false;
+        }
       }
-    }
+    });
   }
 
   async stat(remotePath: string): Promise<FileEntry | null> {
-    try {
-      const size = await this.client.size(remotePath);
-      const fileName = path.basename(remotePath);
-      
-      return {
-        name: fileName,
-        type: 'file',
-        size,
-        modifyTime: new Date(),
-        rights: { user: '', group: '', other: '' },
-        path: remotePath
-      };
-    } catch {
+    return this.enqueue(async () => {
       try {
-        await this.client.cd(remotePath);
+        const size = await this.client.size(remotePath);
+        const fileName = path.basename(remotePath);
+        
         return {
-          name: path.basename(remotePath),
-          type: 'directory',
-          size: 0,
+          name: fileName,
+          type: 'file',
+          size,
           modifyTime: new Date(),
           rights: { user: '', group: '', other: '' },
           path: remotePath
         };
       } catch {
-        return null;
+        try {
+          await this.client.cd(remotePath);
+          return {
+            name: path.basename(remotePath),
+            type: 'directory',
+            size: 0,
+            modifyTime: new Date(),
+            rights: { user: '', group: '', other: '' },
+            path: remotePath
+          };
+        } catch {
+          return null;
+        }
       }
-    }
+    });
   }
 
   async chmod(remotePath: string, mode: number | string): Promise<void> {
-    try {
-      const modeStr = typeof mode === 'number' ? mode.toString(8) : mode;
-      await this.client.send(`SITE CHMOD ${modeStr} ${remotePath}`);
-    } catch (error) {
-      logger.error('FTP chmod error', error);
-      throw error;
-    }
+    return this.enqueue(async () => {
+      try {
+        const modeStr = typeof mode === 'number' ? mode.toString(8) : mode;
+        await this.client.send(`SITE CHMOD ${modeStr} ${remotePath}`);
+      } catch (error) {
+        logger.error('FTP chmod error', error);
+        throw error;
+      }
+    });
   }
 
   async readFile(remotePath: string): Promise<Buffer> {
-    const tempPath = path.join(require('os').tmpdir(), `stackerftp-${Date.now()}`);
-    try {
-      await this.client.downloadTo(tempPath, remotePath);
-      const content = fs.readFileSync(tempPath);
-      fs.unlinkSync(tempPath);
-      return content;
-    } catch (error) {
-      if (fs.existsSync(tempPath)) {
+    return this.enqueue(async () => {
+      const tempPath = path.join(require('os').tmpdir(), `stackerftp-${Date.now()}`);
+      try {
+        await this.client.downloadTo(tempPath, remotePath);
+        const content = fs.readFileSync(tempPath);
         fs.unlinkSync(tempPath);
+        return content;
+      } catch (error) {
+        if (fs.existsSync(tempPath)) {
+          fs.unlinkSync(tempPath);
+        }
+        throw error;
       }
-      throw error;
-    }
+    });
   }
 
   async writeFile(remotePath: string, content: Buffer | string): Promise<void> {
-    const tempPath = path.join(require('os').tmpdir(), `stackerftp-${Date.now()}`);
-    try {
-      const buffer = Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf-8');
-      fs.writeFileSync(tempPath, buffer);
-      await this.client.uploadFrom(tempPath, remotePath);
-      fs.unlinkSync(tempPath);
-    } catch (error) {
-      if (fs.existsSync(tempPath)) {
+    return this.enqueue(async () => {
+      const tempPath = path.join(require('os').tmpdir(), `stackerftp-${Date.now()}`);
+      try {
+        const buffer = Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf-8');
+        fs.writeFileSync(tempPath, buffer);
+        await this.client.uploadFrom(tempPath, remotePath);
         fs.unlinkSync(tempPath);
+      } catch (error) {
+        if (fs.existsSync(tempPath)) {
+          fs.unlinkSync(tempPath);
+        }
+        throw error;
       }
-      throw error;
-    }
+    });
   }
 
   async exec(command: string): Promise<{ stdout: string; stderr: string; code: number }> {

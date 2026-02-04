@@ -20,15 +20,62 @@ export type ConnectionEvent =
   | 'transferStart'
   | 'transferComplete';
 
+// Operation queue item
+interface QueueItem<T> {
+  operation: () => Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+}
+
 export abstract class BaseConnection extends EventEmitter {
   protected config: FTPConfig;
   protected _connected = false;
   protected _currentPath = '';
+  
+  // Operation queue for sequential execution
+  private operationQueue: QueueItem<unknown>[] = [];
+  private isProcessingQueue = false;
 
   constructor(config: FTPConfig) {
     super();
     this.config = config;
     this._currentPath = config.remotePath;
+  }
+  
+  /**
+   * Execute operation in queue to prevent concurrent access
+   */
+  protected async enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.operationQueue.push({
+        operation,
+        resolve: resolve as (value: unknown) => void,
+        reject
+      });
+      this.processQueue();
+    });
+  }
+  
+  private async processQueue(): Promise<void> {
+    if (this.isProcessingQueue) {
+      return;
+    }
+    
+    this.isProcessingQueue = true;
+    
+    while (this.operationQueue.length > 0) {
+      const item = this.operationQueue.shift();
+      if (item) {
+        try {
+          const result = await item.operation();
+          item.resolve(result);
+        } catch (error) {
+          item.reject(error);
+        }
+      }
+    }
+    
+    this.isProcessingQueue = false;
   }
 
   get connected(): boolean {
