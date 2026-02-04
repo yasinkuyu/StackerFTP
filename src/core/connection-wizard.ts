@@ -375,7 +375,7 @@ export class ConnectionWizard {
   static async switchProtocol(workspaceRoot: string): Promise<void> {
     const configs = configManager.getConfigs(workspaceRoot);
     if (configs.length === 0) {
-      vscode.window.showWarningMessage('No connections configured');
+      statusBar.warn('No connections configured');
       return;
     }
 
@@ -428,9 +428,7 @@ export class ConnectionWizard {
 
       await configManager.saveConfig(workspaceRoot, configs);
 
-      vscode.window.showInformationMessage(
-        `Protocol changed to ${newProtocol.protocol.toUpperCase()}`
-      );
+      statusBar.success(`Protocol changed to ${newProtocol.protocol.toUpperCase()}`);
 
       logger.info(`Protocol switched for ${selectedConfig.config.name}: ${newProtocol.protocol}`);
     }

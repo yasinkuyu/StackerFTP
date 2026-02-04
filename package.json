@@ -596,6 +596,18 @@
           "group": "7_stackerftp@9"
         }
       ],
+      "scm/resourceState/context": [
+        {
+          "command": "stackerftp.upload",
+          "group": "7_stackerftp@1",
+          "when": "scmProvider == git"
+        },
+        {
+          "command": "stackerftp.download",
+          "group": "7_stackerftp@2",
+          "when": "scmProvider == git"
+        }
+      ],
       "stackerftp.submenu": [
         {
           "command": "stackerftp.upload",

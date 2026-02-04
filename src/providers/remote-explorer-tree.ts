@@ -177,18 +177,17 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
     this._onDidChangeTreeData.fire();
   }
   
-  // Refresh with loading indicator that auto-hides
+  // Refresh with loading indicator
   async refreshWithProgress(): Promise<void> {
-    await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: 'Refreshing Remote Explorer...',
-      cancellable: false
-    }, async () => {
+    const progress = statusBar.startProgress('refresh', 'Refreshing...');
+    try {
       this.fileCache.clear();
       this._onDidChangeTreeData.fire();
-      // Small delay to ensure tree updates
-      await new Promise(resolve => setTimeout(resolve, 500));
-    });
+      await new Promise(resolve => setTimeout(resolve, 300));
+      progress.complete();
+    } catch (error) {
+      progress.fail('Refresh failed');
+    }
   }
   
   getTreeItem(element: RemoteTreeItem | RemoteConfigTreeItem): vscode.TreeItem {
@@ -409,72 +408,95 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
     // Use connection from item or fallback to class property
     const conn = item.connectionRef || this.connection;
     const config = item.config || this.currentConfig;
-    
+
     if (!conn || !config) {
       statusBar.error('No active connection');
       return;
     }
 
     const fileName = item.entry.name || path.basename(item.entry.path);
+    const remotePath = item.entry.path;
 
     // Check for system files
-    if (this.isSystemFile(item.entry.path)) {
+    if (this.isSystemFile(remotePath)) {
       statusBar.warn(`Cannot open system file: ${fileName}`);
       return;
     }
 
-    // Show progress while downloading
-    await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: `Opening ${fileName}...`,
-      cancellable: false
-    }, async (progress) => {
-      try {
-        // Check user preference - first from sftp.json config, then from VS Code settings
-        const downloadOnOpen = config.downloadOnOpen ?? false;
-        const vsConfig = vscode.workspace.getConfiguration('stackerftp');
-        const downloadToWorkspace = downloadOnOpen || vsConfig.get<boolean>('downloadWhenOpenInRemoteExplorer', false);
+    // Check if binary file - these need to be downloaded
+    if (RemoteDocumentProvider.isBinaryFile(remotePath)) {
+      await this.openBinaryFile(item, conn, config, fileName);
+      return;
+    }
 
-        const os = require('os');
-        const fs = require('fs');
-        let targetPath: string;
+    // Text files - open in memory using TextDocumentContentProvider (no temp file)
+    try {
+      statusBar.info(`Opening ${fileName}...`);
 
-        if (downloadToWorkspace) {
-          // Download to workspace (original behavior - from downloadOnOpen config)
-          const relativePath = path.relative(config.remotePath || '/', item.entry.path);
-          targetPath = path.join(this.workspaceRoot, relativePath);
-        } else {
-          // Open in temp directory (don't pollute workspace)
-          const tempDir = path.join(os.tmpdir(), 'stackerftp', config.host);
-          targetPath = path.join(tempDir, path.basename(item.entry.path));
-        }
+      // Store config for multi-connection support
+      RemoteDocumentProvider.setConfigForPath(remotePath, config);
 
-        const targetDir = path.dirname(targetPath);
-        if (!fs.existsSync(targetDir)) {
-          fs.mkdirSync(targetDir, { recursive: true });
-        }
+      const uri = RemoteDocumentProvider.createUri(remotePath);
+      const doc = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(doc, { preview: true });
 
-        progress.report({ message: 'Downloading...' });
-        await conn.download(item.entry.path, targetPath);
+      statusBar.success(`Opened: ${fileName}`);
+      logger.info(`Opened remote file in memory: ${remotePath}`);
+    } catch (error: any) {
+      logger.error('Failed to open file', error);
 
-        progress.report({ message: 'Opening...' });
-        const targetUri = vscode.Uri.file(targetPath);
-        
-        // Use vscode.open command which handles all file types (binary, text, images, etc.)
-        await vscode.commands.executeCommand('vscode.open', targetUri);
-
-        logger.info(`Opened remote file: ${item.entry.path} -> ${targetPath}`);
-      } catch (error: any) {
-        logger.error('Failed to open file', error);
-
-        // Handle specific FTP errors
-        if (error.message?.includes('550')) {
-          statusBar.error(`Cannot open "${fileName}": Special file type`, true);
-        } else {
-          statusBar.error(`Failed to open: ${error.message}`, true);
-        }
+      if (error.message?.includes('550')) {
+        statusBar.error(`Cannot open "${fileName}": Special file type`, true);
+      } else {
+        statusBar.error(`Failed to open: ${error.message}`, true);
       }
-    });
+    }
+  }
+
+  // Open binary files by downloading to temp
+  private async openBinaryFile(
+    item: RemoteTreeItem,
+    conn: BaseConnection,
+    config: FTPConfig,
+    fileName: string
+  ): Promise<void> {
+    const progress = statusBar.startProgress('open-binary', `Downloading ${fileName}...`);
+
+    try {
+      const os = require('os');
+      const fs = require('fs');
+
+      // Check user preference
+      const downloadOnOpen = config.downloadOnOpen ?? false;
+      const vsConfig = vscode.workspace.getConfiguration('stackerftp');
+      const downloadToWorkspace = downloadOnOpen || vsConfig.get<boolean>('downloadWhenOpenInRemoteExplorer', false);
+
+      let targetPath: string;
+
+      if (downloadToWorkspace) {
+        const relativePath = path.relative(config.remotePath || '/', item.entry.path);
+        targetPath = path.join(this.workspaceRoot, relativePath);
+      } else {
+        const tempDir = path.join(os.tmpdir(), 'stackerftp', config.host);
+        targetPath = path.join(tempDir, path.basename(item.entry.path));
+      }
+
+      const targetDir = path.dirname(targetPath);
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+
+      await conn.download(item.entry.path, targetPath);
+
+      const targetUri = vscode.Uri.file(targetPath);
+      await vscode.commands.executeCommand('vscode.open', targetUri);
+
+      progress.complete(`Opened: ${fileName}`);
+      logger.info(`Opened binary file: ${item.entry.path} -> ${targetPath}`);
+    } catch (error: any) {
+      logger.error('Failed to open binary file', error);
+      progress.fail(`Failed to open: ${error.message}`);
+    }
   }
 
   private isSystemFile(filePath: string): boolean {
@@ -532,41 +554,35 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
     );
     
     if (confirm !== 'Delete') return;
-    
-    await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: `Deleting ${item.entry.name}...`,
-      cancellable: false
-    }, async (progress) => {
-      try {
-        // Mark item as loading and refresh to show spinner
-        this.loadingItems.add(item.entry.path);
-        this._onDidChangeTreeData.fire(item);
-        
-        progress.report({ message: 'Removing files...' });
-        
-        if (item.entry.type === 'directory') {
-          await conn.rmdir(item.entry.path, true);
-        } else {
-          await conn.delete(item.entry.path);
-        }
-        
-        // Remove from loading and refresh parent
-        this.loadingItems.delete(item.entry.path);
-        
-        // Clear cache for parent directory
-        const parentPath = path.dirname(item.entry.path);
-        this.fileCache.delete(parentPath);
-        
-        this.refresh();
-        statusBar.success(`Deleted: ${item.entry.name}`);
-      } catch (error: any) {
-        this.loadingItems.delete(item.entry.path);
-        this._onDidChangeTreeData.fire(item);
-        logger.error('Failed to delete', error);
-        statusBar.error(`Failed to delete: ${error.message}`, true);
+
+    const progress = statusBar.startProgress('delete', `Deleting ${item.entry.name}...`);
+
+    try {
+      // Mark item as loading and refresh to show spinner
+      this.loadingItems.add(item.entry.path);
+      this._onDidChangeTreeData.fire(item);
+
+      if (item.entry.type === 'directory') {
+        await conn.rmdir(item.entry.path, true);
+      } else {
+        await conn.delete(item.entry.path);
       }
-    });
+
+      // Remove from loading and refresh parent
+      this.loadingItems.delete(item.entry.path);
+
+      // Clear cache for parent directory
+      const parentPath = path.dirname(item.entry.path);
+      this.fileCache.delete(parentPath);
+
+      this.refresh();
+      progress.complete(`Deleted: ${item.entry.name}`);
+    } catch (error: any) {
+      this.loadingItems.delete(item.entry.path);
+      this._onDidChangeTreeData.fire(item);
+      logger.error('Failed to delete', error);
+      progress.fail(`Failed to delete: ${error.message}`);
+    }
   }
   
   // Check if an item is currently loading

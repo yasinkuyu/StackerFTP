@@ -1309,9 +1309,7 @@ export function registerCommands(
       const connection = await connectionManager.ensureConnection(config);
       const result = await transferManager.uploadDirectory(connection, workspaceRoot, config.remotePath, config);
 
-      vscode.window.showInformationMessage(
-        `Project uploaded: ${result.uploaded.length} files (${result.failed.length} failed)`
-      );
+      statusBar.success(`Project uploaded: ${result.uploaded.length} files (${result.failed.length} failed)`);
     } catch (error: any) {
       statusBar.error(`Upload project failed: ${error.message}`);
     }
@@ -1485,7 +1483,7 @@ export function registerCommands(
     );
 
     if (otherConnections.length === 0) {
-      vscode.window.showWarningMessage('No other remote connections available. Connect to another server first.');
+      statusBar.warn('No other remote connections available. Connect to another server first.');
       return;
     }
 
@@ -1547,9 +1545,7 @@ export function registerCommands(
         }
       });
 
-      vscode.window.showInformationMessage(
-        `Transferred ${item.entry.name} to ${selected.config.name || selected.config.host}`
-      );
+      statusBar.success(`Transferred ${item.entry.name} to ${selected.config.name || selected.config.host}`);
 
       // Refresh remote explorer
       vscode.commands.executeCommand('stackerftp.tree.refresh');
@@ -1573,11 +1569,9 @@ export function registerCommands(
     );
 
     if (otherConnections.length === 0) {
-      vscode.window.showWarningMessage('No other remote connections available. Connect to another server first.');
+      statusBar.warn('No other remote connections available. Connect to another server first.');
       return;
     }
-
-    // Let user select target connection
     const targetItems = otherConnections.map(c => ({
       label: c.config.name || c.config.host,
       description: `${c.config.protocol.toUpperCase()} · ${c.config.username}@${c.config.host}`,
@@ -1660,7 +1654,7 @@ export function registerCommands(
     );
 
     if (otherConnections.length === 0) {
-      vscode.window.showWarningMessage('No other remote connections available. Connect to another server first.');
+      statusBar.warn('No other remote connections available. Connect to another server first.');
       return;
     }
 
@@ -1742,9 +1736,7 @@ export function registerCommands(
         fs.rmSync(tempDir, { recursive: true, force: true });
       });
 
-      vscode.window.showInformationMessage(
-        `Synced ${transferred}/${total} files to ${selected.config.host}`
-      );
+      statusBar.success(`Synced ${transferred}/${total} files to ${selected.config.host}`);
 
       vscode.commands.executeCommand('stackerftp.tree.refresh');
 
@@ -1919,9 +1911,7 @@ export function registerCommands(
     if (failed.length === 0) {
       statusBar.success(`Uploaded to all ${successful} profiles successfully`);
     } else {
-      vscode.window.showWarningMessage(
-        `Uploaded to ${successful}/${results.length} profiles. Failed: ${failed.map(f => f.name).join(', ')}`
-      );
+      statusBar.warn(`Uploaded to ${successful}/${results.length} profiles. Failed: ${failed.map(f => f.name).join(', ')}`);
     }
   });
 

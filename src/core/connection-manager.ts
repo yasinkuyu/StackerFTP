@@ -116,7 +116,7 @@ export class ConnectionManager {
     const activeConns = this.getAllActiveConnections();
     
     if (activeConns.length === 0) {
-      vscode.window.showWarningMessage('No active connections. Please connect first.');
+      statusBar.warn('No active connections. Please connect first.');
       return undefined;
     }
 

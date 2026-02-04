@@ -74,7 +74,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
       // Check for system files
       if (RemoteDocumentProvider.isSystemFile(remotePath)) {
-        vscode.window.showWarningMessage(`Cannot view system file: ${fileName}`);
+        statusBar.warn(`Cannot view system file: ${fileName}`);
         return;
       }
 

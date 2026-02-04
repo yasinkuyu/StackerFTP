@@ -51,9 +51,7 @@ export class WebMasterTools {
 
     try {
       await this.changePermissions(connection, entry.path, parseInt(modeString, 8));
-      vscode.window.showInformationMessage(
-        `Permissions changed for ${entry.name} to ${modeString}`
-      );
+      statusBar.success(`Permissions changed for ${entry.name} to ${modeString}`);
     } catch (error: any) {
       statusBar.error(`Failed to change permissions: ${error.message}`);
     }
@@ -264,9 +262,7 @@ export class WebMasterTools {
 
     if (selected) {
       // Open remote file at specific line
-      vscode.window.showInformationMessage(
-        `Would open ${selected.result.path}:${selected.result.line}`
-      );
+      statusBar.info(`Opening ${selected.result.path}:${selected.result.line}`);
     }
   }
 
@@ -458,9 +454,7 @@ export class WebMasterTools {
       const result = await this.findAndReplace(connection, remotePath, find, replace, filePattern || undefined);
       
       if (result.success > 0) {
-        vscode.window.showInformationMessage(
-          `Replaced ${result.success} occurrence(s) in ${result.files.length} file(s)`
-        );
+        statusBar.success(`Replaced ${result.success} occurrence(s) in ${result.files.length} file(s)`);
       } else if (result.failed > 0) {
         statusBar.error('Find and replace failed');
       } else {
@@ -500,7 +494,7 @@ export class WebMasterTools {
       statusBar.success(`Purged ${results.length} cache directory/directories`);
       logger.info(`Purged caches: ${results.join(', ')}`);
     } else {
-      vscode.window.showWarningMessage('No cache directories found to purge');
+      statusBar.warn('No cache directories found to purge');
     }
   }
 }

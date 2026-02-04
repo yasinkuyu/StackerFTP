@@ -12,6 +12,7 @@ import { transferManager } from '../core/transfer-manager';
 import { BaseConnection } from '../core/connection';
 import { FileEntry, FTPConfig } from '../types';
 import { logger } from '../utils/logger';
+import { statusBar } from '../utils/status-bar';
 import { formatFileSize, formatDate, normalizeRemotePath } from '../utils/helpers';
 
 export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider {
@@ -143,7 +144,7 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
     try {
       this._view.webview.postMessage({ type: 'connecting' });
       this._connection = await connectionManager.connect(config);
-      vscode.window.showInformationMessage(`StackerFTP: Connected to ${config.name || config.host}`);
+      // Connected message shown by connection-manager via statusBar
       this._currentPath = config.remotePath;
 
       this._view.webview.postMessage({
@@ -209,7 +210,7 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
     try {
       this._view.webview.postMessage({ type: 'connecting' });
       this._connection = await connectionManager.connect(this._currentConfig);
-      vscode.window.showInformationMessage(`StackerFTP: Connected to ${this._currentConfig.name || this._currentConfig.host}`);
+      // Connected message shown by connection-manager via statusBar
       this._currentPath = this._currentConfig.remotePath;
 
       this._view.webview.postMessage({
@@ -327,7 +328,7 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
           language: ext
         });
       } else {
-        vscode.window.showInformationMessage('Preview not available for this file type');
+        statusBar.warn('Preview not available for this file type');
       }
     } catch (error: any) {
       this._view?.webview.postMessage({ type: 'error', message: `Preview failed: ${error.message}` });
@@ -438,7 +439,7 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
       await this._connection.writeFile(newPath, content);
       await this._handleRefresh();
 
-      vscode.window.showInformationMessage(`Duplicated: ${newName}`);
+      statusBar.success(`Duplicated: ${newName}`);
     } catch (error: any) {
       this._view?.webview.postMessage({ type: 'error', message: `Duplicate failed: ${error.message}` });
     }
