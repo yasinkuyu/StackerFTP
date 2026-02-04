@@ -124,7 +124,16 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
     if (!workspaceRoot) return;
 
     try {
+      let configs = configManager.getConfigs(workspaceRoot);
+      
+      // Get existing config if editing to preserve all fields
+      const existingConfig = (editIndex !== undefined && editIndex >= 0) 
+        ? configs[editIndex] 
+        : {};
+
+      // Merge with existing config to preserve fields not in form
       const newConfig: FTPConfig = {
+        ...existingConfig,  // Preserve existing fields (watcher, ignore, profiles, etc.)
         name: configData.name || configData.host,
         host: configData.host,
         port: parseInt(configData.port) || (configData.protocol === 'sftp' ? 22 : 21),
@@ -137,8 +146,6 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
         uploadOnSave: configData.uploadOnSave || false,
         secure: configData.secure || false
       };
-
-      let configs = configManager.getConfigs(workspaceRoot);
 
       if (editIndex !== undefined && editIndex >= 0) {
         configs[editIndex] = newConfig;
