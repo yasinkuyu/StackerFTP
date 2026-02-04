@@ -300,10 +300,26 @@ export class SFTPConnection extends BaseConnection {
       throw new Error('Not connected');
     }
 
+    // Safety checks - prevent deletion of critical paths
+    const normalizedPath = normalizeRemotePath(remotePath);
+    const dangerousPaths = ['/', '/home', '/root', '/var', '/etc', '/usr', '/bin', '/sbin', '/lib', '/opt'];
+    
+    if (dangerousPaths.includes(normalizedPath) || normalizedPath === '') {
+      throw new Error(`Cannot delete critical system path: ${remotePath}`);
+    }
+    
+    // Ensure path has at least 2 levels (e.g., /home/user not just /home)
+    const pathParts = normalizedPath.split('/').filter(p => p.length > 0);
+    if (pathParts.length < 2) {
+      throw new Error(`Cannot delete top-level directory: ${remotePath}`);
+    }
+
     if (recursive) {
       // Use SSH exec with rm -rf for ultra-fast deletion
+      // Escape path properly to prevent command injection
+      const escapedPath = remotePath.replace(/'/g, "'\\''");
       try {
-        await this._execCommand(`rm -rf "${remotePath}"`);
+        await this._execCommand(`rm -rf '${escapedPath}'`);
         return;
       } catch (error) {
         // Fallback to SFTP-based deletion if SSH exec fails

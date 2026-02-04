@@ -195,6 +195,20 @@ export class FTPConnection extends BaseConnection {
   async rmdir(remotePath: string, recursive = false): Promise<void> {
     return this.enqueue(async () => {
       try {
+        // Safety checks - prevent deletion of critical paths
+        const normalizedPath = normalizeRemotePath(remotePath);
+        const dangerousPaths = ['/', '/home', '/root', '/var', '/etc', '/usr', '/bin', '/sbin', '/lib', '/opt'];
+        
+        if (dangerousPaths.includes(normalizedPath) || normalizedPath === '') {
+          throw new Error(`Cannot delete critical system path: ${remotePath}`);
+        }
+        
+        // Ensure path has at least 2 levels
+        const pathParts = normalizedPath.split('/').filter(p => p.length > 0);
+        if (pathParts.length < 2) {
+          throw new Error(`Cannot delete top-level directory: ${remotePath}`);
+        }
+        
         if (recursive) {
           await this.client.removeDir(remotePath);
         } else {
