@@ -28,6 +28,8 @@ export class RemoteTreeItem extends vscode.TreeItem {
     // Show concise info: just size for files (permissions/date in tooltip)
     if (entry.type === 'file') {
       this.description = formatFileSize(entry.size);
+    } else if (entry.type === 'symlink') {
+      this.description = entry.target ? `→ ${entry.target}` : '→ symlink';
     } else {
       // Directories show nothing in description, details in tooltip
       this.description = '';
@@ -36,6 +38,13 @@ export class RemoteTreeItem extends vscode.TreeItem {
     // Use VS Code's native file icons
     if (entry.type === 'directory') {
       this.iconPath = vscode.ThemeIcon.Folder;
+    } else if (entry.type === 'symlink') {
+      // Symlinks get special handling
+      if (entry.isSymlinkToDirectory) {
+        this.iconPath = new vscode.ThemeIcon('folder-symlink');
+      } else {
+        this.iconPath = new vscode.ThemeIcon('file-symlink-file');
+      }
     } else {
       // For files, use the file icon based on extension
       // Remove leading slashes and create a proper file URI for icon detection
@@ -46,7 +55,8 @@ export class RemoteTreeItem extends vscode.TreeItem {
     
     this.contextValue = entry.type;
     
-    if (entry.type === 'file') {
+    // Allow opening files and symlinks (symlinks to files)
+    if (entry.type === 'file' || (entry.type === 'symlink' && !entry.isSymlinkToDirectory)) {
       this.command = {
         command: 'stackerftp.tree.openFile',
         title: 'Open Remote File',
@@ -203,8 +213,8 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       }
     }
     
-    if (element instanceof RemoteTreeItem && element.entry.type === 'directory') {
-      // Directory level - show contents
+    if (element instanceof RemoteTreeItem && (element.entry.type === 'directory' || (element.entry.type === 'symlink' && element.entry.isSymlinkToDirectory))) {
+      // Directory level - show contents (including symlinks to directories)
       const conn = element.connectionRef || connectionManager.getConnection(element.config);
       if (!conn || !conn.connected) {
         logger.error('No connection for directory listing');
@@ -231,9 +241,13 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
     const sortOrder = config.remoteExplorerOrder || vsConfig.get<string>('remoteExplorerSortOrder', 'name');
     
     const sorted = entries.sort((a, b) => {
+      // Determine if each entry should be treated as a directory
+      const aIsDir = a.type === 'directory' || (a.type === 'symlink' && a.isSymlinkToDirectory);
+      const bIsDir = b.type === 'directory' || (b.type === 'symlink' && b.isSymlinkToDirectory);
+      
       // Always sort directories first
-      if (a.type !== b.type) {
-        return a.type === 'directory' ? -1 : 1;
+      if (aIsDir !== bIsDir) {
+        return aIsDir ? -1 : 1;
       }
       
       // Then sort by specified order
@@ -259,9 +273,15 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
     });
     
     return sorted.map(entry => {
-      const collapsibleState = entry.type === 'directory' 
-        ? vscode.TreeItemCollapsibleState.Collapsed 
-        : vscode.TreeItemCollapsibleState.None;
+      // Determine collapsible state based on type
+      let collapsibleState: vscode.TreeItemCollapsibleState;
+      if (entry.type === 'directory') {
+        collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+      } else if (entry.type === 'symlink' && entry.isSymlinkToDirectory) {
+        collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
+      } else {
+        collapsibleState = vscode.TreeItemCollapsibleState.None;
+      }
       
       return new RemoteTreeItem(entry, config, collapsibleState, conn);
     });

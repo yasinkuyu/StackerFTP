@@ -13,7 +13,7 @@ Thank you for your interest in contributing to StackerFTP! This document provide
 
 1. Fork and clone the repository:
 ```bash
-git clone https://github.com/yourusername/stackerftp.git
+git clone https://github.com/yasinkuyu/stackerftp.git
 cd stackerftp
 ```
 

@@ -56,23 +56,43 @@ export class FTPConnection extends BaseConnection {
     try {
       const list = await this.client.list(remotePath);
       
-      return list.map(item => {
-        const user = item.permissions?.user;
-        const group = item.permissions?.group;
-        const other = item.permissions?.world;
-        return {
-          name: item.name,
-          type: this.mapFileType(item.type),
-          size: item.size,
-          modifyTime: item.modifiedAt || new Date(),
-          rights: {
-            user: user !== undefined ? String(user) : '',
-            group: group !== undefined ? String(group) : '',
-            other: other !== undefined ? String(other) : ''
-          },
-          path: normalizeRemotePath(path.join(remotePath, item.name))
-        };
-      });
+      const entries: FileEntry[] = [];
+      
+      for (const item of list) {
+        try {
+          // Skip invalid entries
+          if (!item.name || item.name === '.' || item.name === '..') {
+            continue;
+          }
+          
+          const user = item.permissions?.user;
+          const group = item.permissions?.group;
+          const other = item.permissions?.world;
+          const type = this.mapFileType(item.type);
+          
+          entries.push({
+            name: item.name,
+            type,
+            size: item.size || 0,
+            modifyTime: item.modifiedAt || new Date(),
+            rights: {
+              user: user !== undefined ? String(user) : '',
+              group: group !== undefined ? String(group) : '',
+              other: other !== undefined ? String(other) : ''
+            },
+            path: normalizeRemotePath(path.join(remotePath, item.name)),
+            // For FTP symlinks, we can't easily determine target
+            // but basic-ftp may provide link info
+            target: item.link || undefined,
+            isSymlinkToDirectory: type === 'symlink' ? undefined : false
+          });
+        } catch (itemErr) {
+          // Skip problematic entries
+          logger.warn(`Skipping problematic FTP entry: ${item.name}`, itemErr);
+        }
+      }
+      
+      return entries;
     } catch (error) {
       logger.error('FTP list error', error);
       throw error;
@@ -80,9 +100,23 @@ export class FTPConnection extends BaseConnection {
   }
 
   private mapFileType(type: unknown): FileEntry['type'] {
+    // basic-ftp uses numeric types: 0 = unknown, 1 = file, 2 = directory, 3 = symlink
+    if (typeof type === 'number') {
+      switch (type) {
+        case 2:
+          return 'directory';
+        case 3:
+          return 'symlink';
+        default:
+          return 'file';
+      }
+    }
+    
     switch (type) {
+      case 'd':
       case 'directory':
         return 'directory';
+      case 'l':
       case 'symlink':
         return 'symlink';
       default:

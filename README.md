@@ -54,7 +54,7 @@ A professional-grade FTP/SFTP client extension for Visual Studio Code and all it
 ## Installation
 
 ### From VSIX (Manual)
-1. Download the latest `.vsix` file from [releases](https://github.com/yourusername/stackerftp/releases)
+1. Download the latest `.vsix` file from [releases](https://github.com/yasinkuyu/stackerftp/releases)
 2. Open VS Code
 3. Go to Extensions view (Ctrl+Shift+X)
 4. Click "..." (More Actions) → "Install from VSIX..."
@@ -400,7 +400,7 @@ StackerFTP is inspired by the excellent [vscode-sftp](https://github.com/Natizys
 
 ## Support
 
-- GitHub Issues: [github.com/yourusername/stackerftp/issues](https://github.com/yourusername/stackerftp/issues)
+- GitHub Issues: [github.com/yasinkuyu/stackerftp/issues](https://github.com/yasinkuyu/stackerftp/issues)
 - Email: support@stackerftp.com
 
 ---

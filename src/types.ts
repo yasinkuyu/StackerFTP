@@ -73,6 +73,8 @@ export interface FileEntry {
   owner?: string | number;
   group?: string | number;
   path: string;
+  target?: string; // For symlinks - the path they point to
+  isSymlinkToDirectory?: boolean; // Whether symlink points to a directory
 }
 
 export interface TransferItem {

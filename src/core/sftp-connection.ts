@@ -89,32 +89,86 @@ export class SFTPConnection extends BaseConnection {
         return;
       }
 
-      this.sftp.readdir(remotePath, (err: any, list: any[]) => {
+      this.sftp.readdir(remotePath, async (err: any, list: any[]) => {
         if (err) {
           reject(err);
           return;
         }
 
-        const entries: FileEntry[] = list.map(item => {
-          const attrs = item.attrs;
-          return {
-            name: item.filename,
-            type: attrs.isDirectory() ? 'directory' : attrs.isSymbolicLink() ? 'symlink' : 'file',
-            size: attrs.size,
-            modifyTime: new Date(attrs.mtime * 1000),
-            accessTime: new Date(attrs.atime * 1000),
-            rights: {
-              user: ((attrs.mode >> 6) & 7).toString(8),
-              group: ((attrs.mode >> 3) & 7).toString(8),
-              other: (attrs.mode & 7).toString(8)
-            },
-            owner: attrs.uid,
-            group: attrs.gid,
-            path: normalizeRemotePath(path.join(remotePath, item.filename))
-          };
-        });
+        const entries: FileEntry[] = [];
+        
+        for (const item of list) {
+          try {
+            const attrs = item.attrs;
+            const isSymlink = attrs.isSymbolicLink();
+            const entryPath = normalizeRemotePath(path.join(remotePath, item.filename));
+            
+            let type: 'file' | 'directory' | 'symlink' = 'file';
+            let isSymlinkToDirectory = false;
+            
+            if (attrs.isDirectory()) {
+              type = 'directory';
+            } else if (isSymlink) {
+              type = 'symlink';
+              // For symlinks, try to determine if they point to a directory
+              try {
+                const targetStat = await this.statFollowLink(entryPath);
+                if (targetStat && targetStat.type === 'directory') {
+                  isSymlinkToDirectory = true;
+                }
+              } catch {
+                // If we can't stat the target, treat as file
+              }
+            }
+            
+            entries.push({
+              name: item.filename,
+              type,
+              size: attrs.size || 0,
+              modifyTime: new Date((attrs.mtime || 0) * 1000),
+              accessTime: new Date((attrs.atime || 0) * 1000),
+              rights: {
+                user: ((attrs.mode >> 6) & 7).toString(8),
+                group: ((attrs.mode >> 3) & 7).toString(8),
+                other: (attrs.mode & 7).toString(8)
+              },
+              owner: attrs.uid,
+              group: attrs.gid,
+              path: entryPath,
+              isSymlinkToDirectory
+            });
+          } catch (itemErr) {
+            // Skip problematic entries
+            logger.warn(`Skipping problematic entry: ${item.filename}`, itemErr);
+          }
+        }
 
         resolve(entries);
+      });
+    });
+  }
+
+  private statFollowLink(remotePath: string): Promise<FileEntry | null> {
+    return new Promise((resolve) => {
+      if (!this.sftp) {
+        resolve(null);
+        return;
+      }
+
+      // Use stat instead of lstat to follow symlinks
+      this.sftp.stat(remotePath, (err: any, stats: any) => {
+        if (err) {
+          resolve(null);
+          return;
+        }
+
+        resolve({
+          name: path.basename(remotePath),
+          type: stats.isDirectory() ? 'directory' : 'file',
+          size: stats.size || 0,
+          modifyTime: new Date((stats.mtime || 0) * 1000),
+          path: remotePath
+        });
       });
     });
   }
