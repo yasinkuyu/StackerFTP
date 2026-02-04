@@ -167,23 +167,39 @@ export class ConnectionManager {
       return existing;
     }
 
+    // If no password and no private key, prompt for password
+    let workingConfig = { ...config };
+    if (!workingConfig.password && !workingConfig.privateKeyPath) {
+      const password = await vscode.window.showInputBox({
+        prompt: `Enter password for ${workingConfig.username}@${workingConfig.host}`,
+        password: true,
+        ignoreFocusOut: true
+      });
+      
+      if (password === undefined) {
+        throw new Error('Connection cancelled - no password provided');
+      }
+      
+      workingConfig.password = password;
+    }
+
     // Show connecting status
     const progress = statusBar.startProgress('connect', `Connecting to ${displayName}...`);
 
     // Create new connection based on protocol
     let connection: BaseConnection;
 
-    switch (config.protocol) {
+    switch (workingConfig.protocol) {
       case 'sftp':
-        connection = new SFTPConnection(config);
+        connection = new SFTPConnection(workingConfig);
         break;
       case 'ftp':
       case 'ftps':
-        connection = new FTPConnection(config);
+        connection = new FTPConnection(workingConfig);
         break;
       default:
-        progress.fail(`Unsupported protocol: ${config.protocol}`);
-        throw new Error(`Unsupported protocol: ${config.protocol}`);
+        progress.fail(`Unsupported protocol: ${workingConfig.protocol}`);
+        throw new Error(`Unsupported protocol: ${workingConfig.protocol}`);
     }
 
     // Set up event handlers
