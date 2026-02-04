@@ -68,7 +68,21 @@ export class FTPConnection extends BaseConnection {
           const user = item.permissions?.user;
           const group = item.permissions?.group;
           const other = item.permissions?.world;
-          const type = this.mapFileType(item.type);
+          let type = this.mapFileType(item.type);
+          let isSymlinkToDirectory: boolean | undefined = undefined;
+          
+          // For symlinks in FTP, try to determine if it's a directory
+          if (type === 'symlink') {
+            try {
+              // Try to list the symlink path - if it works, it's a directory
+              const symlinkPath = normalizeRemotePath(path.join(remotePath, item.name));
+              await this.client.list(symlinkPath);
+              isSymlinkToDirectory = true;
+            } catch {
+              // If list fails, it's probably a file symlink
+              isSymlinkToDirectory = false;
+            }
+          }
           
           entries.push({
             name: item.name,
@@ -84,7 +98,7 @@ export class FTPConnection extends BaseConnection {
             // For FTP symlinks, we can't easily determine target
             // but basic-ftp may provide link info
             target: item.link || undefined,
-            isSymlinkToDirectory: type === 'symlink' ? undefined : false
+            isSymlinkToDirectory
           });
         } catch (itemErr) {
           // Skip problematic entries

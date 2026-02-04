@@ -132,8 +132,8 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
   context.subscriptions.push(
-    vscode.commands.registerCommand('stackerftp.tree.refresh', () => {
-      remoteTreeProvider.refresh();
+    vscode.commands.registerCommand('stackerftp.tree.refresh', async () => {
+      await remoteTreeProvider.refreshWithProgress();
     })
   );
 

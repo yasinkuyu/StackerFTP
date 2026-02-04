@@ -15,15 +15,26 @@ import { logger } from '../utils/logger';
 import { formatFileSize, formatDate, normalizeRemotePath } from '../utils/helpers';
 
 export class RemoteTreeItem extends vscode.TreeItem {
+  public isLoading: boolean = false;
+  
   constructor(
     public readonly entry: FileEntry,
     public readonly config: FTPConfig,
     public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-    public readonly connectionRef?: BaseConnection
+    public readonly connectionRef?: BaseConnection,
+    loading: boolean = false
   ) {
     super(entry.name, collapsibleState);
     
+    this.isLoading = loading;
     this.tooltip = this.createTooltip();
+    
+    // If loading, show spinner icon and loading description
+    if (loading) {
+      this.iconPath = new vscode.ThemeIcon('loading~spin');
+      this.description = 'Processing...';
+      return;
+    }
     
     // Show concise info: just size for files (permissions/date in tooltip)
     if (entry.type === 'file') {
@@ -124,10 +135,30 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
   private connection: BaseConnection | undefined;
   private currentConfig: FTPConfig | undefined;
   private fileCache: Map<string, FileEntry[]> = new Map();
+  private loadingPaths: Set<string> = new Set();
+  private loadingItems: Set<string> = new Set(); // Track items with inline loading
+  private statusBarItem: vscode.StatusBarItem;
   
   constructor(private workspaceRoot: string) {
     // Register as file decoration provider for custom icons
     vscode.window.registerFileDecorationProvider(this);
+    
+    // Create status bar item for loading indicator
+    this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+    this.statusBarItem.name = 'StackerFTP Loading';
+  }
+  
+  private showLoading(message: string): void {
+    this.statusBarItem.text = `$(sync~spin) ${message}`;
+    this.statusBarItem.show();
+  }
+  
+  private hideLoading(): void {
+    this.statusBarItem.hide();
+  }
+  
+  dispose(): void {
+    this.statusBarItem.dispose();
   }
   
   provideFileDecoration(uri: vscode.Uri, token: vscode.CancellationToken): vscode.ProviderResult<vscode.FileDecoration> {
@@ -137,10 +168,38 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
   
   refresh(): void {
     logger.info('RemoteExplorerTreeProvider.refresh() called');
+    // Show loading in status bar during refresh
+    this.showLoading('Refreshing...');
+    // Clear file cache to force fresh data
+    this.fileCache.clear();
     this._onDidChangeTreeData.fire();
   }
   
+  // Refresh with loading indicator that auto-hides
+  async refreshWithProgress(): Promise<void> {
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: 'Refreshing Remote Explorer...',
+      cancellable: false
+    }, async () => {
+      this.fileCache.clear();
+      this._onDidChangeTreeData.fire();
+      // Small delay to ensure tree updates
+      await new Promise(resolve => setTimeout(resolve, 500));
+    });
+  }
+  
   getTreeItem(element: RemoteTreeItem | RemoteConfigTreeItem): vscode.TreeItem {
+    // If it's a RemoteTreeItem and it's loading, return a new item with loading state
+    if (element instanceof RemoteTreeItem && this.loadingItems.has(element.entry.path)) {
+      return new RemoteTreeItem(
+        element.entry,
+        element.config,
+        element.collapsibleState,
+        element.connectionRef,
+        true // loading = true
+      );
+    }
     return element;
   }
   
@@ -172,12 +231,15 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
         }
         
         try {
+          this.showLoading(`Loading ${remotePath}...`);
           logger.info(`Calling connection.list(${remotePath})`);
           const entries = await connection.list(remotePath);
+          this.hideLoading();
           logger.info(`Got ${entries.length} entries from list()`);
           this.fileCache.set(remotePath, entries);
           return this.sortEntries(entries, config, connection);
         } catch (error: any) {
+          this.hideLoading();
           logger.error(`Failed to list directory: ${error.message}`, error);
           vscode.window.showErrorMessage(`Failed to list remote directory: ${error.message}`);
           return [];
@@ -203,11 +265,14 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       }
       
       try {
+        this.showLoading(`Loading ${element.config.name || element.config.host}...`);
         const entries = await conn.list(remotePath);
+        this.hideLoading();
         logger.info(`Listed ${entries.length} entries`);
         this.fileCache.set(remotePath, entries);
         return this.sortEntries(entries, element.config, conn);
       } catch (error: any) {
+        this.hideLoading();
         logger.error(`Failed to list: ${error.message}`, error);
         return [];
       }
@@ -222,11 +287,14 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       }
       
       try {
+        this.showLoading(`Loading ${element.entry.name}...`);
         logger.info(`Listing directory: ${element.entry.path}`);
         const entries = await conn.list(element.entry.path);
+        this.hideLoading();
         this.fileCache.set(element.entry.path, entries);
         return this.sortEntries(entries, element.config, conn);
       } catch (error: any) {
+        this.hideLoading();
         logger.error(`Failed to list directory: ${error.message}`, error);
         return [];
       }
@@ -353,49 +421,58 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       return;
     }
 
-    try {
-      // Check user preference - first from sftp.json config, then from VS Code settings
-      const downloadOnOpen = config.downloadOnOpen ?? false;
-      const vsConfig = vscode.workspace.getConfiguration('stackerftp');
-      const downloadToWorkspace = downloadOnOpen || vsConfig.get<boolean>('downloadWhenOpenInRemoteExplorer', false);
+    // Show progress while downloading
+    await vscode.window.withProgress({
+      location: vscode.ProgressLocation.Notification,
+      title: `Opening ${fileName}...`,
+      cancellable: false
+    }, async (progress) => {
+      try {
+        // Check user preference - first from sftp.json config, then from VS Code settings
+        const downloadOnOpen = config.downloadOnOpen ?? false;
+        const vsConfig = vscode.workspace.getConfiguration('stackerftp');
+        const downloadToWorkspace = downloadOnOpen || vsConfig.get<boolean>('downloadWhenOpenInRemoteExplorer', false);
 
-      const os = require('os');
-      const fs = require('fs');
-      let targetPath: string;
+        const os = require('os');
+        const fs = require('fs');
+        let targetPath: string;
 
-      if (downloadToWorkspace) {
-        // Download to workspace (original behavior - from downloadOnOpen config)
-        const relativePath = path.relative(config.remotePath || '/', item.entry.path);
-        targetPath = path.join(this.workspaceRoot, relativePath);
-      } else {
-        // Open in temp directory (don't pollute workspace)
-        const tempDir = path.join(os.tmpdir(), 'stackerftp', config.host);
-        targetPath = path.join(tempDir, path.basename(item.entry.path));
+        if (downloadToWorkspace) {
+          // Download to workspace (original behavior - from downloadOnOpen config)
+          const relativePath = path.relative(config.remotePath || '/', item.entry.path);
+          targetPath = path.join(this.workspaceRoot, relativePath);
+        } else {
+          // Open in temp directory (don't pollute workspace)
+          const tempDir = path.join(os.tmpdir(), 'stackerftp', config.host);
+          targetPath = path.join(tempDir, path.basename(item.entry.path));
+        }
+
+        const targetDir = path.dirname(targetPath);
+        if (!fs.existsSync(targetDir)) {
+          fs.mkdirSync(targetDir, { recursive: true });
+        }
+
+        progress.report({ message: 'Downloading...' });
+        await conn.download(item.entry.path, targetPath);
+
+        progress.report({ message: 'Opening...' });
+        const targetUri = vscode.Uri.file(targetPath);
+        
+        // Use vscode.open command which handles all file types (binary, text, images, etc.)
+        await vscode.commands.executeCommand('vscode.open', targetUri);
+
+        logger.info(`Opened remote file: ${item.entry.path} -> ${targetPath}`);
+      } catch (error: any) {
+        logger.error('Failed to open file', error);
+        
+        // Handle specific FTP errors
+        if (error.message?.includes('550')) {
+          vscode.window.showErrorMessage(`Cannot open "${fileName}": This may be a special file type (symlink, socket, etc.)`);
+        } else {
+          vscode.window.showErrorMessage(`Failed to open file: ${error.message}`);
+        }
       }
-
-      const targetDir = path.dirname(targetPath);
-      if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir, { recursive: true });
-      }
-
-      await conn.download(item.entry.path, targetPath);
-
-      const targetUri = vscode.Uri.file(targetPath);
-      
-      // Use vscode.open command which handles all file types (binary, text, images, etc.)
-      await vscode.commands.executeCommand('vscode.open', targetUri);
-
-      logger.info(`Opened remote file: ${item.entry.path} -> ${targetPath}`);
-    } catch (error: any) {
-      logger.error('Failed to open file', error);
-      
-      // Handle specific FTP errors
-      if (error.message?.includes('550')) {
-        vscode.window.showErrorMessage(`Cannot open "${fileName}": This may be a special file type (symlink, socket, etc.)`);
-      } else {
-        vscode.window.showErrorMessage(`Failed to open file: ${error.message}`);
-      }
-    }
+    });
   }
 
   private isSystemFile(filePath: string): boolean {
@@ -439,7 +516,12 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
   }
   
   async deleteFile(item: RemoteTreeItem): Promise<void> {
-    if (!this.connection) return;
+    // Use connection from item or fallback to class property
+    const conn = item.connectionRef || this.connection;
+    if (!conn) {
+      vscode.window.showErrorMessage('No active connection');
+      return;
+    }
     
     const confirm = await vscode.window.showWarningMessage(
       `Delete ${item.entry.name}?`,
@@ -450,16 +532,36 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
     if (confirm !== 'Delete') return;
     
     try {
+      // Mark item as loading and refresh to show spinner
+      this.loadingItems.add(item.entry.path);
+      this._onDidChangeTreeData.fire(item);
+      
       if (item.entry.type === 'directory') {
-        await this.connection.rmdir(item.entry.path, true);
+        await conn.rmdir(item.entry.path, true);
       } else {
-        await this.connection.delete(item.entry.path);
+        await conn.delete(item.entry.path);
       }
+      
+      // Remove from loading and refresh parent
+      this.loadingItems.delete(item.entry.path);
+      
+      // Clear cache for parent directory
+      const parentPath = path.dirname(item.entry.path);
+      this.fileCache.delete(parentPath);
+      
       this.refresh();
-    } catch (error) {
+      vscode.window.showInformationMessage(`Deleted: ${item.entry.name}`);
+    } catch (error: any) {
+      this.loadingItems.delete(item.entry.path);
+      this._onDidChangeTreeData.fire(item);
       logger.error('Failed to delete', error);
-      throw error;
+      vscode.window.showErrorMessage(`Failed to delete: ${error.message}`);
     }
+  }
+  
+  // Check if an item is currently loading
+  isItemLoading(itemPath: string): boolean {
+    return this.loadingItems.has(itemPath);
   }
   
   async refreshItem(item: RemoteTreeItem): Promise<void> {
