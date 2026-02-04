@@ -431,8 +431,6 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
 
     // Text files - open in memory using TextDocumentContentProvider (no temp file)
     try {
-      statusBar.info(`Opening ${fileName}...`);
-
       // Store config for multi-connection support
       RemoteDocumentProvider.setConfigForPath(remotePath, config);
 
@@ -440,7 +438,6 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       const doc = await vscode.workspace.openTextDocument(uri);
       await vscode.window.showTextDocument(doc, { preview: true });
 
-      statusBar.success(`Opened: ${fileName}`);
       logger.info(`Opened remote file in memory: ${remotePath}`);
     } catch (error: any) {
       logger.error('Failed to open file', error);
@@ -491,7 +488,7 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       const targetUri = vscode.Uri.file(targetPath);
       await vscode.commands.executeCommand('vscode.open', targetUri);
 
-      progress.complete(`Opened: ${fileName}`);
+      progress.complete();
       logger.info(`Opened binary file: ${item.entry.path} -> ${targetPath}`);
     } catch (error: any) {
       logger.error('Failed to open binary file', error);

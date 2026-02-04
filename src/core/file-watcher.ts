@@ -129,6 +129,10 @@ export class FileWatcher implements vscode.Disposable {
       switch (changeType) {
         case 'create':
         case 'change':
+          // Check if autoUpload is enabled in watcher config
+          if (this.config.watcher?.autoUpload === false) {
+            return;
+          }
           if (fs.existsSync(filePath)) {
             const stat = fs.statSync(filePath);
             if (stat.isDirectory()) {

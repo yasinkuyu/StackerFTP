@@ -302,16 +302,10 @@ export class SFTPConnection extends BaseConnection {
 
     // Safety checks - prevent deletion of critical paths
     const normalizedPath = normalizeRemotePath(remotePath);
-    const dangerousPaths = ['/', '/home', '/root', '/var', '/etc', '/usr', '/bin', '/sbin', '/lib', '/opt'];
+    const dangerousPaths = ['/', '/home', '/root', '/var', '/etc', '/usr', '/bin', '/sbin', '/lib', '/opt', '/tmp'];
     
     if (dangerousPaths.includes(normalizedPath) || normalizedPath === '') {
       throw new Error(`Cannot delete critical system path: ${remotePath}`);
-    }
-    
-    // Ensure path has at least 2 levels (e.g., /home/user not just /home)
-    const pathParts = normalizedPath.split('/').filter(p => p.length > 0);
-    if (pathParts.length < 2) {
-      throw new Error(`Cannot delete top-level directory: ${remotePath}`);
     }
 
     if (recursive) {

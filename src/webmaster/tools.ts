@@ -261,8 +261,8 @@ export class WebMasterTools {
     });
 
     if (selected) {
-      // Open remote file at specific line
-      statusBar.info(`Opening ${selected.result.path}:${selected.result.line}`);
+      // TODO: Implement opening remote file at specific line
+      logger.info(`Selected search result: ${selected.result.path}:${selected.result.line}`);
     }
   }
 

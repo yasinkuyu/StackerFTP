@@ -52,9 +52,9 @@ class StatusBarNotifier {
 
   private getColor(type: NotificationType): vscode.ThemeColor | undefined {
     switch (type) {
-      case 'success': return new vscode.ThemeColor('statusBarItem.prominentForeground');
-      case 'warning': return new vscode.ThemeColor('statusBarItem.warningForeground');
-      case 'error': return new vscode.ThemeColor('statusBarItem.errorForeground');
+      case 'success': return new vscode.ThemeColor('terminal.ansiGreen');
+      case 'warning': return new vscode.ThemeColor('editorWarning.foreground');
+      case 'error': return new vscode.ThemeColor('editorError.foreground');
       default: return undefined;
     }
   }

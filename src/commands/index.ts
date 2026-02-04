@@ -187,11 +187,22 @@ export function registerCommands(
 
   // ==================== Transfer Commands ====================
 
-  const uploadCommand = vscode.commands.registerCommand('stackerftp.upload', async (uri: vscode.Uri) => {
+  const uploadCommand = vscode.commands.registerCommand('stackerftp.upload', async (uriOrResource: vscode.Uri | { resourceUri: vscode.Uri }) => {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const localPath = uri?.fsPath;
+    // Handle both Uri (from explorer) and SourceControlResourceState (from SCM)
+    let localPath: string | undefined;
+    if (uriOrResource) {
+      if ('resourceUri' in uriOrResource) {
+        // SCM resource state
+        localPath = uriOrResource.resourceUri.fsPath;
+      } else if ('fsPath' in uriOrResource) {
+        // Direct Uri
+        localPath = uriOrResource.fsPath;
+      }
+    }
+
     if (!localPath) {
       statusBar.error('No file selected');
       return;
@@ -306,7 +317,7 @@ export function registerCommands(
     }
   });
 
-  const downloadCommand = vscode.commands.registerCommand('stackerftp.download', async (item?: any) => {
+  const downloadCommand = vscode.commands.registerCommand('stackerftp.download', async (itemOrResource?: any) => {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
@@ -322,8 +333,15 @@ export function registerCommands(
       let remotePath: string;
       let localPath: string;
 
-      if (item) {
-        remotePath = item.entry.path;
+      // Check if it's a SCM resource state (has resourceUri property)
+      if (itemOrResource && 'resourceUri' in itemOrResource) {
+        // SCM resource - download from remote to this local file
+        localPath = itemOrResource.resourceUri.fsPath;
+        const relativePath = path.relative(workspaceRoot, localPath);
+        remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
+      } else if (itemOrResource?.entry) {
+        // Remote explorer item
+        remotePath = itemOrResource.entry.path;
         const relativePath = path.relative(config.remotePath, remotePath);
         localPath = path.join(workspaceRoot, relativePath);
       } else {
@@ -338,7 +356,11 @@ export function registerCommands(
         localPath = workspaceRoot;
       }
 
-      if (item?.entry.type === 'directory' || !item) {
+      // Determine if it's a directory based on source
+      const isDirectory = itemOrResource?.entry?.type === 'directory' || !itemOrResource || 
+        (itemOrResource && !('resourceUri' in itemOrResource) && !itemOrResource.entry);
+      
+      if (isDirectory) {
         const result = await transferManager.downloadDirectory(connection, remotePath, localPath, config);
         showSyncResult(result, 'download');
       } else {

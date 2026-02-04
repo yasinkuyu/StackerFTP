@@ -23,6 +23,9 @@ let remoteTreeProvider: RemoteExplorerTreeProvider;
 let connectionFormProvider: ConnectionFormProvider;
 let remoteDocumentProvider: RemoteDocumentProvider;
 
+// Session-based auto-upload confirmation state
+let autoUploadConfirmed = false;
+
 export function activate(context: vscode.ExtensionContext): void {
   logger.info('StackerFTP extension activating...');
 
@@ -261,6 +264,25 @@ async function handleFileSave(document: vscode.TextDocument, workspaceRoot: stri
       if (regex.test(relativePath)) {
         return;
       }
+    }
+  }
+
+  // Ask for confirmation once per session
+  if (!autoUploadConfirmed) {
+    const choice = await vscode.window.showInformationMessage(
+      `Auto-upload is enabled. Upload "${path.basename(document.fileName)}" to ${config.name || config.host}?`,
+      { modal: false },
+      'Yes, upload',
+      'Yes, always in this session',
+      'No'
+    );
+
+    if (choice === 'No' || !choice) {
+      return;
+    }
+
+    if (choice === 'Yes, always in this session') {
+      autoUploadConfirmed = true;
     }
   }
 
