@@ -48,8 +48,11 @@ export class RemoteTreeItem extends vscode.TreeItem {
       this.description = '';
     }
     
-    // Use VS Code's native file icons
+    // Use VS Code's native file/folder icons via resourceUri
     if (entry.type === 'directory') {
+      // Use resourceUri for native folder icon from theme
+      const cleanPath = entry.path.replace(/^\/+/, '');
+      this.resourceUri = vscode.Uri.file(`/tmp/stackerftp-icons/${cleanPath}`);
       this.iconPath = vscode.ThemeIcon.Folder;
     } else if (entry.type === 'symlink') {
       // Symlinks get special handling
@@ -113,17 +116,18 @@ export class RemoteConfigTreeItem extends vscode.TreeItem {
       connected ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
     
     const port = config.port || (config.protocol === 'sftp' ? 22 : 21);
-    this.tooltip = `${config.name || config.host}\nProtocol: ${config.protocol.toUpperCase()}\nHost: ${config.host}:${port}\nUser: ${config.username}`;
-    this.description = connected ? 'connected' : 'disconnected';
+    this.tooltip = `${config.name || config.host}\nProtocol: ${config.protocol.toUpperCase()}\nHost: ${config.host}:${port}\nUser: ${config.username}\nRemote Path: ${config.remotePath || '/'}`;
+    this.description = connected ? `${config.protocol.toUpperCase()}` : 'disconnected';
     
-    // Use different icons based on connection status
+    // Use server icon with connection status color
     if (connected) {
-      this.iconPath = new vscode.ThemeIcon('cloud', new vscode.ThemeColor('testing.iconPassed'));
+      this.iconPath = new vscode.ThemeIcon('server-environment', new vscode.ThemeColor('charts.green'));
     } else {
-      this.iconPath = new vscode.ThemeIcon('cloud-upload');
+      this.iconPath = new vscode.ThemeIcon('server', new vscode.ThemeColor('disabledForeground'));
     }
     
-    this.contextValue = connected ? 'connection' : 'disconnected';
+    // Use 'connected' contextValue so inline buttons work (new file, new folder)
+    this.contextValue = connected ? 'connected' : 'disconnected';
   }
 }
 
@@ -217,44 +221,15 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
         return [];
       }
       
-      // If only one connection, show files directly at root
-      if (activeConnections.length === 1) {
-        const { connection, config } = activeConnections[0];
-        this.connection = connection;
-        this.currentConfig = config;
-        const remotePath = config.remotePath || '/';
-        
-        logger.info(`Single connection: ${config.name || config.host}, path: ${remotePath}, connected: ${connection.connected}`);
-        
-        if (!connection.connected) {
-          logger.error('Connection exists but not connected');
-          return [];
-        }
-        
-        try {
-          this.showLoading(`Loading ${remotePath}...`);
-          logger.info(`Calling connection.list(${remotePath})`);
-          const entries = await connection.list(remotePath);
-          this.hideLoading();
-          logger.info(`Got ${entries.length} entries from list()`);
-          this.fileCache.set(remotePath, entries);
-          return this.sortEntries(entries, config, connection);
-        } catch (error: any) {
-          this.hideLoading();
-          logger.error(`Failed to list directory: ${error.message}`, error);
-          statusBar.error(`Failed to list: ${error.message}`, true);
-          return [];
-        }
-      }
-      
-      // Multiple connections - show each as a root folder
-      logger.info(`Multiple connections: ${activeConnections.length}`);
+      // Always show connections as root nodes (even with single connection)
+      // This allows inline buttons (new file, new folder, expand/collapse) to work
+      logger.info(`Showing ${activeConnections.length} connection(s) as root nodes`);
       return activeConnections.map(({ config, connection }) => 
         new RemoteConfigTreeItem(config, true, connection)
       );
     }
     
-    // Handle RemoteConfigTreeItem (for multi-connection mode)
+    // Handle RemoteConfigTreeItem (connection node)
     if (element instanceof RemoteConfigTreeItem) {
       const conn = element.connectionRef || connectionManager.getConnection(element.config);
       const remotePath = element.config.remotePath || '/';
@@ -264,6 +239,9 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
         logger.error('No valid connection for config');
         return [];
       }
+      
+      this.connection = conn;
+      this.currentConfig = element.config;
       
       try {
         this.showLoading(`Loading ${element.config.name || element.config.host}...`);
