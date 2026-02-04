@@ -10,6 +10,7 @@ import { BaseConnection } from '../core/connection';
 import { FileEntry, ChecksumResult, SearchResult, FileInfo } from '../types';
 import { formatFileSize, formatDate, formatPermissions, calculateChecksum } from '../utils/helpers';
 import { logger } from '../utils/logger';
+import { statusBar } from '../utils/status-bar';
 
 export class WebMasterTools {
   
@@ -54,7 +55,7 @@ export class WebMasterTools {
         `Permissions changed for ${entry.name} to ${modeString}`
       );
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to change permissions: ${error.message}`);
+      statusBar.error(`Failed to change permissions: ${error.message}`);
     }
   }
 
@@ -125,7 +126,7 @@ export class WebMasterTools {
 
     if (selection === `Local:  ${result.local}` || selection === `Remote: ${result.remote}`) {
       await vscode.env.clipboard.writeText(selection.split(':')[1].trim());
-      vscode.window.showInformationMessage('Checksum copied to clipboard');
+      statusBar.success('Checksum copied to clipboard');
     }
   }
 
@@ -244,7 +245,7 @@ export class WebMasterTools {
 
   async showSearchResults(results: SearchResult[]): Promise<void> {
     if (results.length === 0) {
-      vscode.window.showInformationMessage('No results found');
+      statusBar.success('No results found');
       return;
     }
 
@@ -461,9 +462,9 @@ export class WebMasterTools {
           `Replaced ${result.success} occurrence(s) in ${result.files.length} file(s)`
         );
       } else if (result.failed > 0) {
-        vscode.window.showErrorMessage('Find and replace failed');
+        statusBar.error('Find and replace failed');
       } else {
-        vscode.window.showInformationMessage('No matches found');
+        statusBar.success('No matches found');
       }
     });
   }
@@ -496,7 +497,7 @@ export class WebMasterTools {
     }
 
     if (results.length > 0) {
-      vscode.window.showInformationMessage(`Purged ${results.length} cache directory/directories`);
+      statusBar.success(`Purged ${results.length} cache directory/directories`);
       logger.info(`Purged caches: ${results.join(', ')}`);
     } else {
       vscode.window.showWarningMessage('No cache directories found to purge');

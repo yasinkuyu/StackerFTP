@@ -10,6 +10,7 @@ import * as path from 'path';
 import { FTPConfig, Protocol, HopConfig } from '../types';
 import { configManager } from './config';
 import { logger } from '../utils/logger';
+import { statusBar } from '../utils/status-bar';
 import { ConnectionHopping } from './connection-hopping';
 
 interface WizardStep {
@@ -335,7 +336,7 @@ export class ConnectionWizard {
     const config = await wizard.start();
 
     if (!config) {
-      vscode.window.showInformationMessage('Connection creation cancelled');
+      statusBar.success('Connection creation cancelled');
       return;
     }
 
@@ -365,7 +366,7 @@ export class ConnectionWizard {
 
       logger.info(`New ${config.protocol.toUpperCase()} connection created: ${config.name}`);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to save configuration: ${error.message}`);
+      statusBar.error(`Failed to save configuration: ${error.message}`);
       logger.error('Failed to save new connection', error);
     }
   }

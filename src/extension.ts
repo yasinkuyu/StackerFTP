@@ -65,7 +65,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand('stackerftp.viewContent', async (item?: any) => {
       if (!item || !item.entry) {
-        vscode.window.showErrorMessage('No file selected');
+        statusBar.error('No file selected');
         return;
       }
 
@@ -100,7 +100,7 @@ export function activate(context: vscode.ExtensionContext): void {
         const doc = await vscode.workspace.openTextDocument(uri);
         await vscode.window.showTextDocument(doc, { preview: true });
       } catch (error: any) {
-        vscode.window.showErrorMessage(`Failed to open file: ${error.message}`);
+        statusBar.error(`Failed to open file: ${error.message}`);
       }
     })
   );

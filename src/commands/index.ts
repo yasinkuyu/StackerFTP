@@ -57,7 +57,7 @@ export function registerCommands(
           await configManager.createDefaultConfig(workspaceRoot);
           break;
         case 'profiles':
-          vscode.window.showInformationMessage('Profile management coming soon!');
+          statusBar.success('Profile management coming soon!');
           break;
       }
     } else {
@@ -251,7 +251,7 @@ export function registerCommands(
   const uploadCurrentFileCommand = vscode.commands.registerCommand('stackerftp.uploadCurrentFile', async () => {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
-      vscode.window.showErrorMessage('No active editor');
+      statusBar.error('No active editor');
       return;
     }
 
@@ -444,7 +444,7 @@ export function registerCommands(
       showSyncResult(result, direction === 'toRemote' ? 'upload' : 'download');
 
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Sync failed: ${error.message}`);
+      statusBar.error(`Sync failed: ${error.message}`, true);
     }
   }
 
@@ -462,7 +462,7 @@ export function registerCommands(
     }
 
     if (messages.length > 0) {
-      vscode.window.showInformationMessage(messages.join(', '));
+      statusBar.success(messages.join(', '));
     }
 
     if (result.failed.length > 0) {
@@ -495,7 +495,7 @@ export function registerCommands(
       const doc = await vscode.workspace.openTextDocument(tempPath);
       await vscode.window.showTextDocument(doc);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to open file: ${error.message}`);
+      statusBar.error(`Failed to open file: ${error.message}`);
     }
   });
 
@@ -552,7 +552,7 @@ export function registerCommands(
       // Pick from active connections
       const activeConnections = connectionManager.getAllActiveConnections();
       if (activeConnections.length === 0) {
-        vscode.window.showErrorMessage('No active connection. Connect first.');
+        statusBar.error('No active connection. Connect first.');
         return;
       } else if (activeConnections.length === 1) {
         config = activeConnections[0].config;
@@ -613,7 +613,7 @@ export function registerCommands(
       // Pick from active connections
       const activeConnections = connectionManager.getAllActiveConnections();
       if (activeConnections.length === 0) {
-        vscode.window.showErrorMessage('No active connection. Connect first.');
+        statusBar.error('No active connection. Connect first.');
         return;
       } else if (activeConnections.length === 1) {
         config = activeConnections[0].config;
@@ -760,7 +760,7 @@ export function registerCommands(
 
   const renameCommand = vscode.commands.registerCommand('stackerftp.rename', async (item: any) => {
     if (!item?.entry) {
-      vscode.window.showErrorMessage('No item selected');
+      statusBar.error('No item selected');
       return;
     }
 
@@ -852,12 +852,12 @@ export function registerCommands(
         // Called from remote explorer - use item's config
         activeConfig = item.config;
         if (!activeConfig) {
-          vscode.window.showErrorMessage('No configuration found for this connection');
+          statusBar.error('No configuration found for this connection');
           return;
         }
         remotePath = item.entry.path;
         if (!remotePath) {
-          vscode.window.showErrorMessage('Remote path is undefined');
+          statusBar.error('Remote path is undefined');
           return;
         }
         fileName = item.entry.name || path.basename(remotePath);
@@ -891,7 +891,7 @@ export function registerCommands(
 
       // Check if local file exists
       if (!fs.existsSync(localPath)) {
-        vscode.window.showErrorMessage(`Local file not found: ${fileName}. Download the file first to compare.`);
+        statusBar.error(`Local file not found: ${fileName}. Download the file first to compare.`);
         return;
       }
 
@@ -916,7 +916,7 @@ export function registerCommands(
 
       logger.info(`Diff shown for ${fileName}`);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Diff failed: ${error.message}`);
+      statusBar.error(`Diff failed: ${error.message}`);
     }
   });
 
@@ -928,7 +928,7 @@ export function registerCommands(
     if (!config) return;
 
     if (config.protocol !== 'sftp') {
-      vscode.window.showErrorMessage('Remote terminal is only available with SFTP protocol');
+      statusBar.error('Remote terminal is only available with SFTP protocol');
       return;
     }
 
@@ -950,18 +950,18 @@ export function registerCommands(
 
   const clearLogsCommand = vscode.commands.registerCommand('stackerftp.clearLogs', () => {
     logger.clear();
-    vscode.window.showInformationMessage('Logs cleared');
+    statusBar.success('Logs cleared');
   });
 
   const cancelTransferCommand = vscode.commands.registerCommand('stackerftp.cancelTransfer', () => {
     transferManager.cancel();
-    vscode.window.showInformationMessage('Transfer cancelled');
+    statusBar.success('Transfer cancelled');
   });
 
   const transferQueueCommand = vscode.commands.registerCommand('stackerftp.transferQueue', () => {
     const queue = transferManager.getQueue();
     if (queue.length === 0) {
-      vscode.window.showInformationMessage('Transfer queue is empty');
+      statusBar.success('Transfer queue is empty');
       return;
     }
 
@@ -990,7 +990,7 @@ export function registerCommands(
       await webMasterTools.showChmodDialog(connection, item.entry);
 
     } catch (error: any) {
-      vscode.window.showErrorMessage(`chmod failed: ${error.message}`);
+      statusBar.error(`chmod failed: ${error.message}`);
     }
   });
 
@@ -1013,7 +1013,7 @@ export function registerCommands(
       const checksum = await webMasterTools.calculateRemoteChecksum(connection, item.entry.path, algorithm);
       await webMasterTools.showChecksumResult({ algorithm, remote: checksum }, item.entry.name);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Checksum failed: ${error.message}`);
+      statusBar.error(`Checksum failed: ${error.message}`);
     }
   });
 
@@ -1029,7 +1029,7 @@ export function registerCommands(
       const info = await webMasterTools.getFileInfo(connection, item.entry);
       await webMasterTools.showFileInfo(info);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to get file info: ${error.message}`);
+      statusBar.error(`Failed to get file info: ${error.message}`);
     }
   });
 
@@ -1052,7 +1052,7 @@ export function registerCommands(
       const results = await webMasterTools.searchInRemoteFiles(connection, config.remotePath, pattern);
       await webMasterTools.showSearchResults(results);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Search failed: ${error.message}`);
+      statusBar.error(`Search failed: ${error.message}`);
     }
   });
 
@@ -1071,9 +1071,9 @@ export function registerCommands(
     try {
       const connection = await connectionManager.ensureConnection(config);
       const backupPath = await webMasterTools.createBackup(connection, item.entry.path, backupName || undefined);
-      vscode.window.showInformationMessage(`Backup created: ${backupPath}`);
+      statusBar.success(`Backup created: ${backupPath}`);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Backup failed: ${error.message}`);
+      statusBar.error(`Backup failed: ${error.message}`);
     }
   });
 
@@ -1128,7 +1128,7 @@ export function registerCommands(
         }
       });
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Folder comparison failed: ${error.message}`);
+      statusBar.error(`Folder comparison failed: ${error.message}`);
     }
   });
 
@@ -1143,7 +1143,7 @@ export function registerCommands(
       const connection = await connectionManager.ensureConnection(config);
       await webMasterTools.showFindAndReplaceDialog(connection, config.remotePath);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Find and replace failed: ${error.message}`);
+      statusBar.error(`Find and replace failed: ${error.message}`);
     }
   });
 
@@ -1166,7 +1166,7 @@ export function registerCommands(
       const connection = await connectionManager.ensureConnection(config);
       await webMasterTools.purgeRemoteCache(connection, config.remotePath);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Purge cache failed: ${error.message}`);
+      statusBar.error(`Purge cache failed: ${error.message}`);
     }
   });
 
@@ -1202,7 +1202,7 @@ export function registerCommands(
     const gitIntegration = createGitIntegration(workspaceRoot);
 
     if (!gitIntegration.isGitRepository()) {
-      vscode.window.showErrorMessage('Not a Git repository');
+      statusBar.error('Not a Git repository');
       return;
     }
 
@@ -1211,7 +1211,7 @@ export function registerCommands(
       const uploadableFiles = gitIntegration.filterUploadable(changedFiles);
 
       if (uploadableFiles.length === 0) {
-        vscode.window.showInformationMessage('No changed files to upload');
+        statusBar.success('No changed files to upload');
         return;
       }
 
@@ -1279,11 +1279,11 @@ export function registerCommands(
           }
         }
 
-        vscode.window.showInformationMessage(`Uploaded ${uploaded}/${total} changed files`);
+        statusBar.success(`Uploaded ${uploaded}/${total} changed files`);
       });
 
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Upload failed: ${error.message}`);
+      statusBar.error(`Upload failed: ${error.message}`);
     }
   });
 
@@ -1313,7 +1313,7 @@ export function registerCommands(
         `Project uploaded: ${result.uploaded.length} files (${result.failed.length} failed)`
       );
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Upload project failed: ${error.message}`);
+      statusBar.error(`Upload project failed: ${error.message}`);
     }
   });
 
@@ -1359,7 +1359,7 @@ export function registerCommands(
         await vscode.window.showTextDocument(doc);
       }
     } catch (error: any) {
-      vscode.window.showErrorMessage(`List failed: ${error.message}`);
+      statusBar.error(`List failed: ${error.message}`);
     }
   });
 
@@ -1423,7 +1423,7 @@ export function registerCommands(
         await vscode.window.showTextDocument(doc);
       }
     } catch (error: any) {
-      vscode.window.showErrorMessage(`List all failed: ${error.message}`);
+      statusBar.error(`List all failed: ${error.message}`);
     }
   });
 
@@ -1441,13 +1441,13 @@ export function registerCommands(
 
     const activeEditor = vscode.window.activeTextEditor;
     if (!activeEditor) {
-      vscode.window.showErrorMessage('No active file');
+      statusBar.error('No active file');
       return;
     }
 
     const localPath = activeEditor.document.fileName;
     if (!localPath.startsWith(workspaceRoot)) {
-      vscode.window.showErrorMessage('File is not in workspace');
+      statusBar.error('File is not in workspace');
       return;
     }
 
@@ -1462,9 +1462,9 @@ export function registerCommands(
       const doc = await vscode.workspace.openTextDocument(localPath);
       await vscode.window.showTextDocument(doc);
 
-      vscode.window.showInformationMessage(`Refreshed: ${path.basename(localPath)}`);
+      statusBar.success(`Refreshed: ${path.basename(localPath)}`);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Refresh failed: ${error.message}`);
+      statusBar.error(`Refresh failed: ${error.message}`);
     }
   });
 
@@ -1515,7 +1515,7 @@ export function registerCommands(
     try {
       const sourceConnection = connectionManager.getConnection(sourceConfig);
       if (!sourceConnection) {
-        vscode.window.showErrorMessage('Source connection not available');
+        statusBar.error('Source connection not available');
         return;
       }
 
@@ -1555,13 +1555,13 @@ export function registerCommands(
       vscode.commands.executeCommand('stackerftp.tree.refresh');
 
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Transfer failed: ${error.message}`);
+      statusBar.error(`Transfer failed: ${error.message}`);
     }
   });
 
   const compareRemotesCommand = vscode.commands.registerCommand('stackerftp.compareRemotes', async (item: any) => {
     if (!item || !item.entry || item.entry.type !== 'file') {
-      vscode.window.showErrorMessage('Select a file to compare');
+      statusBar.error('Select a file to compare');
       return;
     }
 
@@ -1603,7 +1603,7 @@ export function registerCommands(
     try {
       const sourceConnection = connectionManager.getConnection(sourceConfig);
       if (!sourceConnection) {
-        vscode.window.showErrorMessage('Source connection not available');
+        statusBar.error('Source connection not available');
         return;
       }
 
@@ -1642,13 +1642,13 @@ export function registerCommands(
       );
 
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Compare failed: ${error.message}`);
+      statusBar.error(`Compare failed: ${error.message}`);
     }
   });
 
   const syncBetweenRemotesCommand = vscode.commands.registerCommand('stackerftp.syncBetweenRemotes', async (item: any) => {
     if (!item || !item.entry || item.entry.type !== 'directory') {
-      vscode.window.showErrorMessage('Select a folder to sync');
+      statusBar.error('Select a folder to sync');
       return;
     }
 
@@ -1696,7 +1696,7 @@ export function registerCommands(
     try {
       const sourceConnection = connectionManager.getConnection(sourceConfig);
       if (!sourceConnection) {
-        vscode.window.showErrorMessage('Source connection not available');
+        statusBar.error('Source connection not available');
         return;
       }
 
@@ -1749,7 +1749,7 @@ export function registerCommands(
       vscode.commands.executeCommand('stackerftp.tree.refresh');
 
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Sync failed: ${error.message}`);
+      statusBar.error(`Sync failed: ${error.message}`);
     }
   });
 
@@ -1779,7 +1779,7 @@ export function registerCommands(
     }
 
     if (!localPath.startsWith(workspaceRoot)) {
-      vscode.window.showErrorMessage('File is not in workspace');
+      statusBar.error('File is not in workspace');
       return;
     }
 
@@ -1790,14 +1790,14 @@ export function registerCommands(
       // Focus on Remote Explorer and show the path
       await vscode.commands.executeCommand('stackerftp.remoteExplorer.focus');
 
-      vscode.window.showInformationMessage(`Remote path: ${remotePath}`);
+      statusBar.success(`Remote path: ${remotePath}`);
 
       // If using tree view, try to reveal the item
       if (remoteExplorer && typeof remoteExplorer.navigateToPath === 'function') {
         await remoteExplorer.navigateToPath(remotePath);
       }
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Reveal failed: ${error.message}`);
+      statusBar.error(`Reveal failed: ${error.message}`);
     }
   });
 
@@ -1851,13 +1851,13 @@ export function registerCommands(
 
     if (connectionManager.isConnected(selected.config)) {
       await connectionManager.disconnect(selected.config);
-      vscode.window.showInformationMessage(`Disconnected from ${selected.config.name || selected.config.host}`);
+      // Disconnected message shown by connection-manager
     } else {
       try {
         await connectionManager.connect(selected.config);
-
+        // Connected message shown by connection-manager
       } catch (error: any) {
-        vscode.window.showErrorMessage(`Connection failed: ${error.message}`);
+        statusBar.error(`Connection failed: ${error.message}`, true);
       }
     }
   });
@@ -1870,7 +1870,7 @@ export function registerCommands(
 
     const configs = configManager.getConfigs(workspaceRoot);
     if (configs.length === 0) {
-      vscode.window.showErrorMessage('No SFTP configurations found');
+      statusBar.error('No SFTP configurations found', true);
       return;
     }
 
@@ -1917,7 +1917,7 @@ export function registerCommands(
     const failed = results.filter(r => !r.success);
 
     if (failed.length === 0) {
-      vscode.window.showInformationMessage(`Uploaded to all ${successful} profiles successfully`);
+      statusBar.success(`Uploaded to all ${successful} profiles successfully`);
     } else {
       vscode.window.showWarningMessage(
         `Uploaded to ${successful}/${results.length} profiles. Failed: ${failed.map(f => f.name).join(', ')}`
@@ -1937,7 +1937,7 @@ export function registerCommands(
 
     const localPath = uri?.fsPath;
     if (!localPath) {
-      vscode.window.showErrorMessage('No folder selected');
+      statusBar.error('No folder selected');
       return;
     }
 
@@ -1949,7 +1949,7 @@ export function registerCommands(
       const result = await transferManager.uploadDirectory(connection, localPath, remotePath, config);
       showSyncResult(result, 'upload');
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Upload folder failed: ${error.message}`);
+      statusBar.error(`Upload folder failed: ${error.message}`);
     }
   });
 
@@ -1965,7 +1965,7 @@ export function registerCommands(
 
     const localPath = uri?.fsPath;
     if (!localPath) {
-      vscode.window.showErrorMessage('No folder selected');
+      statusBar.error('No folder selected');
       return;
     }
 
@@ -1977,7 +1977,7 @@ export function registerCommands(
       const result = await transferManager.downloadDirectory(connection, remotePath, localPath, config);
       showSyncResult(result, 'download');
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Download folder failed: ${error.message}`);
+      statusBar.error(`Download folder failed: ${error.message}`);
     }
   });
 
@@ -2037,9 +2037,9 @@ export function registerCommands(
       (global as any).stackerftpEditMappings = (global as any).stackerftpEditMappings || new Map();
       (global as any).stackerftpEditMappings.set(tempPath, metadata);
 
-      vscode.window.showInformationMessage(`Editing: ${fileName} - Save to upload changes`);
+      statusBar.success(`Editing: ${fileName} - Save to upload changes`);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to edit file: ${error.message}`);
+      statusBar.error(`Failed to edit file: ${error.message}`);
     }
   });
 
@@ -2081,10 +2081,10 @@ export function registerCommands(
         const localUri = vscode.Uri.file(localPath);
         await vscode.commands.executeCommand('revealInExplorer', localUri);
 
-        vscode.window.showInformationMessage(`Downloaded and revealed: ${path.basename(localPath)}`);
+        statusBar.success(`Downloaded and revealed: ${path.basename(localPath)}`);
       }
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to reveal file: ${error.message}`);
+      statusBar.error(`Failed to reveal file: ${error.message}`);
     }
   });
 
@@ -2204,7 +2204,7 @@ export function registerCommands(
       );
 
       if (revisions.length === 0) {
-        vscode.window.showInformationMessage('No remote revisions found for this file');
+        statusBar.success('No remote revisions found for this file');
         return;
       }
 
@@ -2225,10 +2225,10 @@ export function registerCommands(
         const localRevisionPath = path.join(path.dirname(localPath), selected.entry.name);
 
         await transferManager.downloadFile(connection, revisionPath, localRevisionPath);
-        vscode.window.showInformationMessage(`Downloaded revision: ${selected.entry.name}`);
+        statusBar.success(`Downloaded revision: ${selected.entry.name}`);
       }
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to list revisions: ${error.message}`);
+      statusBar.error(`Failed to list revisions: ${error.message}`);
     }
   });
 
@@ -2244,7 +2244,7 @@ export function registerCommands(
       
       const configs = configManager.getConfigs(workspaceRoot);
       if (configs.length === 0) {
-        vscode.window.showInformationMessage('No connections configured. Use "StackerFTP: New Connection" to add one.');
+        statusBar.success('No connections configured. Use "StackerFTP: New Connection" to add one.');
         return;
       }
       
@@ -2262,9 +2262,9 @@ export function registerCommands(
       if (selected) {
         try {
           await connectionManager.connect(selected.config);
-          vscode.window.showInformationMessage(`Connected to ${selected.config.name || selected.config.host}`);
+          // Connected message shown by connection-manager
         } catch (error: any) {
-          vscode.window.showErrorMessage(`Connection failed: ${error.message}`);
+          statusBar.error(`Connection failed: ${error.message}`, true);
         }
       }
       return;
@@ -2301,7 +2301,7 @@ export function registerCommands(
       if (!selected.config) {
         // Disconnect all
         await connectionManager.disconnect();
-        vscode.window.showInformationMessage('Disconnected from all servers');
+        statusBar.success('Disconnected from all servers');
       } else {
         connectionManager.setPrimaryConnection(selected.config);
       }
@@ -2313,7 +2313,7 @@ export function registerCommands(
   function getWorkspaceRoot(): string | undefined {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
-      vscode.window.showErrorMessage('No workspace folder open');
+      statusBar.error('No workspace folder open');
       return undefined;
     }
     return workspaceFolders[0].uri.fsPath;

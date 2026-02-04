@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { FTPConfig, RemoteFsConfig } from '../types';
 import { logger } from '../utils/logger';
+import { statusBar } from '../utils/status-bar';
 
 const CONFIG_FILE_NAME = 'sftp.json';
 const CONFIG_DIR = '.vscode';

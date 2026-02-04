@@ -9,6 +9,7 @@ import { configManager } from '../core/config';
 import { connectionManager } from '../core/connection-manager';
 import { FTPConfig, Protocol } from '../types';
 import { logger } from '../utils/logger';
+import { statusBar } from '../utils/status-bar';
 
 export class ConnectionFormProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'stackerftp.connectionForm';
@@ -154,7 +155,7 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
       await this._sendConfigs();
     } catch (error: any) {
       this._view?.webview.postMessage({ type: 'saveError', message: error.message });
-      vscode.window.showErrorMessage(`Failed to save: ${error.message}`);
+      statusBar.error(`Failed to save: ${error.message}`);
     }
   }
 
@@ -178,7 +179,7 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
     await configManager.saveConfig(workspaceRoot, configs);
     await this._sendConfigs();
 
-    vscode.window.showInformationMessage('Connection deleted');
+    statusBar.success('Connection deleted');
   }
 
   private async _handleTestConnection(configData: any) {
@@ -203,10 +204,10 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
       await connectionManager.disconnect(testConfig);
 
       this._view?.webview.postMessage({ type: 'testSuccess' });
-      vscode.window.showInformationMessage('Connection test successful!');
+      statusBar.success('Connection test successful!');
     } catch (error: any) {
       this._view?.webview.postMessage({ type: 'testError', message: error.message });
-      vscode.window.showErrorMessage(`Connection test failed: ${error.message}`);
+      statusBar.error(`Connection test failed: ${error.message}`);
     }
   }
 
@@ -218,8 +219,8 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
     if (index < 0 || index >= configs.length) return;
 
     try {
-      const connection = await connectionManager.connect(configs[index]);
-      vscode.window.showInformationMessage(`StackerFTP: Connected to ${configs[index].name || configs[index].host}`);
+      await connectionManager.connect(configs[index]);
+      // Connected message shown by connection-manager via statusBar
       await this._sendConfigs();
 
       // Small delay to ensure connection is fully ready, then refresh and focus Remote Explorer
@@ -229,7 +230,7 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
         vscode.commands.executeCommand('stackerftp.remoteExplorerTree.focus');
       }, 100);
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Connection failed: ${error.message}`);
+      statusBar.error(`Connection failed: ${error.message}`, true);
     }
   }
 
@@ -243,11 +244,11 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
     try {
       await connectionManager.disconnect(configs[index]);
       await this._sendConfigs();
-      vscode.window.showInformationMessage(`Disconnected from ${configs[index].name || configs[index].host}`);
+      statusBar.success(`Disconnected: ${configs[index].name || configs[index].host}`);
       // Refresh remote explorer to clear the connection
       vscode.commands.executeCommand('stackerftp.tree.refresh');
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Disconnect failed: ${error.message}`);
+      statusBar.error(`Disconnect failed: ${error.message}`, true);
     }
   }
 
@@ -285,6 +286,9 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
   }
 
   public showNewConnectionForm() {
+    // Focus the Connections panel first to make it visible
+    vscode.commands.executeCommand('stackerftp.connectionForm.focus');
+
     // Set context to show form is visible
     vscode.commands.executeCommand('setContext', 'stackerftp.formVisible', true);
     this._view?.webview.postMessage({ type: 'triggerNewForm' });

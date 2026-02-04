@@ -8,6 +8,7 @@ import { SFTPConnection } from './sftp-connection';
 import { FTPConnection } from './ftp-connection';
 import { FTPConfig, ConnectionStatus } from '../types';
 import { logger } from '../utils/logger';
+import { statusBar } from '../utils/status-bar';
 
 export class ConnectionManager {
   private static instance: ConnectionManager;
@@ -67,7 +68,7 @@ export class ConnectionManager {
     if (conn?.connected) {
       this.primaryConnectionKey = key;
       this.updateStatusBar();
-      vscode.window.showInformationMessage(`Primary connection set to: ${config.name || config.host}`);
+      statusBar.success(`Primary: ${config.name || config.host}`);
     }
   }
 
@@ -156,13 +157,18 @@ export class ConnectionManager {
 
   async connect(config: FTPConfig): Promise<BaseConnection> {
     const key = this.getConnectionKey(config);
+    const displayName = config.name || config.host;
 
     // Check if already connected
     const existing = this.connections.get(key);
     if (existing && existing.connected) {
       logger.info(`Already connected to ${config.host}`);
+      statusBar.info(`Already connected: ${displayName}`);
       return existing;
     }
+
+    // Show connecting status
+    const progress = statusBar.startProgress('connect', `Connecting to ${displayName}...`);
 
     // Create new connection based on protocol
     let connection: BaseConnection;
@@ -176,13 +182,14 @@ export class ConnectionManager {
         connection = new FTPConnection(config);
         break;
       default:
+        progress.fail(`Unsupported protocol: ${config.protocol}`);
         throw new Error(`Unsupported protocol: ${config.protocol}`);
     }
 
     // Set up event handlers
     connection.on('connected', () => {
-      const displayName = config.name || config.host;
       logger.info(`Connected to ${displayName}`);
+      progress.complete(`Connected: ${displayName}`);
       // Set as primary if first connection
       if (!this.primaryConnectionKey) {
         this.primaryConnectionKey = key;
@@ -192,6 +199,7 @@ export class ConnectionManager {
 
     connection.on('disconnected', () => {
       logger.info(`Disconnected from ${config.host}`);
+      statusBar.info(`Disconnected: ${displayName}`);
       // Clear primary if this was it
       if (this.primaryConnectionKey === key) {
         this.primaryConnectionKey = undefined;
@@ -201,15 +209,19 @@ export class ConnectionManager {
 
     connection.on('error', (error) => {
       logger.error(`Connection error on ${config.host}`, error);
-      vscode.window.showErrorMessage(`StackerFTP Error: ${error.message}`);
+      statusBar.error(`Error: ${error.message}`, true);
     });
 
     // Connect
-    await connection.connect();
-    this.connections.set(key, connection);
-    this.activeConnectionKey = key;
-
-    return connection;
+    try {
+      await connection.connect();
+      this.connections.set(key, connection);
+      this.activeConnectionKey = key;
+      return connection;
+    } catch (error: any) {
+      progress.fail(`Connection failed: ${displayName}`);
+      throw error;
+    }
   }
 
   async disconnect(config?: FTPConfig): Promise<void> {

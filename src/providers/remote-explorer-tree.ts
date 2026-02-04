@@ -14,6 +14,7 @@ import { FileEntry, FTPConfig } from '../types';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
 import { formatFileSize, formatDate, normalizeRemotePath } from '../utils/helpers';
+import { RemoteDocumentProvider } from './remote-document-provider';
 
 export class RemoteTreeItem extends vscode.TreeItem {
   public isLoading: boolean = false;

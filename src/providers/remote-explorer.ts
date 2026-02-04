@@ -10,6 +10,7 @@ import { connectionManager } from '../core/connection-manager';
 import { BaseConnection } from '../core/connection';
 import { FileEntry, FTPConfig } from '../types';
 import { logger } from '../utils/logger';
+import { statusBar } from '../utils/status-bar';
 import { sortFileEntries } from '../utils/helpers';
 
 export class RemoteExplorerProvider implements vscode.TreeDataProvider<RemoteFileItem | RemoteConfigItem | RemoteMessageItem>, vscode.Disposable {
@@ -143,7 +144,7 @@ export class RemoteExplorerProvider implements vscode.TreeDataProvider<RemoteFil
       await this.ensureConnection(config);
       this.refresh();
     } catch (error: any) {
-      vscode.window.showErrorMessage(`Failed to connect: ${error.message}`);
+      statusBar.error(`Failed to connect: ${error.message}`);
     }
   }
 

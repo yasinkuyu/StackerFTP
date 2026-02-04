@@ -9,6 +9,7 @@ import * as path from 'path';
 import { configManager } from '../core/config';
 import { connectionManager } from '../core/connection-manager';
 import { logger } from '../utils/logger';
+import { statusBar } from '../utils/status-bar';
 
 // Binary file extensions that should not be opened as text
 const BINARY_EXTENSIONS = new Set([
@@ -141,6 +142,6 @@ export async function openRemoteFile(remotePath: string): Promise<void> {
       viewColumn: vscode.ViewColumn.Active
     });
   } catch (error: any) {
-    vscode.window.showErrorMessage(`Failed to open remote file: ${error.message}`);
+    statusBar.error(`Failed to open remote file: ${error.message}`);
   }
 }
