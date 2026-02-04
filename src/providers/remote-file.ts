@@ -79,7 +79,7 @@ export class RemoteConfigItem extends vscode.TreeItem {
     super(configName, vscode.TreeItemCollapsibleState.Collapsed);
     
     this.tooltip = `${configName} (${protocol.toUpperCase()})\nHost: ${host}\nStatus: ${connected ? 'Connected' : 'Disconnected'}`;
-    this.description = connected ? '$(debug-start) Connected' : '$(debug-disconnect) Disconnected';
+    this.description = connected ? '$(play) Connected' : '$(primitive-square) Disconnected';
     this.iconPath = new vscode.ThemeIcon(connected ? 'cloud' : 'cloud-upload');
     this.contextValue = 'config';
   }

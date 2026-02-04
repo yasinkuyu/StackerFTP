@@ -327,7 +327,8 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
     .codicon-server:before { content: "\\eb99"; }
     .codicon-ellipsis:before { content: "\\ea7c"; }
     .codicon-play:before { content: "\\eb2c"; }
-    .codicon-debug-pause:before { content: "\\eb5e"; }
+    .codicon-primitive-square:before { content: "\\eb40"; }
+    .codicon-stop-circle:before { content: "\\eba5"; }
     
     /* Button variants */
     .btn-connect {
@@ -1089,7 +1090,7 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
           </div>
           <div class="connection-actions">
             \${config.connected
-              ? '<button class="btn-icon btn-disconnect" data-action="disconnect" title="Disconnect"><span class="codicon codicon-debug-stop"></span></button>'
+              ? '<button class="btn-icon btn-disconnect" data-action="disconnect" title="Disconnect"><span class="codicon codicon-primitive-square"></span></button>'
               : '<button class="btn-icon btn-connect" data-action="connect" title="Connect"><span class="codicon codicon-play"></span></button>'
             }
             <div class="dropdown">

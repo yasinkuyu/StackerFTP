@@ -118,7 +118,7 @@ export function registerCommands(
     const items = configs.map((config, index) => {
       const isConnected = connectionManager.isConnected(config);
       return {
-        label: `${isConnected ? '$(debug-start)' : '$(debug-disconnect)'} ${config.name || config.host}`,
+        label: `${isConnected ? '$(play)' : '$(primitive-square)'} ${config.name || config.host}`,
         description: `${config.protocol.toUpperCase()} | ${config.username}@${config.host}:${config.port || (config.protocol === 'sftp' ? 22 : 21)}`,
         detail: isConnected ? 'Connected' : 'Click to connect',
         config,
@@ -745,11 +745,14 @@ export function registerCommands(
   });
 
   const refreshCommand = vscode.commands.registerCommand('stackerftp.refresh', () => {
+    // Refresh both connection form and remote explorer
+    if (connectionFormProvider?.refresh) {
+      connectionFormProvider.refresh();
+      logger.info('Connection form refreshed');
+    }
     if (remoteExplorer?.refresh) {
       remoteExplorer.refresh();
       logger.info('Remote explorer refreshed');
-    } else {
-      logger.warn('No remote explorer available to refresh');
     }
   });
 
@@ -1752,7 +1755,7 @@ export function registerCommands(
     const items = configs.map(config => {
       const isConnected = connectionManager.isConnected(config);
       return {
-        label: `${isConnected ? '$(debug-start)' : '$(debug-disconnect)'} ${config.name || config.host}`,
+        label: `${isConnected ? '$(play)' : '$(primitive-square)'} ${config.name || config.host}`,
         description: `${config.protocol.toUpperCase()} | ${config.username}@${config.host}:${config.port}`,
         detail: isConnected ? 'Connected' : 'Disconnected',
         config
