@@ -14,6 +14,7 @@ import { configManager } from './core/config';
 import { connectionManager } from './core/connection-manager';
 import { transferManager } from './core/transfer-manager';
 import { logger } from './utils/logger';
+import { statusBar } from './utils/status-bar';
 import { registerCommands } from './commands';
 import { fileWatcherManager } from './core/file-watcher';
 
@@ -24,6 +25,13 @@ let remoteDocumentProvider: RemoteDocumentProvider;
 
 export function activate(context: vscode.ExtensionContext): void {
   logger.info('StackerFTP extension activating...');
+
+  // Register show output command for status bar click
+  context.subscriptions.push(
+    vscode.commands.registerCommand('stackerftp.showOutput', () => {
+      logger.show();
+    })
+  );
 
   const workspaceFolders = vscode.workspace.workspaceFolders;
   
@@ -138,7 +146,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // Register commands
-  registerCommands(context, remoteTreeProvider, connectionFormProvider);
+  registerCommands(context, remoteTreeProvider, connectionFormProvider, treeView);
 
   // Load initial configuration
   loadConfiguration(workspaceRoot);
@@ -170,7 +178,7 @@ export function activate(context: vscode.ExtensionContext): void {
           connectionFormProvider.refresh();
         }
         
-        vscode.window.showInformationMessage('StackerFTP: Configuration reloaded');
+        statusBar.success('Configuration reloaded');
         return;
       }
       
@@ -181,9 +189,9 @@ export function activate(context: vscode.ExtensionContext): void {
         try {
           const connection = await connectionManager.ensureConnection(metadata.config);
           await transferManager.uploadFile(connection, document.fileName, metadata.remotePath, metadata.config);
-          vscode.window.showInformationMessage(`Uploaded: ${path.basename(metadata.remotePath)}`);
+          statusBar.success(`Uploaded: ${path.basename(metadata.remotePath)}`);
         } catch (error: any) {
-          vscode.window.showErrorMessage(`Failed to upload: ${error.message}`);
+          statusBar.error(`Failed to upload: ${error.message}`, true);
         }
         return;
       }
@@ -285,12 +293,13 @@ async function startFileWatcher(workspaceRoot: string): Promise<void> {
 
 export function deactivate(): void {
   logger.info('StackerFTP extension deactivating...');
-  
+
   fileWatcherManager.stopAll();
-  
+
   connectionManager.disconnect().catch(error => {
     console.error('Error disconnecting:', error);
   });
-  
+
+  statusBar.dispose();
   logger.dispose();
 }

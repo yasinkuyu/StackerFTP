@@ -12,6 +12,7 @@ import { transferManager } from '../core/transfer-manager';
 import { BaseConnection } from '../core/connection';
 import { FileEntry, FTPConfig } from '../types';
 import { logger } from '../utils/logger';
+import { statusBar } from '../utils/status-bar';
 import { formatFileSize, formatDate, normalizeRemotePath } from '../utils/helpers';
 
 export class RemoteTreeItem extends vscode.TreeItem {
@@ -121,7 +122,7 @@ export class RemoteConfigTreeItem extends vscode.TreeItem {
       this.iconPath = new vscode.ThemeIcon('cloud-upload');
     }
     
-    this.contextValue = connected ? 'connected' : 'disconnected';
+    this.contextValue = connected ? 'connection' : 'disconnected';
   }
 }
 
@@ -241,7 +242,7 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
         } catch (error: any) {
           this.hideLoading();
           logger.error(`Failed to list directory: ${error.message}`, error);
-          vscode.window.showErrorMessage(`Failed to list remote directory: ${error.message}`);
+          statusBar.error(`Failed to list: ${error.message}`, true);
           return [];
         }
       }
@@ -409,7 +410,7 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
     const config = item.config || this.currentConfig;
     
     if (!conn || !config) {
-      vscode.window.showErrorMessage('No active connection');
+      statusBar.error('No active connection');
       return;
     }
 
@@ -417,7 +418,7 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
 
     // Check for system files
     if (this.isSystemFile(item.entry.path)) {
-      vscode.window.showWarningMessage(`Cannot open system file: ${fileName}`);
+      statusBar.warn(`Cannot open system file: ${fileName}`);
       return;
     }
 
@@ -464,12 +465,12 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
         logger.info(`Opened remote file: ${item.entry.path} -> ${targetPath}`);
       } catch (error: any) {
         logger.error('Failed to open file', error);
-        
+
         // Handle specific FTP errors
         if (error.message?.includes('550')) {
-          vscode.window.showErrorMessage(`Cannot open "${fileName}": This may be a special file type (symlink, socket, etc.)`);
+          statusBar.error(`Cannot open "${fileName}": Special file type`, true);
         } else {
-          vscode.window.showErrorMessage(`Failed to open file: ${error.message}`);
+          statusBar.error(`Failed to open: ${error.message}`, true);
         }
       }
     });
@@ -519,7 +520,7 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
     // Use connection from item or fallback to class property
     const conn = item.connectionRef || this.connection;
     if (!conn) {
-      vscode.window.showErrorMessage('No active connection');
+      statusBar.error('No active connection');
       return;
     }
     
@@ -557,12 +558,12 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
         this.fileCache.delete(parentPath);
         
         this.refresh();
-        vscode.window.showInformationMessage(`Deleted: ${item.entry.name}`);
+        statusBar.success(`Deleted: ${item.entry.name}`);
       } catch (error: any) {
         this.loadingItems.delete(item.entry.path);
         this._onDidChangeTreeData.fire(item);
         logger.error('Failed to delete', error);
-        vscode.window.showErrorMessage(`Failed to delete: ${error.message}`);
+        statusBar.error(`Failed to delete: ${error.message}`, true);
       }
     });
   }

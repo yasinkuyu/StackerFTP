@@ -8,6 +8,7 @@ import * as path from 'path';
 import { BaseConnection } from './connection';
 import { TransferItem, SyncResult, FTPConfig } from '../types';
 import { logger } from '../utils/logger';
+import { statusBar } from '../utils/status-bar';
 import { generateId, normalizeRemotePath, matchesPattern } from '../utils/helpers';
 import { EventEmitter } from 'stream';
 
@@ -154,6 +155,9 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
             // Directory might already exist
           }
 
+          // Show file name in status bar
+          statusBar.streamFileName('upload', relativePath);
+
           await connection.upload(file, remoteFilePath);
           result.uploaded.push(relativePath);
         } catch (error: any) {
@@ -211,6 +215,9 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
             fs.mkdirSync(localFilePath, { recursive: true });
           }
         } else {
+          // Show file name in status bar
+          statusBar.streamFileName('download', relativePath);
+
           await connection.download(file.path, localFilePath);
           result.downloaded.push(relativePath);
         }
