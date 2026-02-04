@@ -1089,7 +1089,7 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
           </div>
           <div class="connection-actions">
             \${config.connected
-              ? '<button class="btn-icon btn-disconnect" data-action="disconnect" title="Disconnect"><span class="codicon codicon-debug-pause"></span></button>'
+              ? '<button class="btn-icon btn-disconnect" data-action="disconnect" title="Disconnect"><span class="codicon codicon-debug-stop"></span></button>'
               : '<button class="btn-icon btn-connect" data-action="connect" title="Connect"><span class="codicon codicon-play"></span></button>'
             }
             <div class="dropdown">

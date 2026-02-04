@@ -211,6 +211,12 @@
         "icon": "resources/connect.png"
       },
       {
+        "command": "stackerftp.selectPrimaryConnection",
+        "title": "Select Primary Connection",
+        "category": "StackerFTP",
+        "icon": "$(cloud)"
+      },
+      {
         "command": "stackerftp.disconnect",
         "title": "SFTP: Disconnect",
         "category": "StackerFTP",
@@ -675,6 +681,11 @@
           "command": "stackerftp.newConnection",
           "when": "view == stackerftp.connectionForm",
           "group": "navigation@1"
+        },
+        {
+          "command": "stackerftp.tree.refresh",
+          "when": "view == stackerftp.connectionForm",
+          "group": "navigation@2"
         },
         {
           "command": "stackerftp.refresh",

@@ -190,20 +190,39 @@ export function registerCommands(
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      vscode.window.showErrorMessage('No SFTP configuration found');
-      return;
-    }
-
     const localPath = uri?.fsPath;
     if (!localPath) {
       vscode.window.showErrorMessage('No file selected');
       return;
     }
 
+    // Check for active connections first
+    const activeConns = connectionManager.getAllActiveConnections();
+    
+    let config: any;
+    let connection: any;
+
+    if (activeConns.length === 0) {
+      // No active connections - use config and connect
+      config = configManager.getActiveConfig(workspaceRoot);
+      if (!config) {
+        vscode.window.showErrorMessage('No SFTP configuration found');
+        return;
+      }
+      connection = await connectionManager.ensureConnection(config);
+    } else if (activeConns.length === 1) {
+      // Single connection - use it
+      config = activeConns[0].config;
+      connection = activeConns[0].connection;
+    } else {
+      // Multiple connections - ask user or use primary
+      const selected = await connectionManager.selectConnectionForTransfer('upload');
+      if (!selected) return;
+      config = selected.config;
+      connection = selected.connection;
+    }
+
     try {
-      const connection = await connectionManager.ensureConnection(config);
       const relativePath = path.relative(workspaceRoot, localPath);
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
@@ -221,7 +240,7 @@ export function registerCommands(
         await transferManager.uploadFile(connection, localPath, remotePath, config);
       }
 
-      vscode.window.showInformationMessage(`Uploaded: ${path.basename(localPath)}`);
+      vscode.window.showInformationMessage(`Uploaded: ${path.basename(localPath)} → ${config.name || config.host}`);
 
     } catch (error: any) {
       vscode.window.showErrorMessage(`Upload failed: ${error.message}`);
@@ -239,14 +258,30 @@ export function registerCommands(
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      vscode.window.showErrorMessage('No SFTP configuration found');
-      return;
+    // Check for active connections first
+    const activeConns = connectionManager.getAllActiveConnections();
+    
+    let config: any;
+    let connection: any;
+
+    if (activeConns.length === 0) {
+      config = configManager.getActiveConfig(workspaceRoot);
+      if (!config) {
+        vscode.window.showErrorMessage('No SFTP configuration found');
+        return;
+      }
+      connection = await connectionManager.ensureConnection(config);
+    } else if (activeConns.length === 1) {
+      config = activeConns[0].config;
+      connection = activeConns[0].connection;
+    } else {
+      const selected = await connectionManager.selectConnectionForTransfer('upload');
+      if (!selected) return;
+      config = selected.config;
+      connection = selected.connection;
     }
 
     try {
-      const connection = await connectionManager.ensureConnection(config);
       const relativePath = path.relative(workspaceRoot, localPath);
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
@@ -264,7 +299,7 @@ export function registerCommands(
       }
 
       await transferManager.uploadFile(connection, localPath, remotePath, config);
-      vscode.window.showInformationMessage(`Uploaded: ${path.basename(localPath)}`);
+      vscode.window.showInformationMessage(`Uploaded: ${path.basename(localPath)} → ${config.name || config.host}`);
     } catch (error: any) {
       vscode.window.showErrorMessage(`Upload failed: ${error.message}`);
     }
@@ -2114,6 +2149,82 @@ export function registerCommands(
     }
   });
 
+  // ==================== Select Primary Connection Command ====================
+  
+  const selectPrimaryConnectionCommand = vscode.commands.registerCommand('stackerftp.selectPrimaryConnection', async () => {
+    const activeConns = connectionManager.getAllActiveConnections();
+    
+    if (activeConns.length === 0) {
+      // No active connections - offer to connect
+      const workspaceRoot = getWorkspaceRoot();
+      if (!workspaceRoot) return;
+      
+      const configs = configManager.getConfigs(workspaceRoot);
+      if (configs.length === 0) {
+        vscode.window.showInformationMessage('No connections configured. Use "StackerFTP: New Connection" to add one.');
+        return;
+      }
+      
+      const items = configs.map(c => ({
+        label: c.name || c.host,
+        description: `${c.protocol?.toUpperCase()} • ${c.username}@${c.host}`,
+        config: c
+      }));
+      
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: 'No active connections. Select one to connect.',
+        title: 'Connect to Server'
+      });
+      
+      if (selected) {
+        try {
+          await connectionManager.connect(selected.config);
+          vscode.window.showInformationMessage(`Connected to ${selected.config.name || selected.config.host}`);
+        } catch (error: any) {
+          vscode.window.showErrorMessage(`Connection failed: ${error.message}`);
+        }
+      }
+      return;
+    }
+
+    // Active connections exist
+    const primaryConfig = connectionManager.getPrimaryConfig();
+    
+    const items = activeConns.map(({ config }) => ({
+      label: (primaryConfig && config.name === primaryConfig.name && config.host === primaryConfig.host) 
+        ? `$(star-full) ${config.name || config.host}` 
+        : `$(star-empty) ${config.name || config.host}`,
+      description: `${config.protocol?.toUpperCase()} • ${config.username}@${config.host}`,
+      detail: (primaryConfig && config.name === primaryConfig.name && config.host === primaryConfig.host) 
+        ? 'Current primary connection' 
+        : 'Click to set as primary',
+      config
+    }));
+
+    // Add disconnect all option
+    items.push({
+      label: '$(close-all) Disconnect All',
+      description: `Disconnect from all ${activeConns.length} servers`,
+      detail: '',
+      config: null as any
+    });
+
+    const selected = await vscode.window.showQuickPick(items, {
+      placeHolder: 'Select primary connection for uploads/downloads',
+      title: `Active Connections (${activeConns.length})`
+    });
+
+    if (selected) {
+      if (!selected.config) {
+        // Disconnect all
+        await connectionManager.disconnect();
+        vscode.window.showInformationMessage('Disconnected from all servers');
+      } else {
+        connectionManager.setPrimaryConnection(selected.config);
+      }
+    }
+  });
+
   // ==================== Helper Functions ====================
 
   function getWorkspaceRoot(): string | undefined {
@@ -2179,6 +2290,7 @@ export function registerCommands(
     revealInRemoteExplorerCommand,
     copyToOtherRemoteCommand,
     compareRemotesCommand,
-    syncBetweenRemotesCommand
+    syncBetweenRemotesCommand,
+    selectPrimaryConnectionCommand
   );
 }

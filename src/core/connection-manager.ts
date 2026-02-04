@@ -14,10 +14,11 @@ export class ConnectionManager {
   private connections: Map<string, BaseConnection> = new Map();
   private statusBarItem: vscode.StatusBarItem;
   private activeConnectionKey: string | undefined;
+  private primaryConnectionKey: string | undefined;
 
   private constructor() {
     this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    this.statusBarItem.command = 'stackerftp.connect';
+    this.statusBarItem.command = 'stackerftp.selectPrimaryConnection';
     this.updateStatusBar();
   }
 
@@ -30,7 +31,7 @@ export class ConnectionManager {
 
   private getConnectionKey(config: FTPConfig): string {
     const port = config.port || (config.protocol === 'sftp' ? 22 : 21);
-    return `${config.host}:${port}-${config.username}`;
+    return `${config.name || config.host}:${port}-${config.username}`;
   }
 
   getActiveConnection(): BaseConnection | undefined {
@@ -44,29 +45,113 @@ export class ConnectionManager {
     return conn?.getConfig();
   }
 
+  // Primary connection - used for file explorer uploads
+  getPrimaryConnection(): BaseConnection | undefined {
+    if (this.primaryConnectionKey) {
+      const conn = this.connections.get(this.primaryConnectionKey);
+      if (conn?.connected) return conn;
+    }
+    // Fallback to first active connection
+    const activeConns = this.getAllActiveConnections();
+    return activeConns.length > 0 ? activeConns[0].connection : undefined;
+  }
+
+  getPrimaryConfig(): FTPConfig | undefined {
+    const conn = this.getPrimaryConnection();
+    return conn?.getConfig();
+  }
+
+  setPrimaryConnection(config: FTPConfig): void {
+    const key = this.getConnectionKey(config);
+    const conn = this.connections.get(key);
+    if (conn?.connected) {
+      this.primaryConnectionKey = key;
+      this.updateStatusBar();
+      vscode.window.showInformationMessage(`Primary connection set to: ${config.name || config.host}`);
+    }
+  }
+
   getAllActiveConnections(): Array<{ connection: BaseConnection; config: FTPConfig }> {
     const result: Array<{ connection: BaseConnection; config: FTPConfig }> = [];
-    logger.info(`getAllActiveConnections - checking ${this.connections.size} connections`);
     for (const [key, conn] of this.connections.entries()) {
-      logger.info(`  Connection ${key}: connected=${conn.connected}`);
       if (conn.connected) {
         result.push({ connection: conn, config: conn.getConfig() });
       }
     }
-    logger.info(`getAllActiveConnections - returning ${result.length} active connections`);
     return result;
   }
 
-  private updateStatusBar(connected = false, host?: string): void {
-    if (connected && host) {
-      this.statusBarItem.text = `$(cloud-upload) SFTP: ${host}`;
-      this.statusBarItem.tooltip = `Connected to ${host}`;
+  private updateStatusBar(): void {
+    const activeConns = this.getAllActiveConnections();
+    
+    if (activeConns.length === 0) {
+      this.statusBarItem.text = `$(cloud) StackerFTP`;
+      this.statusBarItem.tooltip = 'Click to select connection';
       this.statusBarItem.show();
-    } else {
-      this.statusBarItem.text = `$(cloud) SFTP: Disconnected`;
-      this.statusBarItem.tooltip = 'Click to connect';
-      this.statusBarItem.show();
+      return;
     }
+
+    if (activeConns.length === 1) {
+      const config = activeConns[0].config;
+      const name = config.name || config.host;
+      this.statusBarItem.text = `$(cloud-upload) ${name}`;
+      this.statusBarItem.tooltip = `Connected to ${name}\nClick to manage connections`;
+      this.statusBarItem.show();
+      return;
+    }
+
+    // Multiple connections
+    const primaryConn = this.getPrimaryConnection();
+    const primaryConfig = primaryConn?.getConfig();
+    const primaryName = primaryConfig?.name || primaryConfig?.host || 'None';
+    
+    this.statusBarItem.text = `$(cloud-upload) ${primaryName} (+${activeConns.length - 1})`;
+    this.statusBarItem.tooltip = `Primary: ${primaryName}\n${activeConns.length} connections active\nClick to change primary`;
+    this.statusBarItem.show();
+  }
+
+  // Select target connection for upload/download when multiple are active
+  async selectConnectionForTransfer(operation: 'upload' | 'download'): Promise<{ connection: BaseConnection; config: FTPConfig } | undefined> {
+    const activeConns = this.getAllActiveConnections();
+    
+    if (activeConns.length === 0) {
+      vscode.window.showWarningMessage('No active connections. Please connect first.');
+      return undefined;
+    }
+
+    if (activeConns.length === 1) {
+      return activeConns[0];
+    }
+
+    // Multiple connections - ask user
+    const items = activeConns.map(({ config }) => ({
+      label: config.name || config.host,
+      description: `${config.protocol?.toUpperCase()} • ${config.username}@${config.host}`,
+      config
+    }));
+
+    // Add "Primary" indicator
+    const primaryConfig = this.getPrimaryConfig();
+    if (primaryConfig) {
+      const primaryItem = items.find(i => 
+        i.config.name === primaryConfig.name && i.config.host === primaryConfig.host
+      );
+      if (primaryItem) {
+        primaryItem.label = `$(star-full) ${primaryItem.label} (Primary)`;
+      }
+    }
+
+    const selected = await vscode.window.showQuickPick(items, {
+      placeHolder: `Select connection for ${operation}`,
+      title: `${operation === 'upload' ? 'Upload' : 'Download'} - Select Target`
+    });
+
+    if (!selected) return undefined;
+
+    const conn = activeConns.find(c => 
+      c.config.name === selected.config.name && c.config.host === selected.config.host
+    );
+    return conn;
   }
 
   async connect(config: FTPConfig): Promise<BaseConnection> {
@@ -98,12 +183,20 @@ export class ConnectionManager {
     connection.on('connected', () => {
       const displayName = config.name || config.host;
       logger.info(`Connected to ${displayName}`);
-      this.updateStatusBar(true, config.host);
+      // Set as primary if first connection
+      if (!this.primaryConnectionKey) {
+        this.primaryConnectionKey = key;
+      }
+      this.updateStatusBar();
     });
 
     connection.on('disconnected', () => {
       logger.info(`Disconnected from ${config.host}`);
-      this.updateStatusBar(false);
+      // Clear primary if this was it
+      if (this.primaryConnectionKey === key) {
+        this.primaryConnectionKey = undefined;
+      }
+      this.updateStatusBar();
     });
 
     connection.on('error', (error) => {
@@ -129,6 +222,9 @@ export class ConnectionManager {
         if (this.activeConnectionKey === key) {
           this.activeConnectionKey = undefined;
         }
+        if (this.primaryConnectionKey === key) {
+          this.primaryConnectionKey = undefined;
+        }
       }
     } else {
       // Disconnect all
@@ -137,8 +233,9 @@ export class ConnectionManager {
       }
       this.connections.clear();
       this.activeConnectionKey = undefined;
+      this.primaryConnectionKey = undefined;
     }
-    this.updateStatusBar(false);
+    this.updateStatusBar();
   }
 
   getConnection(config: FTPConfig): BaseConnection | undefined {
