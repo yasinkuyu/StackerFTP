@@ -296,37 +296,95 @@ export class SFTPConnection extends BaseConnection {
   }
 
   private async _rmdir(remotePath: string, recursive = false): Promise<void> {
-    if (!this.sftp) {
+    if (!this.sftp || !this.client) {
       throw new Error('Not connected');
     }
 
     if (recursive) {
-      const entries = await this._list(remotePath);
-      
-      // Separate files and directories
-      const files = entries.filter(e => e.type !== 'directory');
-      const dirs = entries.filter(e => e.type === 'directory');
-      
-      // Delete files in parallel (batch of 10)
-      const batchSize = 10;
-      for (let i = 0; i < files.length; i += batchSize) {
-        const batch = files.slice(i, i + batchSize);
-        await Promise.all(batch.map(entry => {
-          const entryPath = normalizeRemotePath(path.join(remotePath, entry.name));
-          return this._delete(entryPath).catch(() => {}); // Ignore individual errors
-        }));
-      }
-      
-      // Delete subdirectories in parallel (batch of 5)
-      for (let i = 0; i < dirs.length; i += 5) {
-        const batch = dirs.slice(i, i + 5);
-        await Promise.all(batch.map(entry => {
-          const entryPath = normalizeRemotePath(path.join(remotePath, entry.name));
-          return this._rmdir(entryPath, true).catch(() => {}); // Ignore individual errors
-        }));
+      // Use SSH exec with rm -rf for ultra-fast deletion
+      try {
+        await this._execCommand(`rm -rf "${remotePath}"`);
+        return;
+      } catch (error) {
+        // Fallback to SFTP-based deletion if SSH exec fails
+        logger.warn('SSH rm -rf failed, falling back to SFTP deletion', error);
+        await this._rmdirFallback(remotePath);
+        return;
       }
     }
 
+    return new Promise((resolve, reject) => {
+      this.sftp!.rmdir(remotePath, (err: any) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  }
+
+  // Execute SSH command for fast operations
+  private _execCommand(command: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      if (!this.client) {
+        reject(new Error('Not connected'));
+        return;
+      }
+
+      this.client.exec(command, (err, stream) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        let stdout = '';
+        let stderr = '';
+
+        stream.on('data', (data: Buffer) => {
+          stdout += data.toString();
+        });
+
+        stream.stderr.on('data', (data: Buffer) => {
+          stderr += data.toString();
+        });
+
+        stream.on('close', (code: number) => {
+          if (code === 0) {
+            resolve(stdout);
+          } else {
+            reject(new Error(stderr || `Command failed with code ${code}`));
+          }
+        });
+      });
+    });
+  }
+
+  // Fallback SFTP-based recursive deletion
+  private async _rmdirFallback(remotePath: string): Promise<void> {
+    const entries = await this._list(remotePath);
+    
+    // Separate files and directories
+    const files = entries.filter(e => e.type !== 'directory');
+    const dirs = entries.filter(e => e.type === 'directory');
+    
+    // Delete files in parallel (batch of 10)
+    const batchSize = 10;
+    for (let i = 0; i < files.length; i += batchSize) {
+      const batch = files.slice(i, i + batchSize);
+      await Promise.all(batch.map(entry => {
+        const entryPath = normalizeRemotePath(path.join(remotePath, entry.name));
+        return this._delete(entryPath).catch(() => {});
+      }));
+    }
+    
+    // Delete subdirectories in parallel (batch of 5)
+    for (let i = 0; i < dirs.length; i += 5) {
+      const batch = dirs.slice(i, i + 5);
+      await Promise.all(batch.map(entry => {
+        const entryPath = normalizeRemotePath(path.join(remotePath, entry.name));
+        return this._rmdirFallback(entryPath).catch(() => {});
+      }));
+    }
+
+    // Finally remove the empty directory
     return new Promise((resolve, reject) => {
       this.sftp!.rmdir(remotePath, (err: any) => {
         if (err) reject(err);
