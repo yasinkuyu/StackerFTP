@@ -619,9 +619,28 @@ export function registerCommands(
     }
   });
 
-  const collapseAllCommand = vscode.commands.registerCommand('stackerftp.collapseAll', () => {
-    // This command is handled by VS Code's native tree view collapse functionality
-    vscode.commands.executeCommand('workbench.actions.treeView.stackerftp.remoteExplorerTree.collapseAll');
+  const expandAllCommand = vscode.commands.registerCommand('stackerftp.expandAll', async () => {
+    // Expand all connections in the tree by revealing each root item
+    if (remoteExplorer && typeof remoteExplorer.getActiveConnections === 'function') {
+      const connections = remoteExplorer.getActiveConnections();
+      for (const configName of connections) {
+        const rootItems = await remoteExplorer.getChildren();
+        for (const item of rootItems) {
+          const label = typeof item.label === 'object' ? item.label.label : item.label;
+          if (label === configName) {
+            try {
+              // Expand by revealing children
+              const children = await remoteExplorer.getChildren(item);
+              for (const child of children.slice(0, 5)) { // Expand first 5 items
+                await vscode.commands.executeCommand('stackerftp.remoteExplorerTree.reveal', child, { expand: 2, select: false, focus: false });
+              }
+            } catch (e) {
+              // Ignore reveal errors
+            }
+          }
+        }
+      }
+    }
   });
 
   const renameCommand = vscode.commands.registerCommand('stackerftp.rename', async (item: any) => {
@@ -2156,7 +2175,7 @@ export function registerCommands(
     listCommand,
     listAllCommand,
     refreshActiveFileCommand,
-    collapseAllCommand,
+    expandAllCommand,
     revealInRemoteExplorerCommand,
     copyToOtherRemoteCommand,
     compareRemotesCommand,

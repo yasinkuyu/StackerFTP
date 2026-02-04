@@ -60,14 +60,17 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
           await this._handleBrowsePrivateKey();
           break;
         case 'showForm':
-          // Set context to collapse Remote Explorer section
+          // Focus the connection form view to ensure it's visible and expanded
           vscode.commands.executeCommand('setContext', 'stackerftp.formVisible', true);
+          // Ensure Connections panel is expanded by focusing it
+          vscode.commands.executeCommand('stackerftp.connectionForm.focus');
           break;
         case 'hideForm':
-          // Set context to expand Remote Explorer section  
+          // Focus Remote Explorer to expand it and show files
           vscode.commands.executeCommand('setContext', 'stackerftp.formVisible', false);
-          // Refresh Remote Explorer
+          // Refresh and focus Remote Explorer
           vscode.commands.executeCommand('stackerftp.tree.refresh');
+          vscode.commands.executeCommand('stackerftp.remoteExplorerTree.focus');
           break;
       }
     });
@@ -219,9 +222,11 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
       vscode.window.showInformationMessage(`StackerFTP: Connected to ${configs[index].name || configs[index].host}`);
       await this._sendConfigs();
 
-      // Small delay to ensure connection is fully ready, then refresh
+      // Small delay to ensure connection is fully ready, then refresh and focus Remote Explorer
       setTimeout(() => {
         vscode.commands.executeCommand('stackerftp.tree.refresh');
+        // Focus and reveal Remote Explorer view
+        vscode.commands.executeCommand('stackerftp.remoteExplorerTree.focus');
       }, 100);
     } catch (error: any) {
       vscode.window.showErrorMessage(`Connection failed: ${error.message}`);
@@ -280,6 +285,8 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
   }
 
   public showNewConnectionForm() {
+    // Set context to show form is visible
+    vscode.commands.executeCommand('setContext', 'stackerftp.formVisible', true);
     this._view?.webview.postMessage({ type: 'triggerNewForm' });
   }
 

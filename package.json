@@ -299,10 +299,10 @@
         "icon": "$(copy)"
       },
       {
-        "command": "stackerftp.collapseAll",
-        "title": "Collapse All",
+        "command": "stackerftp.expandAll",
+        "title": "Expand All",
         "category": "StackerFTP",
-        "icon": "$(collapse-all)"
+        "icon": "$(expand-all)"
       },
       {
         "command": "stackerftp.setProfile",
@@ -677,24 +677,14 @@
           "group": "navigation@1"
         },
         {
-          "command": "stackerftp.newFile",
+          "command": "stackerftp.refresh",
           "when": "view == stackerftp.remoteExplorer || view == stackerftp.remoteExplorerTree",
           "group": "navigation@1"
         },
         {
-          "command": "stackerftp.newFolder",
-          "when": "view == stackerftp.remoteExplorer || view == stackerftp.remoteExplorerTree",
-          "group": "navigation@2"
-        },
-        {
-          "command": "stackerftp.refresh",
-          "when": "view == stackerftp.remoteExplorer || view == stackerftp.remoteExplorerTree",
-          "group": "navigation@3"
-        },
-        {
-          "command": "stackerftp.collapseAll",
+          "command": "stackerftp.expandAll",
           "when": "view == stackerftp.remoteExplorerTree",
-          "group": "navigation@4"
+          "group": "navigation@2"
         },
         {
           "command": "stackerftp.quickConnect",
@@ -705,16 +695,6 @@
           "command": "stackerftp.disconnect",
           "when": "view == stackerftp.remoteExplorer || view == stackerftp.remoteExplorerTree",
           "group": "1_connection@2"
-        },
-        {
-          "command": "stackerftp.newFolder",
-          "when": "view == stackerftp.remoteExplorer || view == stackerftp.remoteExplorerTree",
-          "group": "2_files@1"
-        },
-        {
-          "command": "stackerftp.newFile",
-          "when": "view == stackerftp.remoteExplorer || view == stackerftp.remoteExplorerTree",
-          "group": "2_files@2"
         },
         {
           "command": "stackerftp.config",
