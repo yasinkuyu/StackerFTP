@@ -4,6 +4,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
+import * as os from 'os';
 import { Client, FileInfo } from 'basic-ftp';
 import { BaseConnection } from './connection';
 import { FileEntry, FTPConfig } from '../types';
@@ -288,34 +290,42 @@ export class FTPConnection extends BaseConnection {
 
   async readFile(remotePath: string): Promise<Buffer> {
     return this.enqueue(async () => {
-      const tempPath = path.join(require('os').tmpdir(), `stackerftp-${Date.now()}`);
+      const uniqueId = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+      const tempPath = path.join(os.tmpdir(), `stackerftp-${uniqueId}.tmp`);
       try {
         await this.client.downloadTo(tempPath, remotePath);
         const content = fs.readFileSync(tempPath);
-        fs.unlinkSync(tempPath);
         return content;
-      } catch (error) {
-        if (fs.existsSync(tempPath)) {
-          fs.unlinkSync(tempPath);
+      } finally {
+        // Her durumda temizle
+        try {
+          if (fs.existsSync(tempPath)) {
+            fs.unlinkSync(tempPath);
+          }
+        } catch (cleanupError) {
+          logger.warn('Failed to cleanup temp file', cleanupError);
         }
-        throw error;
       }
     });
   }
 
   async writeFile(remotePath: string, content: Buffer | string): Promise<void> {
     return this.enqueue(async () => {
-      const tempPath = path.join(require('os').tmpdir(), `stackerftp-${Date.now()}`);
+      const uniqueId = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+      const tempPath = path.join(os.tmpdir(), `stackerftp-${uniqueId}.tmp`);
       try {
         const buffer = Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf-8');
         fs.writeFileSync(tempPath, buffer);
         await this.client.uploadFrom(tempPath, remotePath);
-        fs.unlinkSync(tempPath);
-      } catch (error) {
-        if (fs.existsSync(tempPath)) {
-          fs.unlinkSync(tempPath);
+      } finally {
+        // Her durumda temizle
+        try {
+          if (fs.existsSync(tempPath)) {
+            fs.unlinkSync(tempPath);
+          }
+        } catch (cleanupError) {
+          logger.warn('Failed to cleanup temp file', cleanupError);
         }
-        throw error;
       }
     });
   }

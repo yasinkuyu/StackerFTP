@@ -86,12 +86,28 @@ export function parsePermissionString(permString: string): number {
 
 export function calculateChecksum(filePath: string, algorithm: string = 'md5'): Promise<string> {
   return new Promise((resolve, reject) => {
-    const hash = crypto.createHash(algorithm);
-    const stream = fs.createReadStream(filePath);
-    
-    stream.on('error', reject);
-    stream.on('data', (chunk) => hash.update(chunk));
-    stream.on('end', () => resolve(hash.digest('hex')));
+    try {
+      const hash = crypto.createHash(algorithm);
+      const stream = fs.createReadStream(filePath);
+      
+      stream.on('error', reject);
+      stream.on('data', (chunk) => {
+        try {
+          hash.update(chunk);
+        } catch (err) {
+          reject(err);
+        }
+      });
+      stream.on('end', () => {
+        try {
+          resolve(hash.digest('hex'));
+        } catch (err) {
+          reject(err);
+        }
+      });
+    } catch (err) {
+      reject(err);
+    }
   });
 }
 
@@ -105,6 +121,19 @@ export function isHiddenFile(fileName: string): boolean {
 
 export function normalizeRemotePath(remotePath: string): string {
   return remotePath.replace(/\\/g, '/').replace(/\/+/g, '/');
+}
+
+export function sanitizeRelativePath(relativePath: string): string {
+  // Path traversal kontrolü
+  const normalized = path.normalize(relativePath);
+  if (normalized.startsWith('..') || normalized.includes('/../') || normalized.includes('\\..\\')) {
+    throw new Error(`Invalid path: path traversal detected in "${relativePath}"`);
+  }
+  // Absolute path kontrolü
+  if (path.isAbsolute(normalized)) {
+    throw new Error(`Invalid path: absolute paths are not allowed "${relativePath}"`);
+  }
+  return normalized;
 }
 
 export function joinRemotePath(...parts: string[]): string {

@@ -22,6 +22,7 @@ export interface TransferProgress {
 export class TransferManager extends EventEmitter implements vscode.Disposable {
   private queue: TransferItem[] = [];
   private active = false;
+  private isProcessing = false;
   private cancelled = false;
   private currentItem?: TransferItem;
 
@@ -75,10 +76,14 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
   }
 
   private async processQueue(connection: BaseConnection): Promise<void> {
+    if (this.isProcessing) return;
+    
+    this.isProcessing = true;
     this.active = true;
     this.cancelled = false;
 
-    while (this.queue.length > 0 && !this.cancelled) {
+    try {
+      while (this.queue.length > 0 && !this.cancelled) {
       const item = this.queue.find(i => i.status === 'pending');
       if (!item) break;
 
@@ -107,11 +112,13 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       this.emit('transferComplete', item);
       this.queue = this.queue.filter(i => i.id !== item.id);
       this.emit('queueUpdate', this.queue);
+      }
+    } finally {
+      this.isProcessing = false;
+      this.active = false;
+      this.currentItem = undefined;
+      this.emit('queueComplete');
     }
-
-    this.active = false;
-    this.currentItem = undefined;
-    this.emit('queueComplete');
   }
 
   async uploadDirectory(

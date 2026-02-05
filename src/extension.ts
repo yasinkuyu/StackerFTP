@@ -159,10 +159,21 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Watch for workspace changes
   context.subscriptions.push(
-    vscode.workspace.onDidChangeWorkspaceFolders(event => {
-      if (event.added.length > 0) {
-        const newRoot = event.added[0].uri.fsPath;
-        loadConfiguration(newRoot);
+    vscode.workspace.onDidChangeWorkspaceFolders(async event => {
+      // Kaldırılan klasörleri temizle
+      for (const removed of event.removed) {
+        const removedPath = removed.uri.fsPath;
+        logger.info(`Workspace folder removed: ${removedPath}`);
+        // File watcher'ları durdur
+        fileWatcherManager.stopAll();
+        // Bağlantıları kapat
+        await connectionManager.disconnect();
+      }
+      
+      // Eklenen klasörleri yükle
+      for (const added of event.added) {
+        const newRoot = added.uri.fsPath;
+        await loadConfiguration(newRoot);
       }
     })
   );
@@ -293,8 +304,16 @@ async function handleFileSave(document: vscode.TextDocument, workspaceRoot: stri
     const remoteDir = path.dirname(remotePath);
     try {
       await connection.mkdir(remoteDir);
-    } catch {
+    } catch (error: any) {
       // Directory might already exist
+      if (error.code !== 'EEXIST' && !error.message?.includes('exists')) {
+        logger.warn(`Failed to create directory: ${remoteDir}`, error);
+        // Permission hatası varsa bildir
+        if (error.code === 'EACCES' || error.code === 'EPERM' || 
+            error.message?.includes('permission') || error.message?.includes('Permission')) {
+          throw new Error(`Permission denied creating directory: ${remoteDir}`);
+        }
+      }
     }
 
     await transferManager.uploadFile(connection, document.fileName, remotePath, config);

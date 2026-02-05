@@ -12,7 +12,7 @@ import { transferManager } from '../core/transfer-manager';
 import { webMasterTools } from '../webmaster/tools';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
-import { normalizeRemotePath, formatFileSize } from '../utils/helpers';
+import { normalizeRemotePath, formatFileSize, sanitizeRelativePath } from '../utils/helpers';
 import { ConnectionWizard } from '../core/connection-wizard';
 import { createGitIntegration } from '../core/git-integration';
 
@@ -235,7 +235,7 @@ export function registerCommands(
     }
 
     try {
-      const relativePath = path.relative(workspaceRoot, localPath);
+      const relativePath = sanitizeRelativePath(sanitizeRelativePath(path.relative(workspaceRoot, localPath));
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
       if (fs.statSync(localPath).isDirectory()) {
@@ -294,7 +294,7 @@ export function registerCommands(
     }
 
     try {
-      const relativePath = path.relative(workspaceRoot, localPath);
+      const relativePath = sanitizeRelativePath(sanitizeRelativePath(path.relative(workspaceRoot, localPath));
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
       // Save file first if modified
@@ -306,8 +306,11 @@ export function registerCommands(
       const remoteDir = normalizeRemotePath(path.dirname(remotePath));
       try {
         await connection.mkdir(remoteDir);
-      } catch {
+      } catch (error: any) {
         // Directory might already exist
+        if (error.code !== 'EEXIST' && !error.message?.includes('exists')) {
+          logger.warn(`Failed to create directory: ${remoteDir}`, error);
+        }
       }
 
       await transferManager.uploadFile(connection, localPath, remotePath, config);
@@ -337,7 +340,7 @@ export function registerCommands(
       if (itemOrResource && 'resourceUri' in itemOrResource) {
         // SCM resource - download from remote to this local file
         localPath = itemOrResource.resourceUri.fsPath;
-        const relativePath = path.relative(workspaceRoot, localPath);
+        const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
         remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
       } else if (itemOrResource?.entry) {
         // Remote explorer item
@@ -447,7 +450,7 @@ export function registerCommands(
 
       if (uri) {
         localPath = uri.fsPath;
-        const relativePath = path.relative(workspaceRoot, localPath);
+        const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
         remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
       } else {
         localPath = workspaceRoot;
@@ -903,7 +906,7 @@ export function registerCommands(
           return;
         }
         localPath = uri.fsPath;
-        const relativePath = path.relative(workspaceRoot, localPath);
+        const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
         remotePath = normalizeRemotePath(path.posix.join(activeConfig.remotePath, relativePath.replace(/\\/g, '/')));
         fileName = path.basename(localPath);
       } else {
@@ -1297,7 +1300,7 @@ export function registerCommands(
         for (const file of filesToUpload) {
           if (token.isCancellationRequested) break;
 
-          const relativePath = path.relative(workspaceRoot, file.absolutePath);
+          const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, file.absolutePath);
           const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
           progress.report({
@@ -1490,7 +1493,7 @@ export function registerCommands(
 
     try {
       const connection = await connectionManager.ensureConnection(config);
-      const relativePath = path.relative(workspaceRoot, localPath);
+      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
       await transferManager.downloadFile(connection, remotePath, localPath);
@@ -1815,7 +1818,7 @@ export function registerCommands(
     }
 
     try {
-      const relativePath = path.relative(workspaceRoot, localPath);
+      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
       // Focus on Remote Explorer and show the path
@@ -1925,7 +1928,7 @@ export function registerCommands(
 
         try {
           const connection = await connectionManager.ensureConnection(config);
-          const relativePath = path.relative(workspaceRoot, localPath);
+          const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
           const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
           // Ensure remote directory exists
@@ -1972,7 +1975,7 @@ export function registerCommands(
 
     try {
       const connection = await connectionManager.ensureConnection(config);
-      const relativePath = path.relative(workspaceRoot, localPath);
+      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
       const result = await transferManager.uploadDirectory(connection, localPath, remotePath, config);
@@ -2000,7 +2003,7 @@ export function registerCommands(
 
     try {
       const connection = await connectionManager.ensureConnection(config);
-      const relativePath = path.relative(workspaceRoot, localPath);
+      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
       const result = await transferManager.downloadDirectory(connection, remotePath, localPath, config);
@@ -2142,7 +2145,7 @@ export function registerCommands(
 
     try {
       const connection = await connectionManager.ensureConnection(config);
-      const relativePath = path.relative(workspaceRoot, localPath);
+      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
       // Ensure remote directory exists
@@ -2185,7 +2188,7 @@ export function registerCommands(
 
     try {
       const connection = await connectionManager.ensureConnection(config);
-      const relativePath = path.relative(workspaceRoot, localPath);
+      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
       await transferManager.downloadFile(connection, remotePath, localPath);
@@ -2219,7 +2222,7 @@ export function registerCommands(
 
     try {
       const connection = await connectionManager.ensureConnection(config);
-      const relativePath = path.relative(workspaceRoot, localPath);
+      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
       const remoteDir = path.dirname(remotePath);
       const baseName = path.basename(remotePath, path.extname(remotePath));

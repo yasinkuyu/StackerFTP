@@ -362,6 +362,24 @@ export class WebMasterTools {
 
   // ==================== Find and Replace ====================
 
+  private escapeForSed(str: string): string {
+    // Escape special sed characters
+    return str
+      .replace(/\\/g, '\\\\')
+      .replace(/\//g, '\\/')
+      .replace(/&/g, '\\&')
+      .replace(/"/g, '\\"')
+      .replace(/'/g, "'\"'\"'")
+      .replace(/\n/g, '\\n')
+      .replace(/;/g, '\\;')
+      .replace(/\|/g, '\\|')
+      .replace(/\$/g, '\\$')
+      .replace(/`/g, '\\`')
+      .replace(/\*/g, '\\*')
+      .replace(/\[/g, '\\[')
+      .replace(/\]/g, '\\]');
+  }
+
   async findAndReplace(
     connection: BaseConnection,
     remotePath: string,
@@ -373,8 +391,8 @@ export class WebMasterTools {
 
     try {
       // Try using sed on remote server
-      const findPattern = find.replace(/"/g, '\\"').replace(/\//g, '\\/');
-      const replacePattern = replace.replace(/"/g, '\\"').replace(/\//g, '\\/');
+      const findPattern = this.escapeForSed(find);
+      const replacePattern = this.escapeForSed(replace);
       
       const fileFilter = filePattern || '*';
       const sedCmd = `find "${remotePath}" -name "${fileFilter}" -type f -exec sed -i 's/${findPattern}/${replacePattern}/g' {} + 2>&1`;

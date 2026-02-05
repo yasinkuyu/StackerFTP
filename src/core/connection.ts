@@ -100,7 +100,12 @@ export abstract class BaseConnection extends EventEmitter {
   }
 
   abstract connect(): Promise<void>;
-  abstract disconnect(): Promise<void>;
+  async disconnect(): Promise<void> {
+    this.removeAllListeners();
+    this.operationQueue = [];
+    this.isProcessingQueue = false;
+    this._connected = false;
+  }
   abstract list(remotePath: string): Promise<FileEntry[]>;
   abstract download(remotePath: string, localPath: string): Promise<void>;
   abstract upload(localPath: string, remotePath: string): Promise<void>;

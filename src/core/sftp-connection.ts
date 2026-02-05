@@ -4,7 +4,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { Client } from 'ssh2';
+import { Client, SFTPWrapper } from 'ssh2';
 import { BaseConnection } from './connection';
 import { FileEntry, FTPConfig } from '../types';
 import { logger } from '../utils/logger';
@@ -12,7 +12,7 @@ import { normalizeRemotePath } from '../utils/helpers';
 
 export class SFTPConnection extends BaseConnection {
   private client: Client | null = null;
-  private sftp: any = null;
+  private sftp: SFTPWrapper | null = null;
 
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -311,9 +311,9 @@ export class SFTPConnection extends BaseConnection {
     if (recursive) {
       // Use SSH exec with rm -rf for ultra-fast deletion
       // Escape path properly to prevent command injection
-      const escapedPath = remotePath.replace(/'/g, "'\\''");
+      const escapedPath = this.escapeShellArg(remotePath);
       try {
-        await this._execCommand(`rm -rf '${escapedPath}'`);
+        await this._execCommand(`rm -rf ${escapedPath}`);
         return;
       } catch (error) {
         // Fallback to SFTP-based deletion if SSH exec fails
@@ -332,6 +332,15 @@ export class SFTPConnection extends BaseConnection {
   }
 
   // Execute SSH command for fast operations
+  private escapeShellArg(arg: string): string {
+    // Escape special shell characters
+    if (!/^[a-zA-Z0-9_\-\/.:@]+$/.test(arg)) {
+      // Use single quotes and escape single quotes properly
+      return "'" + arg.replace(/'/g, "'\"'\"'") + "'";
+    }
+    return arg;
+  }
+
   private _execCommand(command: string): Promise<string> {
     return new Promise((resolve, reject) => {
       if (!this.client) {
