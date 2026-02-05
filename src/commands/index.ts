@@ -210,7 +210,7 @@ export function registerCommands(
 
     // Check for active connections first
     const activeConns = connectionManager.getAllActiveConnections();
-    
+
     let config: any;
     let connection: any;
 
@@ -235,7 +235,7 @@ export function registerCommands(
     }
 
     try {
-      const relativePath = sanitizeRelativePath(sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
       if (fs.statSync(localPath).isDirectory()) {
@@ -272,7 +272,7 @@ export function registerCommands(
 
     // Check for active connections first
     const activeConns = connectionManager.getAllActiveConnections();
-    
+
     let config: any;
     let connection: any;
 
@@ -294,7 +294,7 @@ export function registerCommands(
     }
 
     try {
-      const relativePath = sanitizeRelativePath(sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
       // Save file first if modified
@@ -340,7 +340,7 @@ export function registerCommands(
       if (itemOrResource && 'resourceUri' in itemOrResource) {
         // SCM resource - download from remote to this local file
         localPath = itemOrResource.resourceUri.fsPath;
-        const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
+        const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
         remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
       } else if (itemOrResource?.entry) {
         // Remote explorer item
@@ -360,9 +360,9 @@ export function registerCommands(
       }
 
       // Determine if it's a directory based on source
-      const isDirectory = itemOrResource?.entry?.type === 'directory' || !itemOrResource || 
+      const isDirectory = itemOrResource?.entry?.type === 'directory' || !itemOrResource ||
         (itemOrResource && !('resourceUri' in itemOrResource) && !itemOrResource.entry);
-      
+
       if (isDirectory) {
         const result = await transferManager.downloadDirectory(connection, remotePath, localPath, config);
         showSyncResult(result, 'download');
@@ -450,7 +450,7 @@ export function registerCommands(
 
       if (uri) {
         localPath = uri.fsPath;
-        const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
+        const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
         remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
       } else {
         localPath = workspaceRoot;
@@ -569,7 +569,7 @@ export function registerCommands(
     // Get config and connection from item if available, otherwise pick from active connections
     let config: any;
     let connection: any;
-    
+
     if (item?.config) {
       config = item.config;
       connection = item.connectionRef || connectionManager.getConnection(config);
@@ -630,7 +630,7 @@ export function registerCommands(
     // Get config and connection from item if available, otherwise pick from active connections
     let config: any;
     let connection: any;
-    
+
     if (item?.config) {
       config = item.config;
       connection = item.connectionRef || connectionManager.getConnection(config);
@@ -886,7 +886,7 @@ export function registerCommands(
           return;
         }
         fileName = item.entry.name || path.basename(remotePath);
-        
+
         // Calculate relative path from remote root
         const remoteRoot = activeConfig.remotePath || '/';
         let relativePath = remotePath;
@@ -906,7 +906,7 @@ export function registerCommands(
           return;
         }
         localPath = uri.fsPath;
-        const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
+        const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
         remotePath = normalizeRemotePath(path.posix.join(activeConfig.remotePath, relativePath.replace(/\\/g, '/')));
         fileName = path.basename(localPath);
       } else {
@@ -1300,7 +1300,7 @@ export function registerCommands(
         for (const file of filesToUpload) {
           if (token.isCancellationRequested) break;
 
-          const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, file.absolutePath);
+          const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, file.absolutePath));
           const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
           progress.report({
@@ -1493,7 +1493,7 @@ export function registerCommands(
 
     try {
       const connection = await connectionManager.ensureConnection(config);
-      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
+      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
       await transferManager.downloadFile(connection, remotePath, localPath);
@@ -1818,7 +1818,7 @@ export function registerCommands(
     }
 
     try {
-      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
+      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
       // Focus on Remote Explorer and show the path
@@ -1928,7 +1928,7 @@ export function registerCommands(
 
         try {
           const connection = await connectionManager.ensureConnection(config);
-          const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
+          const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
           const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
           // Ensure remote directory exists
@@ -1975,7 +1975,7 @@ export function registerCommands(
 
     try {
       const connection = await connectionManager.ensureConnection(config);
-      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
+      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
       const result = await transferManager.uploadDirectory(connection, localPath, remotePath, config);
@@ -2003,7 +2003,7 @@ export function registerCommands(
 
     try {
       const connection = await connectionManager.ensureConnection(config);
-      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
+      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
       const result = await transferManager.downloadDirectory(connection, remotePath, localPath, config);
@@ -2033,13 +2033,13 @@ export function registerCommands(
       const connection = await connectionManager.ensureConnection(config);
       const remotePath = item.entry.path;
       const fileName = path.basename(remotePath);
-      
+
       // Create temp directory for editing
       const tempDir = path.join(os.tmpdir(), 'stackerftp-edit', config.name || config.host);
       if (!fs.existsSync(tempDir)) {
         fs.mkdirSync(tempDir, { recursive: true });
       }
-      
+
       // Use unique temp file name to avoid conflicts
       const uniqueId = Date.now().toString(36);
       const tempFileName = `${path.basename(fileName, path.extname(fileName))}_${uniqueId}${path.extname(fileName)}`;
@@ -2064,7 +2064,7 @@ export function registerCommands(
         configName: config.name,
         config
       };
-      
+
       // Store in extension context for later use
       (global as any).stackerftpEditMappings = (global as any).stackerftpEditMappings || new Map();
       (global as any).stackerftpEditMappings.set(tempPath, metadata);
@@ -2145,7 +2145,7 @@ export function registerCommands(
 
     try {
       const connection = await connectionManager.ensureConnection(config);
-      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
+      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
       // Ensure remote directory exists
@@ -2188,7 +2188,7 @@ export function registerCommands(
 
     try {
       const connection = await connectionManager.ensureConnection(config);
-      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
+      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
       await transferManager.downloadFile(connection, remotePath, localPath);
@@ -2222,7 +2222,7 @@ export function registerCommands(
 
     try {
       const connection = await connectionManager.ensureConnection(config);
-      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath);
+      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
       const remoteDir = path.dirname(remotePath);
       const baseName = path.basename(remotePath, path.extname(remotePath));
@@ -2265,32 +2265,32 @@ export function registerCommands(
   });
 
   // ==================== Select Primary Connection Command ====================
-  
+
   const selectPrimaryConnectionCommand = vscode.commands.registerCommand('stackerftp.selectPrimaryConnection', async () => {
     const activeConns = connectionManager.getAllActiveConnections();
-    
+
     if (activeConns.length === 0) {
       // No active connections - offer to connect
       const workspaceRoot = getWorkspaceRoot();
       if (!workspaceRoot) return;
-      
+
       const configs = configManager.getConfigs(workspaceRoot);
       if (configs.length === 0) {
         statusBar.success('No connections configured. Use "StackerFTP: New Connection" to add one.');
         return;
       }
-      
+
       const items = configs.map(c => ({
         label: c.name || c.host,
         description: `${c.protocol?.toUpperCase()} • ${c.username}@${c.host}`,
         config: c
       }));
-      
+
       const selected = await vscode.window.showQuickPick(items, {
         placeHolder: 'No active connections. Select one to connect.',
         title: 'Connect to Server'
       });
-      
+
       if (selected) {
         try {
           await connectionManager.connect(selected.config);
@@ -2304,14 +2304,14 @@ export function registerCommands(
 
     // Active connections exist
     const primaryConfig = connectionManager.getPrimaryConfig();
-    
+
     const items = activeConns.map(({ config }) => ({
-      label: (primaryConfig && config.name === primaryConfig.name && config.host === primaryConfig.host) 
-        ? `$(star-full) ${config.name || config.host}` 
+      label: (primaryConfig && config.name === primaryConfig.name && config.host === primaryConfig.host)
+        ? `$(star-full) ${config.name || config.host}`
         : `$(star-empty) ${config.name || config.host}`,
       description: `${config.protocol?.toUpperCase()} • ${config.username}@${config.host}`,
-      detail: (primaryConfig && config.name === primaryConfig.name && config.host === primaryConfig.host) 
-        ? 'Current primary connection' 
+      detail: (primaryConfig && config.name === primaryConfig.name && config.host === primaryConfig.host)
+        ? 'Current primary connection'
         : 'Click to set as primary',
       config
     }));

@@ -37,10 +37,10 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   const workspaceFolders = vscode.workspace.workspaceFolders;
-  
+
   if (!workspaceFolders || workspaceFolders.length === 0) {
     logger.info('No workspace folder open, waiting for folder...');
-    
+
     vscode.window.showInformationMessage(
       'StackerFTP: Open a workspace folder to start using SFTP features',
       'Open Folder'
@@ -49,7 +49,7 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.commands.executeCommand('vscode.openFolder');
       }
     });
-    
+
     return;
   }
 
@@ -119,13 +119,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Register Native TreeView for Remote Explorer
   remoteTreeProvider = new RemoteExplorerTreeProvider(workspaceRoot);
-  
+
   const treeView = vscode.window.createTreeView('stackerftp.remoteExplorerTree', {
     treeDataProvider: remoteTreeProvider,
     showCollapseAll: true,
     canSelectMany: true
   });
-  
+
   context.subscriptions.push(treeView);
   context.subscriptions.push(
     vscode.commands.registerCommand('stackerftp.tree.openFile', (item) => {
@@ -153,7 +153,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Load initial configuration
   loadConfiguration(workspaceRoot);
-  
+
   // Start file watcher if enabled
   startFileWatcher(workspaceRoot);
 
@@ -169,7 +169,7 @@ export function activate(context: vscode.ExtensionContext): void {
         // Bağlantıları kapat
         await connectionManager.disconnect();
       }
-      
+
       // Eklenen klasörleri yükle
       for (const added of event.added) {
         const newRoot = added.uri.fsPath;
@@ -186,16 +186,16 @@ export function activate(context: vscode.ExtensionContext): void {
       if (document.fileName === configPath) {
         logger.info('Config file changed, reloading...');
         await loadConfiguration(workspaceRoot);
-        
+
         // Refresh connection form to show updated configs
         if (connectionFormProvider) {
           connectionFormProvider.refresh();
         }
-        
+
         statusBar.success('Configuration reloaded');
         return;
       }
-      
+
       // Check if this is a temp file from Edit Local
       const editMappings = (global as any).stackerftpEditMappings;
       if (editMappings && editMappings.has(document.fileName)) {
@@ -209,33 +209,16 @@ export function activate(context: vscode.ExtensionContext): void {
         }
         return;
       }
-      
+
       // Handle upload on save
       handleFileSave(document, workspaceRoot);
     })
   );
 
-  // Register file system provider for remote files
-  const remoteFileProvider: vscode.FileSystemProvider = {
-    onDidChangeFile: new vscode.EventEmitter<vscode.FileChangeEvent[]>().event,
-    watch: () => ({ dispose: () => {} }),
-    stat: async () => ({
-      type: vscode.FileType.File,
-      ctime: Date.now(),
-      mtime: Date.now(),
-      size: 0
-    }),
-    readDirectory: async () => [],
-    createDirectory: async () => {},
-    readFile: async () => Buffer.from(''),
-    writeFile: async () => {},
-    delete: async () => {},
-    rename: async () => {}
-  };
-  
-  context.subscriptions.push(
-    vscode.workspace.registerFileSystemProvider('stackerftp', remoteFileProvider, { isCaseSensitive: true })
-  );
+
+  // NOTE: FileSystemProvider for 'stackerftp' scheme was removed as it was
+  // a placeholder implementation. Remote file viewing uses RemoteDocumentProvider
+  // with 'stackerftp-remote' scheme, and editing uses 'editInLocal' workflow.
 
   logger.info('StackerFTP extension activated successfully');
 }
@@ -245,7 +228,7 @@ async function loadConfiguration(workspaceRoot: string): Promise<void> {
     if (configManager.configExists(workspaceRoot)) {
       await configManager.loadConfig(workspaceRoot);
       logger.info('Configuration loaded successfully');
-      
+
       const config = configManager.getActiveConfig(workspaceRoot);
       if (config) {
         logger.info(`Active config: ${config.name || config.host}`);
@@ -300,7 +283,7 @@ async function handleFileSave(document: vscode.TextDocument, workspaceRoot: stri
   try {
     const connection = await connectionManager.ensureConnection(config);
     const remotePath = path.join(config.remotePath, relativePath).replace(/\\/g, '/');
-    
+
     const remoteDir = path.dirname(remotePath);
     try {
       await connection.mkdir(remoteDir);
@@ -309,8 +292,8 @@ async function handleFileSave(document: vscode.TextDocument, workspaceRoot: stri
       if (error.code !== 'EEXIST' && !error.message?.includes('exists')) {
         logger.warn(`Failed to create directory: ${remoteDir}`, error);
         // Permission hatası varsa bildir
-        if (error.code === 'EACCES' || error.code === 'EPERM' || 
-            error.message?.includes('permission') || error.message?.includes('Permission')) {
+        if (error.code === 'EACCES' || error.code === 'EPERM' ||
+          error.message?.includes('permission') || error.message?.includes('Permission')) {
           throw new Error(`Permission denied creating directory: ${remoteDir}`);
         }
       }
@@ -340,6 +323,25 @@ export function deactivate(): void {
   connectionManager.disconnect().catch(error => {
     console.error('Error disconnecting:', error);
   });
+
+  // Clean up temporary edit files
+  try {
+    const os = require('os');
+    const fs = require('fs');
+    const tempEditDir = path.join(os.tmpdir(), 'stackerftp-edit');
+    if (fs.existsSync(tempEditDir)) {
+      fs.rmSync(tempEditDir, { recursive: true, force: true });
+      logger.info('Cleaned up temporary edit files');
+    }
+  } catch (error) {
+    // Ignore cleanup errors - not critical
+    console.error('Error cleaning up temp files:', error);
+  }
+
+  // Clear edit mappings
+  if ((global as any).stackerftpEditMappings) {
+    (global as any).stackerftpEditMappings.clear();
+  }
 
   statusBar.dispose();
   logger.dispose();

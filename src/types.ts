@@ -89,6 +89,10 @@ export interface TransferItem {
   error?: string;
   startTime?: Date;
   endTime?: Date;
+  /** Connection reference for this specific transfer - prevents cross-server bugs */
+  connectionId?: string;
+  /** Config for this transfer to ensure correct server targeting */
+  config?: FTPConfig;
 }
 
 export interface SyncResult {

@@ -137,7 +137,11 @@
               },
               "protocol": {
                 "type": "string",
-                "enum": ["sftp", "ftp", "ftps"],
+                "enum": [
+                  "sftp",
+                  "ftp",
+                  "ftps"
+                ],
                 "description": "Connection protocol"
               },
               "username": {
@@ -157,7 +161,9 @@
                 "description": "Default remote path"
               }
             },
-            "required": ["host"]
+            "required": [
+              "host"
+            ]
           }
         }
       }
@@ -902,6 +908,13 @@
           "command": "stackerftp.uploadChangedFiles",
           "group": "stackerftp",
           "when": "scmProvider == git && scmResourceGroup == index"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "stackerftp.editInLocal",
+          "when": "resourceScheme == stackerftp-remote",
+          "group": "navigation@1"
         }
       ]
     },

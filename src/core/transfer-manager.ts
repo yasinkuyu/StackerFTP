@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { BaseConnection } from './connection';
+import { connectionManager } from './connection-manager';
 import { TransferItem, SyncResult, FTPConfig } from '../types';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
@@ -40,21 +41,24 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       status: 'pending',
       progress: 0,
       size: fs.statSync(localPath).size,
-      transferred: 0
+      transferred: 0,
+      // Store config for per-item connection lookup (prevents cross-server bug)
+      config
     };
 
     this.queue.push(item);
     this.emit('queueUpdate', this.queue);
 
     if (!this.active) {
-      await this.processQueue(connection);
+      await this.processQueue();
     }
   }
 
   async downloadFile(
     connection: BaseConnection,
     remotePath: string,
-    localPath: string
+    localPath: string,
+    config?: FTPConfig
   ): Promise<void> {
     const item: TransferItem = {
       id: generateId(),
@@ -64,54 +68,71 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       status: 'pending',
       progress: 0,
       size: 0,
-      transferred: 0
+      transferred: 0,
+      // Store config for per-item connection lookup (prevents cross-server bug)
+      config: config || connection.getConfig()
     };
 
     this.queue.push(item);
     this.emit('queueUpdate', this.queue);
 
     if (!this.active) {
-      await this.processQueue(connection);
+      await this.processQueue();
     }
   }
 
-  private async processQueue(connection: BaseConnection): Promise<void> {
+  /**
+   * Process the transfer queue using per-item connections.
+   * Each item stores its own config, ensuring transfers go to the correct server.
+   */
+  private async processQueue(): Promise<void> {
     if (this.isProcessing) return;
-    
+
     this.isProcessing = true;
     this.active = true;
     this.cancelled = false;
 
     try {
       while (this.queue.length > 0 && !this.cancelled) {
-      const item = this.queue.find(i => i.status === 'pending');
-      if (!item) break;
+        const item = this.queue.find(i => i.status === 'pending');
+        if (!item) break;
 
-      this.currentItem = item;
-      item.status = 'transferring';
-      item.startTime = new Date();
-      this.emit('transferStart', item);
+        this.currentItem = item;
+        item.status = 'transferring';
+        item.startTime = new Date();
+        this.emit('transferStart', item);
 
-      try {
-        if (item.direction === 'upload') {
-          await connection.upload(item.localPath, item.remotePath);
-        } else {
-          await connection.download(item.remotePath, item.localPath);
+        try {
+          // Get the correct connection for THIS specific item
+          // This is the critical fix - each item uses its own server connection
+          if (!item.config) {
+            throw new Error('Transfer item missing config - cannot determine target server');
+          }
+
+          const connection = connectionManager.getConnection(item.config);
+          if (!connection || !connection.connected) {
+            throw new Error(`No active connection for ${item.config.name || item.config.host}`);
+          }
+
+          if (item.direction === 'upload') {
+            await connection.upload(item.localPath, item.remotePath);
+          } else {
+            await connection.download(item.remotePath, item.localPath);
+          }
+
+          item.status = 'completed';
+          item.progress = 100;
+          item.endTime = new Date();
+        } catch (error: any) {
+          item.status = 'error';
+          item.error = error.message;
+          item.endTime = new Date();
+          logger.error(`Transfer failed: ${item.remotePath}`, error);
         }
 
-        item.status = 'completed';
-        item.progress = 100;
-        item.endTime = new Date();
-      } catch (error: any) {
-        item.status = 'error';
-        item.error = error.message;
-        item.endTime = new Date();
-        logger.error(`Transfer failed: ${item.remotePath}`, error);
-      }
-
-      this.emit('transferComplete', item);
-      this.queue = this.queue.filter(i => i.id !== item.id);
-      this.emit('queueUpdate', this.queue);
+        this.emit('transferComplete', item);
+        this.queue = this.queue.filter(i => i.id !== item.id);
+        this.emit('queueUpdate', this.queue);
       }
     } finally {
       this.isProcessing = false;
@@ -173,7 +194,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       });
 
       await Promise.all(promises);
-      
+
       // Update progress
       const progress = Math.round(((i + batch.length) / files.length) * 100);
       this.emit('batchProgress', { completed: i + batch.length, total: files.length, percentage: progress });
@@ -262,7 +283,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
   ): Promise<SyncResult> {
     // First download from remote
     const downloadResult = await this.downloadDirectory(connection, remotePath, localPath, config);
-    
+
     // Then upload to remote
     const uploadResult = await this.uploadDirectory(connection, localPath, remotePath, config);
 
@@ -277,13 +298,13 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
 
   private getLocalFiles(dir: string): string[] {
     const files: string[] = [];
-    
+
     const traverse = (currentDir: string) => {
       const entries = fs.readdirSync(currentDir, { withFileTypes: true });
-      
+
       for (const entry of entries) {
         const fullPath = path.join(currentDir, entry.name);
-        
+
         if (entry.isDirectory()) {
           traverse(fullPath);
         } else {
@@ -301,10 +322,10 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
 
     const traverse = async (currentPath: string) => {
       const entries = await connection.list(currentPath);
-      
+
       for (const entry of entries) {
         const fullPath = normalizeRemotePath(path.join(currentPath, entry.name));
-        
+
         if (entry.type === 'directory') {
           files.push({ ...entry, path: fullPath });
           await traverse(fullPath);
