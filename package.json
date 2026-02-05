@@ -551,6 +551,36 @@
         "title": "Sync to Other Remote",
         "category": "StackerFTP",
         "icon": "$(sync)"
+      },
+      {
+        "command": "stackerftp.toggleHiddenFiles",
+        "title": "Toggle Hidden Files",
+        "category": "StackerFTP",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "stackerftp.sortByName",
+        "title": "Sort by Name",
+        "category": "StackerFTP",
+        "icon": "$(case-sensitive)"
+      },
+      {
+        "command": "stackerftp.sortBySize",
+        "title": "Sort by Size",
+        "category": "StackerFTP",
+        "icon": "$(file-binary)"
+      },
+      {
+        "command": "stackerftp.sortByDate",
+        "title": "Sort by Date",
+        "category": "StackerFTP",
+        "icon": "$(calendar)"
+      },
+      {
+        "command": "stackerftp.selectAllFiles",
+        "title": "Select All",
+        "category": "StackerFTP",
+        "icon": "$(check-all)"
       }
     ],
     "menus": {
@@ -757,6 +787,26 @@
           "command": "stackerftp.terminal",
           "when": "view == stackerftp.remoteExplorer || view == stackerftp.remoteExplorerTree",
           "group": "3_settings@3"
+        },
+        {
+          "command": "stackerftp.toggleHiddenFiles",
+          "when": "view == stackerftp.remoteExplorerTree",
+          "group": "4_view@1"
+        },
+        {
+          "command": "stackerftp.sortByName",
+          "when": "view == stackerftp.remoteExplorerTree",
+          "group": "5_sort@1"
+        },
+        {
+          "command": "stackerftp.sortBySize",
+          "when": "view == stackerftp.remoteExplorerTree",
+          "group": "5_sort@2"
+        },
+        {
+          "command": "stackerftp.sortByDate",
+          "when": "view == stackerftp.remoteExplorerTree",
+          "group": "5_sort@3"
         }
       ],
       "view/item/context": [

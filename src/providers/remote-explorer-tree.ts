@@ -293,8 +293,15 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
     // Get sort order from config or VS Code settings
     const vsConfig = vscode.workspace.getConfiguration('stackerftp');
     const sortOrder = config.remoteExplorerOrder || vsConfig.get<string>('remoteExplorerSortOrder', 'name');
+    const showHiddenFiles = vsConfig.get<boolean>('showHiddenFiles', false);
 
-    const sorted = entries.sort((a, b) => {
+    // Filter hidden files if setting is disabled
+    let filteredEntries = entries;
+    if (!showHiddenFiles) {
+      filteredEntries = entries.filter(e => !e.name.startsWith('.'));
+    }
+
+    const sorted = filteredEntries.sort((a, b) => {
       // Determine if each entry should be treated as a directory
       const aIsDir = a.type === 'directory' || (a.type === 'symlink' && a.isSymlinkToDirectory);
       const bIsDir = b.type === 'directory' || (b.type === 'symlink' && b.isSymlinkToDirectory);

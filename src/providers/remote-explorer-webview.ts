@@ -24,6 +24,9 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
   private _currentPath: string = '';
   private _fileCache: Map<string, FileEntry[]> = new Map();
   private _selectedFiles: Set<string> = new Set();
+  private _showHiddenFiles: boolean = false;
+  private _sortBy: 'name' | 'size' | 'date' = 'name';
+  private _sortAscending: boolean = true;
 
   constructor(private readonly _extensionUri: vscode.Uri) { }
 
@@ -84,6 +87,21 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
           break;
         case 'changeView':
           this._handleChangeView(data.viewMode);
+          break;
+        case 'toggleHiddenFiles':
+          this._handleToggleHiddenFiles();
+          break;
+        case 'setSortBy':
+          this._handleSetSortBy(data.sortBy);
+          break;
+        case 'toggleSortOrder':
+          this._handleToggleSortOrder();
+          break;
+        case 'selectAll':
+          await this._handleSelectAll();
+          break;
+        case 'deselectAll':
+          this._handleDeselectAll();
           break;
         case 'uploadFiles':
           await this._handleUploadFiles(data.files);
@@ -248,9 +266,17 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
       this._view.webview.postMessage({ type: 'loading' });
       this._selectedFiles.clear();
 
-      const entries = await this._connection.list(dirPath);
+      let entries = await this._connection.list(dirPath);
       this._currentPath = dirPath;
       this._fileCache.set(dirPath, entries);
+
+      // Filter hidden files if needed
+      if (!this._showHiddenFiles) {
+        entries = entries.filter(e => !e.name.startsWith('.'));
+      }
+
+      // Sort entries
+      entries = this._sortEntries(entries);
 
       const files = entries.filter(e => e.type === 'file');
       const dirs = entries.filter(e => e.type === 'directory');
@@ -268,13 +294,17 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
           modifyTimeFormatted: formatDate(e.modifyTime),
           path: e.path,
           permissions: e.rights ? `${e.rights.user}${e.rights.group}${e.rights.other}` : '---',
-          ext: path.extname(e.name).toLowerCase()
+          ext: path.extname(e.name).toLowerCase(),
+          isHidden: e.name.startsWith('.')
         })),
         stats: {
           fileCount: files.length,
           dirCount: dirs.length,
           totalSize: formatFileSize(totalSize)
-        }
+        },
+        showHiddenFiles: this._showHiddenFiles,
+        sortBy: this._sortBy,
+        sortAscending: this._sortAscending
       });
     } catch (error: any) {
       this._view.webview.postMessage({
@@ -483,6 +513,68 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
     this._view?.webview.postMessage({ type: 'viewModeChanged', viewMode });
   }
 
+  private _handleToggleHiddenFiles() {
+    this._showHiddenFiles = !this._showHiddenFiles;
+    this._view?.webview.postMessage({
+      type: 'hiddenFilesChanged',
+      showHiddenFiles: this._showHiddenFiles
+    });
+    // Refresh to apply filter
+    if (this._currentPath) {
+      this._handleListDirectory(this._currentPath);
+    }
+  }
+
+  private _handleSetSortBy(sortBy: 'name' | 'size' | 'date') {
+    if (this._sortBy === sortBy) {
+      this._sortAscending = !this._sortAscending;
+    } else {
+      this._sortBy = sortBy;
+      this._sortAscending = true;
+    }
+    this._view?.webview.postMessage({
+      type: 'sortChanged',
+      sortBy: this._sortBy,
+      sortAscending: this._sortAscending
+    });
+    // Refresh to apply sort
+    if (this._currentPath) {
+      this._handleListDirectory(this._currentPath);
+    }
+  }
+
+  private _handleToggleSortOrder() {
+    this._sortAscending = !this._sortAscending;
+    this._view?.webview.postMessage({
+      type: 'sortChanged',
+      sortBy: this._sortBy,
+      sortAscending: this._sortAscending
+    });
+    // Refresh to apply sort
+    if (this._currentPath) {
+      this._handleListDirectory(this._currentPath);
+    }
+  }
+
+  private async _handleSelectAll() {
+    const entries = this._fileCache.get(this._currentPath);
+    if (entries) {
+      this._selectedFiles = new Set(entries.map(e => e.path));
+      this._view?.webview.postMessage({
+        type: 'selectionChange',
+        selectedFiles: Array.from(this._selectedFiles)
+      });
+    }
+  }
+
+  private _handleDeselectAll() {
+    this._selectedFiles.clear();
+    this._view?.webview.postMessage({
+      type: 'selectionChange',
+      selectedFiles: []
+    });
+  }
+
   private async _handleUploadFiles(files: { name: string, content: string }[]) {
     if (!this._connection || !this._currentConfig) return;
 
@@ -549,6 +641,30 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
 
   private _getWorkspaceRoot(): string | undefined {
     return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  }
+
+  private _sortEntries(entries: FileEntry[]): FileEntry[] {
+    return entries.sort((a, b) => {
+      // Directories always first
+      if (a.type !== b.type) {
+        return a.type === 'directory' ? -1 : 1;
+      }
+
+      let comparison = 0;
+      switch (this._sortBy) {
+        case 'name':
+          comparison = a.name.localeCompare(b.name);
+          break;
+        case 'size':
+          comparison = a.size - b.size;
+          break;
+        case 'date':
+          comparison = a.modifyTime.getTime() - b.modifyTime.getTime();
+          break;
+      }
+
+      return this._sortAscending ? comparison : -comparison;
+    });
   }
 
   private _getHtmlForWebview(webview: vscode.Webview): string {
@@ -681,6 +797,84 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
     
     .btn i, .btn img {
       font-size: 14px;
+    }
+    
+    /* Header Actions & Dropdown */
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+    
+    .header-dropdown {
+      position: relative;
+    }
+    
+    .header-dropdown-menu {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 4px;
+      min-width: 180px;
+      background: var(--vscode-menu-background);
+      border: 1px solid var(--vscode-menu-border);
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      z-index: 100;
+      display: none;
+      padding: 4px 0;
+    }
+    
+    .header-dropdown-menu.visible {
+      display: block;
+    }
+    
+    .dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      color: var(--vscode-menu-foreground);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    
+    .dropdown-item:hover {
+      background: var(--vscode-menu-selectionBackground);
+      color: var(--vscode-menu-selectionForeground);
+    }
+    
+    .dropdown-item i {
+      font-size: 14px;
+      width: 16px;
+      text-align: center;
+    }
+    
+    .dropdown-item.active {
+      color: var(--vscode-button-background);
+    }
+    
+    .dropdown-item .check-icon {
+      visibility: hidden;
+    }
+    
+    .dropdown-item.active .check-icon {
+      visibility: visible;
+    }
+    
+    .dropdown-separator {
+      height: 1px;
+      background: var(--vscode-menu-separatorBackground);
+      margin: 4px 0;
+    }
+    
+    .dropdown-header {
+      padding: 4px 12px;
+      font-size: 10px;
+      text-transform: uppercase;
+      color: var(--vscode-descriptionForeground);
+      letter-spacing: 0.5px;
     }
     
     /* File List Container */
@@ -1012,6 +1206,46 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
         <button class="btn" title="Refresh" onclick="vscode.postMessage({type:'refresh'})">
           <span class="codicon codicon-refresh"></span>
         </button>
+        <div class="header-dropdown">
+          <button class="btn" id="btnSettings" title="Settings">
+            <span class="codicon codicon-ellipsis"></span>
+          </button>
+          <div class="header-dropdown-menu" id="settingsMenu">
+            <div class="dropdown-header">View Options</div>
+            <div class="dropdown-item" id="toggleHidden" data-action="toggleHidden">
+              <i class="codicon codicon-check check-icon"></i>
+              <i class="codicon codicon-eye"></i>
+              <span>Show Hidden Files</span>
+            </div>
+            <div class="dropdown-separator"></div>
+            <div class="dropdown-header">Sort By</div>
+            <div class="dropdown-item active" id="sortByName" data-action="sortByName">
+              <i class="codicon codicon-check check-icon"></i>
+              <i class="codicon codicon-case-sensitive"></i>
+              <span>Name</span>
+            </div>
+            <div class="dropdown-item" id="sortBySize" data-action="sortBySize">
+              <i class="codicon codicon-check check-icon"></i>
+              <i class="codicon codicon-file-binary"></i>
+              <span>Size</span>
+            </div>
+            <div class="dropdown-item" id="sortByDate" data-action="sortByDate">
+              <i class="codicon codicon-check check-icon"></i>
+              <i class="codicon codicon-calendar"></i>
+              <span>Date Modified</span>
+            </div>
+            <div class="dropdown-separator"></div>
+            <div class="dropdown-header">Selection</div>
+            <div class="dropdown-item" data-action="selectAll">
+              <i class="codicon codicon-check-all"></i>
+              <span>Select All</span>
+            </div>
+            <div class="dropdown-item" data-action="deselectAll">
+              <i class="codicon codicon-close"></i>
+              <span>Deselect All</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1153,6 +1387,75 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
     const btnUp = document.getElementById('btnUp');
     const btnNewFolder = document.getElementById('btnNewFolder');
     const btnUpload = document.getElementById('btnUpload');
+    const btnSettings = document.getElementById('btnSettings');
+    const settingsMenu = document.getElementById('settingsMenu');
+    
+    // Settings state
+    let showHiddenFiles = false;
+    let sortBy = 'name';
+    let sortAscending = true;
+    
+    // Settings dropdown toggle
+    btnSettings.addEventListener('click', (e) => {
+      e.stopPropagation();
+      settingsMenu.classList.toggle('visible');
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!settingsMenu.contains(e.target) && e.target !== btnSettings) {
+        settingsMenu.classList.remove('visible');
+      }
+    });
+    
+    // Handle dropdown menu items
+    settingsMenu.querySelectorAll('.dropdown-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const action = item.dataset.action;
+        
+        switch (action) {
+          case 'toggleHidden':
+            vscode.postMessage({ type: 'toggleHiddenFiles' });
+            break;
+          case 'sortByName':
+            vscode.postMessage({ type: 'setSortBy', sortBy: 'name' });
+            break;
+          case 'sortBySize':
+            vscode.postMessage({ type: 'setSortBy', sortBy: 'size' });
+            break;
+          case 'sortByDate':
+            vscode.postMessage({ type: 'setSortBy', sortBy: 'date' });
+            break;
+          case 'selectAll':
+            vscode.postMessage({ type: 'selectAll' });
+            break;
+          case 'deselectAll':
+            vscode.postMessage({ type: 'deselectAll' });
+            break;
+        }
+        
+        // Close menu after action (except for toggle actions that should show feedback)
+        if (action !== 'toggleHidden') {
+          settingsMenu.classList.remove('visible');
+        }
+      });
+    });
+    
+    // Update settings UI
+    function updateSettingsUI() {
+      const toggleHiddenItem = document.getElementById('toggleHidden');
+      if (showHiddenFiles) {
+        toggleHiddenItem.classList.add('active');
+      } else {
+        toggleHiddenItem.classList.remove('active');
+      }
+      
+      // Update sort indicators
+      document.getElementById('sortByName').classList.toggle('active', sortBy === 'name');
+      document.getElementById('sortBySize').classList.toggle('active', sortBy === 'size');
+      document.getElementById('sortByDate').classList.toggle('active', sortBy === 'date');
+    }
     
     // Button event listeners
     btnRefresh.addEventListener('click', () => {
@@ -1334,6 +1637,15 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
           break;
         case 'directoryList':
           showFileList(msg.entries, msg.path, msg.stats);
+          // Update settings from server state
+          if (msg.showHiddenFiles !== undefined) {
+            showHiddenFiles = msg.showHiddenFiles;
+          }
+          if (msg.sortBy !== undefined) {
+            sortBy = msg.sortBy;
+            sortAscending = msg.sortAscending;
+          }
+          updateSettingsUI();
           break;
         case 'loading':
           showLoading('Loading...');
@@ -1349,6 +1661,15 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
           break;
         case 'viewModeChanged':
           viewMode = msg.viewMode;
+          break;
+        case 'hiddenFilesChanged':
+          showHiddenFiles = msg.showHiddenFiles;
+          updateSettingsUI();
+          break;
+        case 'sortChanged':
+          sortBy = msg.sortBy;
+          sortAscending = msg.sortAscending;
+          updateSettingsUI();
           break;
       }
     });

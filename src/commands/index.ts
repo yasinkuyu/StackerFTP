@@ -2340,6 +2340,49 @@ export function registerCommands(
     }
   });
 
+  // ==================== View Settings Commands ====================
+
+  const toggleHiddenFilesCommand = vscode.commands.registerCommand('stackerftp.toggleHiddenFiles', async () => {
+    const config = vscode.workspace.getConfiguration('stackerftp');
+    const current = config.get<boolean>('showHiddenFiles', false);
+    await config.update('showHiddenFiles', !current, vscode.ConfigurationTarget.Workspace);
+    statusBar.success(`Hidden files: ${!current ? 'shown' : 'hidden'}`);
+    if (remoteExplorer?.refresh) {
+      remoteExplorer.refresh();
+    }
+  });
+
+  const sortByNameCommand = vscode.commands.registerCommand('stackerftp.sortByName', async () => {
+    const config = vscode.workspace.getConfiguration('stackerftp');
+    await config.update('remoteExplorerSortOrder', 'name', vscode.ConfigurationTarget.Workspace);
+    statusBar.success('Sorted by name');
+    if (remoteExplorer?.refresh) {
+      remoteExplorer.refresh();
+    }
+  });
+
+  const sortBySizeCommand = vscode.commands.registerCommand('stackerftp.sortBySize', async () => {
+    const config = vscode.workspace.getConfiguration('stackerftp');
+    await config.update('remoteExplorerSortOrder', 'size', vscode.ConfigurationTarget.Workspace);
+    statusBar.success('Sorted by size');
+    if (remoteExplorer?.refresh) {
+      remoteExplorer.refresh();
+    }
+  });
+
+  const sortByDateCommand = vscode.commands.registerCommand('stackerftp.sortByDate', async () => {
+    const config = vscode.workspace.getConfiguration('stackerftp');
+    await config.update('remoteExplorerSortOrder', 'date', vscode.ConfigurationTarget.Workspace);
+    statusBar.success('Sorted by date');
+    if (remoteExplorer?.refresh) {
+      remoteExplorer.refresh();
+    }
+  });
+
+  const selectAllFilesCommand = vscode.commands.registerCommand('stackerftp.selectAllFiles', async () => {
+    statusBar.info('Select All: Use Ctrl+A in the file list');
+  });
+
   // ==================== Helper Functions ====================
 
   function getWorkspaceRoot(): string | undefined {
@@ -2409,6 +2452,11 @@ export function registerCommands(
     copyToOtherRemoteCommand,
     compareRemotesCommand,
     syncBetweenRemotesCommand,
-    selectPrimaryConnectionCommand
+    selectPrimaryConnectionCommand,
+    toggleHiddenFilesCommand,
+    sortByNameCommand,
+    sortBySizeCommand,
+    sortByDateCommand,
+    selectAllFilesCommand
   );
 }

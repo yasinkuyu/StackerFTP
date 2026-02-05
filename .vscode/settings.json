@@ -9,5 +9,7 @@
     "out": true,
     "dist": true,
     "node_modules": true
-  }
+  },
+  "stackerftp.remoteExplorerSortOrder": "name",
+  "stackerftp.showHiddenFiles": true
 }
