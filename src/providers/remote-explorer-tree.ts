@@ -382,7 +382,7 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       path.basename(item.entry.path);
     const localPath = path.join(this.workspaceRoot, relativePath);
 
-    await transferManager.downloadFile(this.connection, item.entry.path, localPath);
+    await transferManager.downloadFile(this.connection, item.entry.path, localPath, this.currentConfig);
 
     // Open the file after download
     const doc = await vscode.workspace.openTextDocument(localPath);

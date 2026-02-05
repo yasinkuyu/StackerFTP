@@ -360,7 +360,7 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
         path.basename(remotePath);
       const localPath = path.join(workspaceRoot, relativePath);
 
-      await transferManager.downloadFile(this._connection, remotePath, localPath);
+      await transferManager.downloadFile(this._connection, remotePath, localPath, this._currentConfig);
       this._view?.webview.postMessage({ type: 'downloadComplete', localPath });
     } catch (error: any) {
       this._view?.webview.postMessage({ type: 'error', message: `Download failed: ${error.message}` });
