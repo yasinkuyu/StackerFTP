@@ -131,24 +131,44 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
       return;
     }
 
-    // Check for active connections
-    const configs = configManager.getConfigs(workspaceRoot);
-    for (const config of configs) {
-      if (connectionManager.isConnected(config)) {
+    // Check for primary connection first (most reliable source of truth)
+    const primaryConn = connectionManager.getPrimaryConnection();
+    if (primaryConn && primaryConn.connected) {
+      const config = primaryConn.getConfig();
+      if (config) {
         this._currentConfig = config;
-        this._connection = connectionManager.getConnection(config);
-        if (this._connection) {
-          this._currentPath = config.remotePath;
-          this._view.webview.postMessage({
-            type: 'connected',
-            host: config.host,
-            path: this._currentPath,
-            protocol: config.protocol
-          });
-          await this._handleListDirectory(this._currentPath);
-          return;
-        }
+        this._connection = primaryConn;
+        this._currentPath = config.remotePath;
+
+        this._view.webview.postMessage({
+          type: 'connected',
+          host: config.host,
+          path: this._currentPath,
+          protocol: config.protocol
+        });
+
+        await this._handleListDirectory(this._currentPath);
+        return;
       }
+    }
+
+    // Fallback: Check for any active connections if primary is not set
+    const activeConns = connectionManager.getAllActiveConnections();
+    if (activeConns.length > 0) {
+      const { connection, config } = activeConns[0];
+      this._currentConfig = config;
+      this._connection = connection;
+      this._currentPath = config.remotePath;
+
+      this._view.webview.postMessage({
+        type: 'connected',
+        host: config.host,
+        path: this._currentPath,
+        protocol: config.protocol
+      });
+
+      await this._handleListDirectory(this._currentPath);
+      return;
     }
 
     this._view.webview.postMessage({ type: 'disconnected' });
