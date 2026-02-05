@@ -2,7 +2,7 @@
   "name": "stackerftp",
   "displayName": "StackerFTP - SFTP/FTP/FTPS Client",
   "description": "Advanced SFTP/FTP/FTPS client with native Remote Explorer and Connection Wizard. Streamline your remote workflow with built-in Webmaster tools and bi-directional Sync.",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "publisher": "yasinkuyu",
   "author": "Insya, Yasin Kuyu",
   "license": "MIT",

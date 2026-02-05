@@ -2,6 +2,21 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.0.4] - 2026-02-05
+
+### Fixed
+- **Connection Modal**: Fixed bug where selecting a primary connection caused others to disappear.
+- **Connection Sync**: Fixed issue where sidebar connections list wasn't updating when activating a connection in the modal.
+- **Webview Sync**: Fixed connection status synchronization in the Connections webview.
+- **Remote Terminal**: Fixed logical error in "Open Remote Terminal" to ensure correct connection usage.
+- **Command Visibility**: Ensure SFTP commands are hidden for FTP/FTPS connections.
+- **TransferManager**: Fixed connection reuse bug and potential data corruption issues.
+
+### Added
+- **Transfer Queue Panel**: Implemented FileZilla-style Transfer Queue panel below the tree view.
+- **Tree View Commands**: Added commands to toggle hidden files and sort files in the Remote Explorer.
+- **Status Bar**: Added transfer indicator to status bar.
+
 ## [1.0.3] - 2026-02-05
 
 ### Added
