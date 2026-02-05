@@ -29,7 +29,7 @@ export interface FTPConfig {
   remoteExplorerOrder?: 'name' | 'size' | 'date' | 'type';
   syncMode?: 'update' | 'full';
   ignore?: string[];
-  watcher?: {
+  watcher?: boolean | {
     files: string;
     autoUpload: boolean;
     autoDelete: boolean;

@@ -13,6 +13,7 @@ import { connectionManager } from './connection-manager';
 import { transferManager } from './transfer-manager';
 import { logger } from '../utils/logger';
 import { normalizeRemotePath, matchesPattern } from '../utils/helpers';
+import { wasRecentlyUploaded } from '../extension';
 
 export class FileWatcher implements vscode.Disposable {
   private watchers: Map<string, vscode.FileSystemWatcher> = new Map();
@@ -36,7 +37,11 @@ export class FileWatcher implements vscode.Disposable {
     }
 
     const watcherConfig = this.config.watcher;
-    const pattern = watcherConfig.files || '**/*';
+
+    // Handle boolean watcher config (watcher: true)
+    const pattern = typeof watcherConfig === 'boolean'
+      ? '**/*'
+      : (watcherConfig?.files || '**/*');
     const globPattern = new vscode.RelativePattern(this.workspaceRoot, pattern);
 
     // Create watcher
@@ -88,7 +93,7 @@ export class FileWatcher implements vscode.Disposable {
 
   private handleFileChange(filePath: string, type: 'create' | 'change' | 'delete'): void {
     const relativePath = path.relative(this.workspaceRoot, filePath);
-    
+
     // Check ignore patterns
     if (this.config.ignore && matchesPattern(relativePath, this.config.ignore)) {
       return;
@@ -123,38 +128,56 @@ export class FileWatcher implements vscode.Disposable {
     const relativePath = path.relative(this.workspaceRoot, filePath);
     const remotePath = normalizeRemotePath(path.join(this.config.remotePath, relativePath));
 
-    try {
-      const connection = await connectionManager.ensureConnection(this.config);
+    // Normalize watcher config (handle boolean case)
+    const watcherConfig = typeof this.config.watcher === 'boolean'
+      ? { files: '**/*', autoUpload: true, autoDelete: false }
+      : this.config.watcher;
 
+    try {
       switch (changeType) {
         case 'create':
         case 'change':
-          // Check if autoUpload is enabled in watcher config
-          if (this.config.watcher?.autoUpload === false) {
+          // Check if autoUpload is enabled BEFORE establishing connection
+          if (watcherConfig?.autoUpload === false) {
+            logger.debug(`Auto-upload disabled, skipping: ${relativePath}`);
             return;
           }
-          if (fs.existsSync(filePath)) {
-            const stat = fs.statSync(filePath);
-            if (stat.isDirectory()) {
-              await connection.mkdir(remotePath);
-            } else {
-              // Ensure parent directory exists
-              const remoteDir = normalizeRemotePath(path.dirname(remotePath));
-              try {
-                await connection.mkdir(remoteDir);
-              } catch {
-                // Directory might already exist
-              }
-              await transferManager.uploadFile(connection, filePath, remotePath, this.config);
-              logger.info(`Auto-uploaded: ${relativePath}`);
+
+          // Check if this file was recently uploaded via uploadOnSave
+          // to prevent duplicate uploads
+          if (wasRecentlyUploaded(filePath)) {
+            logger.debug(`Skipping duplicate upload for recently uploaded file: ${relativePath}`);
+            return;
+          }
+
+          if (!fs.existsSync(filePath)) {
+            return;
+          }
+
+          // Now establish connection
+          const uploadConnection = await connectionManager.ensureConnection(this.config);
+          const stat = fs.statSync(filePath);
+          if (stat.isDirectory()) {
+            await uploadConnection.mkdir(remotePath);
+          } else {
+            // Ensure parent directory exists
+            const remoteDir = normalizeRemotePath(path.dirname(remotePath));
+            try {
+              await uploadConnection.mkdir(remoteDir);
+            } catch {
+              // Directory might already exist
             }
+            await transferManager.uploadFile(uploadConnection, filePath, remotePath, this.config);
+            logger.info(`Auto-uploaded: ${relativePath}`);
           }
           break;
 
         case 'delete':
-          if (this.config.watcher?.autoDelete !== false) {
+          if (watcherConfig?.autoDelete !== false) {
+            // Establish connection for delete operation
+            const deleteConnection = await connectionManager.ensureConnection(this.config);
             try {
-              await connection.delete(remotePath);
+              await deleteConnection.delete(remotePath);
               logger.info(`Auto-deleted: ${relativePath}`);
             } catch (error) {
               logger.warn(`Failed to auto-delete ${relativePath}`, error);
@@ -197,7 +220,7 @@ export class FileWatcherManager {
 
   startWatcher(workspaceRoot: string, config: FTPConfig): void {
     const key = `${workspaceRoot}-${config.host}`;
-    
+
     // Stop existing watcher if any
     this.stopWatcher(key);
 

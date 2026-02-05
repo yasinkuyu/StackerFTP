@@ -26,6 +26,37 @@ let remoteDocumentProvider: RemoteDocumentProvider;
 // Session-based auto-upload confirmation state
 let autoUploadConfirmed = false;
 
+// Track recently uploaded files to prevent duplicate uploads
+// when both uploadOnSave and watcher.autoUpload are enabled
+const recentlyUploadedFiles: Map<string, number> = new Map();
+const UPLOAD_TRACKING_DURATION_MS = 2000; // 2 seconds
+
+/**
+ * Mark a file as recently uploaded to prevent duplicate uploads
+ */
+export function markFileAsUploaded(filePath: string): void {
+  recentlyUploadedFiles.set(filePath, Date.now());
+  // Clean up old entries
+  setTimeout(() => {
+    recentlyUploadedFiles.delete(filePath);
+  }, UPLOAD_TRACKING_DURATION_MS);
+}
+
+/**
+ * Check if a file was recently uploaded (within tracking duration)
+ */
+export function wasRecentlyUploaded(filePath: string): boolean {
+  const uploadTime = recentlyUploadedFiles.get(filePath);
+  if (!uploadTime) return false;
+  
+  const elapsed = Date.now() - uploadTime;
+  if (elapsed > UPLOAD_TRACKING_DURATION_MS) {
+    recentlyUploadedFiles.delete(filePath);
+    return false;
+  }
+  return true;
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   logger.info('StackerFTP extension activating...');
 
@@ -300,6 +331,10 @@ async function handleFileSave(document: vscode.TextDocument, workspaceRoot: stri
     }
 
     await transferManager.uploadFile(connection, document.fileName, remotePath, config);
+    
+    // Mark as recently uploaded to prevent duplicate from file watcher
+    markFileAsUploaded(document.fileName);
+    
     vscode.window.setStatusBarMessage(`$(cloud-upload) Uploaded: ${path.basename(document.fileName)}`, 3000);
     logger.info(`Auto-uploaded: ${relativePath}`);
   } catch (error) {
