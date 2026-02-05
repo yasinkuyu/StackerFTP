@@ -131,7 +131,8 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
         }
 
         this.emit('transferComplete', item);
-        this.queue = this.queue.filter(i => i.id !== item.id);
+        // Keep completed items in queue for history
+        // this.queue = this.queue.filter(i => i.id !== item.id);
         this.emit('queueUpdate', this.queue);
       }
     } finally {

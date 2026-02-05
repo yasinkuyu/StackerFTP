@@ -121,7 +121,14 @@ export function registerCommands(
     }
 
     // Show connection selector if multiple configs exist
+    // Changed: Always show list if multiple configs, even if some are connected
     if (configs.length === 1) {
+      const isConnected = connectionManager.isConnected(configs[0]);
+      if (isConnected) {
+        statusBar.info(`Already connected to ${configs[0].name || configs[0].host}`);
+        return;
+      }
+
       try {
         await connectionManager.connect(configs[0]);
         statusBar.success(`Connected to ${configs[0].name || configs[0].host}`);
