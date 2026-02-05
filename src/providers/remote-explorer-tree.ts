@@ -112,6 +112,7 @@ export class RemoteConfigTreeItem extends vscode.TreeItem {
   constructor(
     public readonly config: FTPConfig,
     public readonly connected: boolean,
+    public readonly isPrimary: boolean,
     public readonly connectionRef?: BaseConnection
   ) {
     super(config.name || config.host,
@@ -119,7 +120,14 @@ export class RemoteConfigTreeItem extends vscode.TreeItem {
 
     const port = config.port || (config.protocol === 'sftp' ? 22 : 21);
     this.tooltip = `${config.name || config.host}\nProtocol: ${config.protocol.toUpperCase()}\nHost: ${config.host}:${port}\nUser: ${config.username}\nRemote Path: ${config.remotePath || '/'}`;
-    this.description = connected ? `${config.protocol.toUpperCase()}` : 'disconnected';
+
+    // Add primary status to description
+    let stateDesc = connected ? `${config.protocol.toUpperCase()}` : 'disconnected';
+    if (isPrimary) {
+      stateDesc += ' (Primary)';
+      this.label = `★ ${this.label}`; // Add star to label for visibility
+    }
+    this.description = stateDesc;
 
     // Use server icon with connection status color
     if (connected) {
@@ -164,6 +172,11 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
     // Create status bar item for loading indicator
     this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
     this.statusBarItem.name = 'StackerFTP Loading';
+
+    // Subscribe to connection changes
+    connectionManager.onConnectionChanged(() => {
+      this.refresh();
+    });
   }
 
   private showLoading(message: string): void {
@@ -234,10 +247,15 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
 
       // Show all servers - mark each as connected or disconnected
       logger.info(`Showing ${configs.length} configured server(s)`);
+
+      const primaryConfig = connectionManager.getPrimaryConfig();
+
       return configs.map(config => {
         const connection = connectionManager.getConnection(config);
         const isConnected = connection?.connected ?? false;
-        return new RemoteConfigTreeItem(config, isConnected, connection);
+        const isPrimary = !!(primaryConfig && config.name === primaryConfig.name && config.host === primaryConfig.host);
+
+        return new RemoteConfigTreeItem(config, isConnected, isPrimary, connection);
       });
     }
 

@@ -999,20 +999,77 @@ export function registerCommands(
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) return;
+    // Get active connections
+    const activeConns = connectionManager.getAllActiveConnections();
 
-    if (config.protocol !== 'sftp') {
+    let targetConfig: any;
+
+    if (activeConns.length === 0) {
+      // No active connections - check if we have any configs
+      const configs = configManager.getConfigs(workspaceRoot);
+      if (configs.length === 0) {
+        statusBar.error('No configurations found');
+        return;
+      }
+
+      // Prompt to select a config to connect and open terminal
+      const items = configs.map(c => ({
+        label: c.name || c.host,
+        description: `${c.protocol.toUpperCase()} • ${c.username}@${c.host}`,
+        config: c
+      }));
+
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Select a server to connect and open terminal'
+      });
+
+      if (!selected) return;
+
+      try {
+        await connectionManager.connect(selected.config);
+        targetConfig = selected.config;
+      } catch (error: any) {
+        statusBar.error(`Connection failed: ${error.message}`);
+        return;
+      }
+    } else if (activeConns.length === 1) {
+      // Single active connection
+      targetConfig = activeConns[0].config;
+    } else {
+      // Multiple active connections - prompt to select
+      const primaryConfig = connectionManager.getPrimaryConfig();
+
+      const items = activeConns.map(({ config }) => {
+        const isPrimary = primaryConfig && config.name === primaryConfig.name && config.host === primaryConfig.host;
+        return {
+          label: isPrimary ? `$(star-full) ${config.name || config.host}` : (config.name || config.host),
+          description: `${config.protocol.toUpperCase()} • ${config.username}@${config.host}`,
+          detail: isPrimary ? 'Primary Connection' : '',
+          config
+        };
+      });
+
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Select connection for terminal'
+      });
+
+      if (!selected) return;
+      targetConfig = selected.config;
+    }
+
+    if (!targetConfig) return;
+
+    if (targetConfig.protocol !== 'sftp') {
       statusBar.error('Remote terminal is only available with SFTP protocol');
       return;
     }
 
     const terminal = vscode.window.createTerminal({
-      name: `SFTP: ${config.host}`,
+      name: `SFTP: ${targetConfig.name || targetConfig.host}`,
       shellPath: 'ssh',
       shellArgs: [
-        '-p', String(config.port || 22),
-        `${config.username}@${config.host}`
+        '-p', String(targetConfig.port || 22),
+        `${targetConfig.username}@${targetConfig.host}`
       ]
     });
 
@@ -2337,75 +2394,97 @@ export function registerCommands(
   // ==================== Select Primary Connection Command ====================
 
   const selectPrimaryConnectionCommand = vscode.commands.registerCommand('stackerftp.selectPrimaryConnection', async () => {
-    const activeConns = connectionManager.getAllActiveConnections();
+    const workspaceRoot = getWorkspaceRoot();
+    if (!workspaceRoot) return;
 
-    if (activeConns.length === 0) {
-      // No active connections - offer to connect
-      const workspaceRoot = getWorkspaceRoot();
-      if (!workspaceRoot) return;
-
-      const configs = configManager.getConfigs(workspaceRoot);
-      if (configs.length === 0) {
-        statusBar.success('No connections configured. Use "StackerFTP: New Connection" to add one.');
-        return;
-      }
-
-      const items = configs.map(c => ({
-        label: c.name || c.host,
-        description: `${c.protocol?.toUpperCase()} • ${c.username}@${c.host}`,
-        config: c
-      }));
-
-      const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: 'No active connections. Select one to connect.',
-        title: 'Connect to Server'
-      });
-
-      if (selected) {
-        try {
-          await connectionManager.connect(selected.config);
-          // Connected message shown by connection-manager
-        } catch (error: any) {
-          statusBar.error(`Connection failed: ${error.message}`, true);
-        }
-      }
+    const configs = configManager.getConfigs(workspaceRoot);
+    if (configs.length === 0) {
+      statusBar.success('No connections configured. Use "StackerFTP: New Connection" to add one.');
       return;
     }
 
-    // Active connections exist
+    const activeConns = connectionManager.getAllActiveConnections();
     const primaryConfig = connectionManager.getPrimaryConfig();
 
-    const items = activeConns.map(({ config }) => ({
-      label: (primaryConfig && config.name === primaryConfig.name && config.host === primaryConfig.host)
-        ? `$(star-full) ${config.name || config.host}`
-        : `$(star-empty) ${config.name || config.host}`,
-      description: `${config.protocol?.toUpperCase()} • ${config.username}@${config.host}`,
-      detail: (primaryConfig && config.name === primaryConfig.name && config.host === primaryConfig.host)
-        ? 'Current primary connection'
-        : 'Click to set as primary',
-      config
-    }));
+    const items = configs.map(config => {
+      const isConnected = connectionManager.isConnected(config);
+      const isPrimary = primaryConfig && config.name === primaryConfig.name && config.host === primaryConfig.host;
 
-    // Add disconnect all option
-    items.push({
-      label: '$(close-all) Disconnect All',
-      description: `Disconnect from all ${activeConns.length} servers`,
-      detail: '',
-      config: null as any
+      let icon = '$(primitive-square)'; // Default disconnected
+      if (isPrimary) icon = '$(star-full)';
+      else if (isConnected) icon = '$(star-empty)';
+
+      let description = `${config.protocol?.toUpperCase()} • ${config.username}@${config.host}`;
+      let detail = 'Disconnected - Click to connect';
+
+      if (isPrimary) detail = 'Primary Connection - Click to manage';
+      else if (isConnected) detail = 'Connected - Click to set as Primary';
+
+      return {
+        label: `${icon} ${config.name || config.host}`,
+        description,
+        detail,
+        config,
+        isPrimary,
+        isConnected
+      };
     });
+
+    // Add connect all / disconnect all options if relevant
+    if (activeConns.length > 0) {
+      items.push({
+        label: '$(close-all) Disconnect All',
+        description: `Disconnect from all ${activeConns.length} servers`,
+        detail: '',
+        config: null as any,
+        isPrimary: false,
+        isConnected: false
+      });
+    }
 
     const selected = await vscode.window.showQuickPick(items, {
-      placeHolder: 'Select primary connection for uploads/downloads',
-      title: `Active Connections (${activeConns.length})`
+      placeHolder: 'Manage Connections (Select to connect or set as primary)',
+      title: `Connections (${activeConns.length} active)`
     });
 
-    if (selected) {
-      if (!selected.config) {
-        // Disconnect all
-        await connectionManager.disconnect();
-        statusBar.success('Disconnected from all servers');
-      } else {
-        connectionManager.setPrimaryConnection(selected.config);
+    if (!selected) return;
+
+    if (!selected.config) {
+      // Disconnect all
+      await connectionManager.disconnect();
+      statusBar.success('Disconnected from all servers');
+      vscode.commands.executeCommand('stackerftp.tree.refresh');
+      return;
+    }
+
+    if (selected.isPrimary) {
+      // Already primary - maybe verify or disconnect?
+      // For now, let's offer to disconnect this specific one
+      const action = await vscode.window.showQuickPick(
+        ['Disconnect', 'Keep as Primary'],
+        { placeHolder: `Action for ${selected.config.name || selected.config.host}` }
+      );
+
+      if (action === 'Disconnect') {
+        await connectionManager.disconnect(selected.config);
+        vscode.commands.executeCommand('stackerftp.tree.refresh');
+      }
+    } else if (selected.isConnected) {
+      // Connected but not primary - set as primary
+      connectionManager.setPrimaryConnection(selected.config);
+      statusBar.success(`Primary connection set to: ${selected.config.name || selected.config.host}`);
+      vscode.commands.executeCommand('stackerftp.tree.refresh');
+    } else {
+      // Disconnected - connect and set as primary (if it's the first connection, connectionManager does this automatically)
+      try {
+        await connectionManager.connect(selected.config);
+        // If there are other connections, we might want to enforce this as primary explicitly
+        if (activeConns.length > 0) {
+          connectionManager.setPrimaryConnection(selected.config);
+        }
+        vscode.commands.executeCommand('stackerftp.tree.refresh');
+      } catch (error: any) {
+        statusBar.error(`Connection failed: ${error.message}`, true);
       }
     }
   });

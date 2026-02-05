@@ -17,6 +17,9 @@ export class ConnectionManager {
   private activeConnectionKey: string | undefined;
   private primaryConnectionKey: string | undefined;
 
+  private _onConnectionChanged: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
+  public readonly onConnectionChanged: vscode.Event<void> = this._onConnectionChanged.event;
+
   private constructor() {
     this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
     this.statusBarItem.command = 'stackerftp.selectPrimaryConnection';
@@ -84,7 +87,7 @@ export class ConnectionManager {
 
   private updateStatusBar(): void {
     const activeConns = this.getAllActiveConnections();
-    
+
     if (activeConns.length === 0) {
       this.statusBarItem.text = `$(cloud) StackerFTP`;
       this.statusBarItem.tooltip = 'Click to select connection';
@@ -105,7 +108,7 @@ export class ConnectionManager {
     const primaryConn = this.getPrimaryConnection();
     const primaryConfig = primaryConn?.getConfig();
     const primaryName = primaryConfig?.name || primaryConfig?.host || 'None';
-    
+
     this.statusBarItem.text = `$(cloud-upload) ${primaryName} (+${activeConns.length - 1})`;
     this.statusBarItem.tooltip = `Primary: ${primaryName}\n${activeConns.length} connections active\nClick to change primary`;
     this.statusBarItem.show();
@@ -114,7 +117,7 @@ export class ConnectionManager {
   // Select target connection for upload/download when multiple are active
   async selectConnectionForTransfer(operation: 'upload' | 'download'): Promise<{ connection: BaseConnection; config: FTPConfig } | undefined> {
     const activeConns = this.getAllActiveConnections();
-    
+
     if (activeConns.length === 0) {
       statusBar.warn('No active connections. Please connect first.');
       return undefined;
@@ -134,7 +137,7 @@ export class ConnectionManager {
     // Add "Primary" indicator
     const primaryConfig = this.getPrimaryConfig();
     if (primaryConfig) {
-      const primaryItem = items.find(i => 
+      const primaryItem = items.find(i =>
         i.config.name === primaryConfig.name && i.config.host === primaryConfig.host
       );
       if (primaryItem) {
@@ -149,7 +152,7 @@ export class ConnectionManager {
 
     if (!selected) return undefined;
 
-    const conn = activeConns.find(c => 
+    const conn = activeConns.find(c =>
       c.config.name === selected.config.name && c.config.host === selected.config.host
     );
     return conn;
@@ -175,11 +178,11 @@ export class ConnectionManager {
         password: true,
         ignoreFocusOut: true
       });
-      
+
       if (password === undefined) {
         throw new Error('Connection cancelled - no password provided');
       }
-      
+
       workingConfig.password = password;
     }
 

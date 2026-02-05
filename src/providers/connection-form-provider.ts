@@ -18,7 +18,11 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
   private _editingConfig?: FTPConfig;
   private _editingIndex?: number;
 
-  constructor(private readonly _extensionUri: vscode.Uri) { }
+  constructor(private readonly _extensionUri: vscode.Uri) {
+    connectionManager.onConnectionChanged(() => {
+      this.refresh();
+    });
+  }
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,

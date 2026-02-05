@@ -28,7 +28,11 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
   private _sortBy: 'name' | 'size' | 'date' = 'name';
   private _sortAscending: boolean = true;
 
-  constructor(private readonly _extensionUri: vscode.Uri) { }
+  constructor(private readonly _extensionUri: vscode.Uri) {
+    connectionManager.onConnectionChanged(() => {
+      this.refresh();
+    });
+  }
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
