@@ -25,7 +25,8 @@ let connectionFormProvider: ConnectionFormProvider;
 let remoteDocumentProvider: RemoteDocumentProvider;
 
 // Session-based auto-upload confirmation state
-let autoUploadConfirmed = false;
+// Session-based auto-upload confirmation state (per host)
+const autoUploadConfirmedHosts: Set<string> = new Set();
 
 // Track recently uploaded files to prevent duplicate uploads
 // when both uploadOnSave and watcher.autoUpload are enabled
@@ -303,8 +304,10 @@ async function handleFileSave(document: vscode.TextDocument, workspaceRoot: stri
     return;
   }
 
-  // Ask for confirmation once per session
-  if (!autoUploadConfirmed) {
+  const connectionKey = `${config.username}@${config.host}`;
+
+  // Ask for confirmation once per session (per host)
+  if (!autoUploadConfirmedHosts.has(connectionKey)) {
     const choice = await vscode.window.showInformationMessage(
       `Auto-upload is enabled. Upload "${path.basename(document.fileName)}" to ${config.name || config.host}?`,
       { modal: false },
@@ -318,12 +321,16 @@ async function handleFileSave(document: vscode.TextDocument, workspaceRoot: stri
     }
 
     if (choice === 'Yes, always in this session') {
-      autoUploadConfirmed = true;
+      autoUploadConfirmedHosts.add(connectionKey);
     }
   }
 
   try {
-    const connection = connectionManager.getConnection(config)!;
+    const connection = connectionManager.getConnection(config);
+    if (!connection) {
+      logger.warn(`Connection lost during save for ${config.host}`);
+      return;
+    }
     const remotePath = path.join(config.remotePath, relativePath).replace(/\\/g, '/');
 
     const remoteDir = path.dirname(remotePath);

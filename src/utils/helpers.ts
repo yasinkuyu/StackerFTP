@@ -30,7 +30,7 @@ export function formatDuration(ms: number): string {
 
 export function parsePermissions(mode: number): FilePermissions {
   const toBool = (val: number) => (val & mode) !== 0;
-  
+
   return {
     mode,
     user: {
@@ -55,32 +55,32 @@ export function formatPermissions(perm: FilePermissions | number): string {
   const mode = typeof perm === 'number' ? perm : perm.mode;
   const chars = ['r', 'w', 'x'];
   let result = '';
-  
+
   for (let i = 8; i >= 0; i--) {
     const bit = (mode >> i) & 1;
     const charIndex = 2 - (i % 3);
     result += bit ? chars[charIndex] : '-';
     if (i % 3 === 0 && i > 0) result += '';
   }
-  
+
   return result;
 }
 
 export function parsePermissionString(permString: string): number {
   let mode = 0;
   const parts = permString.match(/[rwx-]{3}/g) || [];
-  
+
   const permMap: { [key: string]: number } = {
     'r': 4, 'w': 2, 'x': 1, '-': 0
   };
-  
+
   parts.forEach((part, index) => {
     const shift = (2 - index) * 3;
     for (const char of part) {
       mode |= (permMap[char] || 0) << shift;
     }
   });
-  
+
   return mode;
 }
 
@@ -89,7 +89,7 @@ export function calculateChecksum(filePath: string, algorithm: string = 'md5'): 
     try {
       const hash = crypto.createHash(algorithm);
       const stream = fs.createReadStream(filePath);
-      
+
       stream.on('error', reject);
       stream.on('data', (chunk) => {
         try {
@@ -143,22 +143,25 @@ export function joinRemotePath(...parts: string[]): string {
 export function getRelativePath(from: string, to: string): string {
   const fromParts = normalizeRemotePath(from).split('/').filter(Boolean);
   const toParts = normalizeRemotePath(to).split('/').filter(Boolean);
-  
+
   let commonIndex = 0;
-  while (commonIndex < fromParts.length && 
-         commonIndex < toParts.length && 
-         fromParts[commonIndex] === toParts[commonIndex]) {
+  while (commonIndex < fromParts.length &&
+    commonIndex < toParts.length &&
+    fromParts[commonIndex] === toParts[commonIndex]) {
     commonIndex++;
   }
-  
+
   const upCount = fromParts.length - commonIndex;
   const result = [...Array(upCount).fill('..'), ...toParts.slice(commonIndex)];
-  
+
   return result.join('/') || '.';
 }
 
 export function matchesPattern(filePath: string, patterns: string[]): boolean {
-  for (const pattern of patterns) {
+  // Ensure patterns is an array to prevent iteration errors on strings/objects
+  const patternList = Array.isArray(patterns) ? patterns : [patterns].filter(p => typeof p === 'string');
+
+  for (const pattern of patternList) {
     const regex = new RegExp(
       '^' + pattern
         .replace(/\./g, '\\.')
@@ -174,7 +177,7 @@ export function matchesPattern(filePath: string, patterns: string[]): boolean {
 
 export function getFileIcon(fileName: string, isDirectory: boolean): string {
   if (isDirectory) return '$(folder)';
-  
+
   const ext = path.extname(fileName).toLowerCase();
   const iconMap: { [key: string]: string } = {
     '.js': '$(file-code)',
@@ -225,7 +228,7 @@ export function getFileIcon(fileName: string, isDirectory: boolean): string {
     '.vue': '$(file-code)',
     '.svelte': '$(file-code)'
   };
-  
+
   return iconMap[ext] || '$(file)';
 }
 
