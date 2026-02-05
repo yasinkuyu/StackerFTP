@@ -69,7 +69,9 @@ export class RemoteTreeItem extends vscode.TreeItem {
       this.iconPath = undefined; // Let VS Code decide based on resourceUri
     }
 
-    this.contextValue = entry.type;
+    // Prefix contextValue with protocol for filtering in package.json
+    // e.g., 'sftp-file', 'ftp-directory', 'ftps-symlink'
+    this.contextValue = `${config.protocol}-${entry.type}`;
 
     // Allow opening files and symlinks (symlinks to files)
     if (entry.type === 'file' || (entry.type === 'symlink' && !entry.isSymlinkToDirectory)) {
@@ -127,7 +129,8 @@ export class RemoteConfigTreeItem extends vscode.TreeItem {
     }
 
     // Use 'connected' contextValue so inline buttons work (new file, new folder)
-    this.contextValue = connected ? 'connected' : 'disconnected';
+    // Prefix with protocol for context-specific commands
+    this.contextValue = connected ? `${config.protocol}-connected` : 'disconnected';
 
     // Allow clicking to connect if disconnected
     if (!connected) {

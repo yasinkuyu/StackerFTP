@@ -2,7 +2,7 @@
   "name": "stackerftp",
   "displayName": "StackerFTP - SFTP/FTP/FTPS Client",
   "description": "Advanced SFTP/FTP/FTPS client with native Remote Explorer and Connection Wizard. Streamline your remote workflow with built-in Webmaster tools and bi-directional Sync.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "yasinkuyu",
   "author": "Insya, Yasin Kuyu",
   "license": "MIT",
@@ -812,42 +812,42 @@
       "view/item/context": [
         {
           "command": "stackerftp.newFile",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem == connected",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /connected$/",
           "group": "inline@1"
         },
         {
           "command": "stackerftp.newFolder",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem == connected",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /connected$/",
           "group": "inline@2"
         },
         {
           "command": "stackerftp.tree.refresh",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem == connected",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /connected$/",
           "group": "inline@3"
         },
         {
           "command": "stackerftp.newFile",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem == directory",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /(connected|directory)$/",
           "group": "inline@1"
         },
         {
           "command": "stackerftp.newFolder",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem == directory",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /directory$/",
           "group": "inline@2"
         },
         {
           "command": "stackerftp.tree.openFile",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem == file",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /file$/",
           "group": "1_open@1"
         },
         {
           "command": "stackerftp.viewContent",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem == file",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /file$/",
           "group": "1_open@2"
         },
         {
           "command": "stackerftp.editInLocal",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem == file",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /file$/",
           "group": "1_open@3"
         },
         {
@@ -857,52 +857,52 @@
         },
         {
           "command": "stackerftp.upload",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem == directory",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /directory$/",
           "group": "2_transfer@2"
         },
         {
           "command": "stackerftp.diff",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem == file",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /file$/",
           "group": "3_compare@1"
         },
         {
           "command": "stackerftp.rename",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem != connected",
+          "when": "view == stackerftp.remoteExplorerTree && !(viewItem =~ /connected$/)",
           "group": "5_modify@1"
         },
         {
           "command": "stackerftp.duplicate",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem == file",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /file$/",
           "group": "5_modify@2"
         },
         {
           "command": "stackerftp.webmaster.chmod",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem != connected",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /^sftp-file$/",
           "group": "5_modify@3"
         },
         {
           "command": "stackerftp.webmaster.fileInfo",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem != connected",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /^sftp-file$/",
           "group": "5_modify@4"
         },
         {
           "command": "stackerftp.webmaster.checksum",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem == file",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /^sftp-(file|directory)$/",
           "group": "5_modify@5"
         },
         {
           "command": "stackerftp.webmaster.backup",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem != connected",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /^sftp-(file|directory)$/",
           "group": "5_modify@6"
         },
         {
           "command": "stackerftp.tree.delete",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem != connected",
+          "when": "view == stackerftp.remoteExplorerTree && !(viewItem =~ /connected$/)",
           "group": "6_danger@1"
         },
         {
           "command": "stackerftp.revealInExplorer",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem == file",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /file$/",
           "group": "7_navigation@1"
         },
         {
@@ -912,22 +912,22 @@
         },
         {
           "command": "stackerftp.newFile",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem == connected",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /connected$/",
           "group": "1_files@1"
         },
         {
           "command": "stackerftp.newFolder",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem == connected",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /connected$/",
           "group": "1_files@2"
         },
         {
           "command": "stackerftp.newFile",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem == directory",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /directory$/",
           "group": "1_files@1"
         },
         {
           "command": "stackerftp.newFolder",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem == directory",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /directory$/",
           "group": "1_files@2"
         },
         {
@@ -942,12 +942,12 @@
         },
         {
           "command": "stackerftp.disconnect",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem == connected",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /connected$/",
           "group": "inline"
         },
         {
           "command": "stackerftp.disconnect",
-          "when": "view == stackerftp.remoteExplorerTree && viewItem == connected",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /connected$/",
           "group": "1_connection"
         }
       ],

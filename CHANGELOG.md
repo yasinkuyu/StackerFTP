@@ -2,6 +2,16 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.0.1] - 2026-02-05
+
+### Fixed
+- Fixed TransferManager connection reuse bug
+- Improved Remote Explorer tree view commands
+
+### Added
+- Added "Edit Local" button (Remote file editing with auto-save)
+- Updated toolbar icons
+
 ## [1.0.0] - 2025-02-01
 
 ### Added
@@ -41,35 +51,4 @@ All notable changes to the "StackerFTP" extension will be documented in this fil
 - Hidden files support
 - File type icons
 - Status bar integration
-
-## Future Roadmap
-
-### Planned for v1.1.0
-- [ ] SFTP private key agent support
-- [ ] Transfer speed limiting
-- [ ] Bandwidth usage monitoring
-- [ ] Scheduled sync tasks
-- [ ] File filtering by date/size
-- [ ] Remote file editing with auto-save
-- [ ] Multi-root workspace support
-- [ ] SFTP keyboard-interactive authentication
-
-### Planned for v1.2.0
-- [ ] FTP/SFTP proxy support
-- [ ] SOCKS proxy support
-- [ ] Transfer compression
-- [ ] Resume interrupted transfers
-- [ ] Transfer history
-- [ ] Remote file preview
-- [ ] Drag and drop between panels
-- [ ] Quick diff in status bar
-
-### Planned for v2.0.0
-- [ ] WebDAV support
-- [ ] AWS S3 support
-- [ ] Google Cloud Storage support
-- [ ] Azure Blob Storage support
-- [ ] Git-like version control for remote files
-- [ ] Team collaboration features
-- [ ] Deployment pipelines
-- [ ] CI/CD integration
+ 

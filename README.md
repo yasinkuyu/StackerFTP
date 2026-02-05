@@ -2,7 +2,7 @@
 
 A professional-grade FTP/SFTP client extension for Visual Studio Code and all its forks (Cursor, Antigravity, etc.) with comprehensive file management capabilities.
 
-![StackerFTP](resources/icon.png)
+![StackerFTP](https://github.com/yasinkuyu/StackerFTP/raw/main/resources/icon.png)
 
 ## Features
 
@@ -15,7 +15,7 @@ A professional-grade FTP/SFTP client extension for Visual Studio Code and all it
 - **Download on Open**: Automatically download files when opened from remote
 - **Connection Profiles**: Switch between multiple server configurations
 - **Multi-Connection Support**: Connect to multiple servers simultaneously
-- **Connection Hopping**: Connect through intermediate servers (jump hosts)
+- [ ] **Connection Hopping**: Connect through intermediate servers (Coming Soon)
 - **File Watcher**: Monitor local files for changes and auto-upload
 
 ### 📁 File Management
@@ -32,7 +32,7 @@ A professional-grade FTP/SFTP client extension for Visual Studio Code and all it
 - **Sync to All Profiles**: Upload to multiple server profiles at once
 - **Upload Changed Files**: Upload only files changed in git
 
-### 🛠️ Web Master Tools
+### 🛠️ Web Master Tools (SFTP Only)
 - **Permission Management**: Change file permissions (chmod)
 - **Checksum Verification**: Calculate and compare MD5, SHA1, SHA256 checksums
 - **File Information**: Detailed file metadata display
@@ -191,21 +191,9 @@ Search for "StackerFTP" in the Extensions marketplace
 }
 ```
 
-### Connection Hopping (Jump Host)
+
 ```json
-{
-  "name": "Behind Firewall",
-  "host": "internal-server.local",
-  "protocol": "sftp",
-  "username": "user",
-  "privateKeyPath": "~/.ssh/id_rsa",
-  "remotePath": "/home/user",
-  "hop": {
-    "host": "jump-host.example.com",
-    "username": "jump-user",
-    "privateKeyPath": "~/.ssh/id_rsa"
-  }
-}
+
 ```
 
 ### File Watcher Configuration
@@ -401,7 +389,6 @@ StackerFTP is inspired by the excellent [vscode-sftp](https://github.com/Natizys
 ## Support
 
 - GitHub Issues: [github.com/yasinkuyu/stackerftp/issues](https://github.com/yasinkuyu/stackerftp/issues)
-- Email: support@stackerftp.com
 
 ---
 
