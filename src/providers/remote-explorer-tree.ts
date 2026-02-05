@@ -224,28 +224,21 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
     logger.info(`getChildren called, element: ${element ? (element instanceof RemoteConfigTreeItem ? 'RemoteConfigTreeItem' : 'RemoteTreeItem') : 'root'}`);
 
     if (!element) {
-      // Root level - show all active connections as root nodes
-      const activeConnections = connectionManager.getAllActiveConnections();
-      logger.info(`getChildren root - activeConnections: ${activeConnections.length}`);
+      // Root level - show ALL configured servers with their connection status
+      const configs = configManager.getConfigs(this.workspaceRoot);
 
-      if (activeConnections.length === 0) {
-        // No active connections - show configured servers as disconnected items
-        // This allows users to click and connect directly from the tree view
-        const configs = configManager.getConfigs(this.workspaceRoot);
-        if (configs.length > 0) {
-          logger.info(`No active connections, showing ${configs.length} configured server(s)`);
-          return configs.map(config => new RemoteConfigTreeItem(config, false));
-        }
-        logger.info('No active connections and no configs, returning empty');
+      if (configs.length === 0) {
+        logger.info('No configs found, returning empty');
         return [];
       }
 
-      // Always show connections as root nodes (even with single connection)
-      // This allows inline buttons (new file, new folder, expand/collapse) to work
-      logger.info(`Showing ${activeConnections.length} connection(s) as root nodes`);
-      return activeConnections.map(({ config, connection }) =>
-        new RemoteConfigTreeItem(config, true, connection)
-      );
+      // Show all servers - mark each as connected or disconnected
+      logger.info(`Showing ${configs.length} configured server(s)`);
+      return configs.map(config => {
+        const connection = connectionManager.getConnection(config);
+        const isConnected = connection?.connected ?? false;
+        return new RemoteConfigTreeItem(config, isConnected, connection);
+      });
     }
 
     // Handle RemoteConfigTreeItem (connection node)
@@ -420,6 +413,7 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
 
     const fileName = item.entry.name || path.basename(item.entry.path);
     const remotePath = item.entry.path;
+    const fileSize = item.entry.size || 0;
 
     // Check for system files
     if (this.isSystemFile(remotePath)) {
@@ -427,9 +421,32 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       return;
     }
 
+    // Check if file is too large for preview (5MB limit)
+    const MAX_PREVIEW_SIZE = 5 * 1024 * 1024;
+    if (fileSize > MAX_PREVIEW_SIZE) {
+      const sizeStr = (fileSize / (1024 * 1024)).toFixed(2);
+      const choice = await vscode.window.showWarningMessage(
+        `"${fileName}" is ${sizeStr} MB. Large files may cause performance issues.`,
+        'Download Instead', 'Open Anyway', 'Cancel'
+      );
+
+      if (choice === 'Download Instead') {
+        await this.downloadFile(item);
+        return;
+      } else if (choice !== 'Open Anyway') {
+        return;
+      }
+    }
+
     // Check if binary file - these need to be downloaded
     if (RemoteDocumentProvider.isBinaryFile(remotePath)) {
       await this.openBinaryFile(item, conn, config, fileName);
+      return;
+    }
+
+    // Check for symlinks to special files
+    if (item.entry.type === 'symlink' && !item.entry.target) {
+      statusBar.warn(`Broken symlink: ${fileName}`);
       return;
     }
 
@@ -446,10 +463,27 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
     } catch (error: any) {
       logger.error('Failed to open file', error);
 
-      if (error.message?.includes('550')) {
-        statusBar.error(`Cannot open "${fileName}": Special file type`, true);
+      // More specific error handling
+      const errMsg = error.message || '';
+      if (errMsg.includes('550') || errMsg.includes('No such file')) {
+        statusBar.error(`File not found or access denied: ${fileName}`, true);
+      } else if (errMsg.includes('ENOENT')) {
+        statusBar.error(`File does not exist: ${fileName}`, true);
+      } else if (errMsg.includes('EPERM') || errMsg.includes('permission')) {
+        statusBar.error(`Permission denied: ${fileName}`, true);
+      } else if (errMsg.includes('ETIMEDOUT') || errMsg.includes('timeout')) {
+        statusBar.error(`Connection timeout reading: ${fileName}`, true);
+      } else if (errMsg.includes('binary') || errMsg.includes('null')) {
+        // File might be binary but wasn't detected
+        const choice = await vscode.window.showWarningMessage(
+          `"${fileName}" appears to contain binary data and cannot be displayed as text.`,
+          'Download Instead', 'Cancel'
+        );
+        if (choice === 'Download Instead') {
+          await this.downloadFile(item);
+        }
       } else {
-        statusBar.error(`Failed to open: ${error.message}`, true);
+        statusBar.error(`Failed to open: ${errMsg}`, true);
       }
     }
   }

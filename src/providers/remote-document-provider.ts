@@ -13,15 +13,32 @@ import { statusBar } from '../utils/status-bar';
 
 // Binary file extensions that should not be opened as text
 const BINARY_EXTENSIONS = new Set([
-  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp', '.svg',
-  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-  '.zip', '.tar', '.gz', '.rar', '.7z', '.bz2',
-  '.exe', '.dll', '.so', '.dylib',
-  '.mp3', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm',
+  // Images
+  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp', '.svg', '.tiff', '.tif', '.raw', '.cr2', '.nef', '.heic', '.heif',
+  // Documents
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.odt', '.ods', '.odp',
+  // Archives
+  '.zip', '.tar', '.gz', '.rar', '.7z', '.bz2', '.xz', '.lz', '.lzma', '.cab', '.iso', '.dmg', '.pkg', '.deb', '.rpm',
+  // Executables & Libraries
+  '.exe', '.dll', '.so', '.dylib', '.a', '.lib', '.o', '.obj', '.class', '.pyc', '.pyo', '.wasm',
+  // Media
+  '.mp3', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', '.m4a', '.m4v', '.ogg', '.ogv', '.wav', '.flac', '.aac',
+  // Fonts
   '.ttf', '.otf', '.woff', '.woff2', '.eot',
-  '.psd', '.ai', '.sketch',
-  '.db', '.sqlite', '.mdb'
+  // Graphics/Design
+  '.psd', '.ai', '.sketch', '.fig', '.xd', '.eps', '.indd',
+  // Databases
+  '.db', '.sqlite', '.sqlite3', '.mdb', '.accdb', '.dbf',
+  // Binary Data
+  '.bin', '.dat', '.data', '.dump', '.img', '.rom', '.sav',
+  // Certificates & Keys
+  '.cer', '.crt', '.der', '.p12', '.pfx', '.pem', '.key',
+  // Other
+  '.swf', '.fla', '.blend', '.fbx', '.max', '.maya', '.unity', '.unitypackage'
 ]);
+
+// Maximum file size for preview (5MB) - larger files should be downloaded
+const MAX_PREVIEW_SIZE = 5 * 1024 * 1024;
 
 // System files/folders that should be skipped
 const SYSTEM_PATTERNS = [
@@ -39,7 +56,7 @@ export class RemoteDocumentProvider implements vscode.TextDocumentContentProvide
   readonly onDidChange = this._onDidChange.event;
 
   private _cache = new Map<string, string>();
-  
+
   // Store config info in URI query for multi-connection support
   private static _configMap = new Map<string, any>();
 
@@ -62,7 +79,7 @@ export class RemoteDocumentProvider implements vscode.TextDocumentContentProvide
 
   async provideTextDocumentContent(uri: vscode.Uri): Promise<string> {
     const cacheKey = uri.toString();
-    
+
     // Return cached content if available
     if (this._cache.has(cacheKey)) {
       return this._cache.get(cacheKey)!;
@@ -83,7 +100,7 @@ export class RemoteDocumentProvider implements vscode.TextDocumentContentProvide
     try {
       // Try to get config from the map first (for multi-connection support)
       let config = RemoteDocumentProvider.getConfigForPath(remotePath);
-      
+
       if (!config) {
         const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         if (!workspaceRoot) {
@@ -97,10 +114,36 @@ export class RemoteDocumentProvider implements vscode.TextDocumentContentProvide
       }
 
       const connection = await connectionManager.ensureConnection(config);
-      
+
       // Read file content from remote
       const content = await connection.readFile(remotePath);
+
+      // Check if content is null or undefined
+      if (!content) {
+        return `// Empty or unreadable file: ${path.basename(remotePath)}\n// This file may be a special type (socket, device, pipe) that cannot be read.`;
+      }
+
+      // Check for binary content by looking for null bytes in first 8KB
+      // This catches binary files that weren't detected by extension
+      const checkBuffer = content.slice(0, 8192);
+      let nullCount = 0;
+      for (let i = 0; i < checkBuffer.length; i++) {
+        if (checkBuffer[i] === 0) {
+          nullCount++;
+          // If more than 1% null bytes, it's likely binary
+          if (nullCount > checkBuffer.length * 0.01) {
+            return `// Binary file detected: ${path.basename(remotePath)}\n// This file contains binary data and cannot be displayed as text.\n// Use "Download" to save this file locally.`;
+          }
+        }
+      }
+
       const textContent = content.toString('utf8');
+
+      // Additional check: if the text has too many replacement characters, it's probably binary
+      const replacementCharCount = (textContent.match(/\uFFFD/g) || []).length;
+      if (replacementCharCount > textContent.length * 0.05) {
+        return `// Binary file detected: ${path.basename(remotePath)}\n// This file appears to contain binary data that cannot be displayed as text.\n// Use "Download" to save this file locally.`;
+      }
 
       // Cache the content
       this._cache.set(cacheKey, textContent);
@@ -108,13 +151,22 @@ export class RemoteDocumentProvider implements vscode.TextDocumentContentProvide
       return textContent;
     } catch (error: any) {
       logger.error('Failed to read remote file', error);
-      
+
       // Provide more helpful error messages
-      if (error.message?.includes('550')) {
+      const errMsg = error.message || '';
+      if (errMsg.includes('550') || errMsg.includes('No such file')) {
+        return `// Cannot read file: ${path.basename(remotePath)}\n// File not found or access denied.`;
+      } else if (errMsg.includes('ENOENT')) {
+        return `// File does not exist: ${path.basename(remotePath)}`;
+      } else if (errMsg.includes('EPERM') || errMsg.includes('permission')) {
+        return `// Permission denied: ${path.basename(remotePath)}`;
+      } else if (errMsg.includes('ETIMEDOUT') || errMsg.includes('timeout')) {
+        return `// Connection timeout while reading: ${path.basename(remotePath)}`;
+      } else if (errMsg.includes('special file') || errMsg.includes('socket') || errMsg.includes('symlink')) {
         return `// Cannot read file: ${path.basename(remotePath)}\n// This may be a special file type (symlink, socket, etc.) that cannot be read directly.`;
       }
-      
-      return `// Error reading file: ${error.message}`;
+
+      return `// Error reading file: ${errMsg}`;
     }
   }
 
@@ -134,10 +186,10 @@ export class RemoteDocumentProvider implements vscode.TextDocumentContentProvide
 
 export async function openRemoteFile(remotePath: string): Promise<void> {
   const uri = RemoteDocumentProvider.createUri(remotePath);
-  
+
   try {
     const doc = await vscode.workspace.openTextDocument(uri);
-    await vscode.window.showTextDocument(doc, { 
+    await vscode.window.showTextDocument(doc, {
       preview: true,
       viewColumn: vscode.ViewColumn.Active
     });

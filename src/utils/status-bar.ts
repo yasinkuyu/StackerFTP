@@ -17,11 +17,13 @@ interface QueuedMessage {
 class StatusBarNotifier {
   private static instance: StatusBarNotifier;
   private statusBarItem: vscode.StatusBarItem;
+  private transferStatusBarItem: vscode.StatusBarItem;
   private messageQueue: QueuedMessage[] = [];
   private isProcessing = false;
   private defaultText = '';
   private currentTimeout: NodeJS.Timeout | undefined;
   private progressItems: Map<string, vscode.StatusBarItem> = new Map();
+  private activeTransferCount = 0;
 
   private constructor() {
     this.statusBarItem = vscode.window.createStatusBarItem(
@@ -30,6 +32,14 @@ class StatusBarNotifier {
     );
     this.statusBarItem.name = 'StackerFTP Notifications';
     this.statusBarItem.command = 'stackerftp.showOutput';
+
+    // Transfer queue status bar item
+    this.transferStatusBarItem = vscode.window.createStatusBarItem(
+      vscode.StatusBarAlignment.Left,
+      98
+    );
+    this.transferStatusBarItem.name = 'StackerFTP Transfers';
+    this.transferStatusBarItem.command = 'stackerftp.showTransferQueue';
   }
 
   static getInstance(): StatusBarNotifier {
@@ -242,11 +252,41 @@ class StatusBarNotifier {
     logger.info(`[${operation.toUpperCase()}] ${fileName}`);
   }
 
+  /**
+   * Update transfer count in status bar
+   * Call this when transfers are added/removed
+   */
+  updateTransferCount(count: number): void {
+    this.activeTransferCount = count;
+    if (count === 0) {
+      this.transferStatusBarItem.hide();
+    } else {
+      const icon = count > 0 ? '$(sync~spin)' : '$(check)';
+      this.transferStatusBarItem.text = `${icon} ${count} transfer${count > 1 ? 's' : ''}`;
+      this.transferStatusBarItem.tooltip = `${count} active transfer${count > 1 ? 's' : ''} - Click to view queue`;
+      this.transferStatusBarItem.show();
+    }
+  }
+
+  /**
+   * Show transfer complete briefly
+   */
+  showTransferComplete(count: number): void {
+    this.transferStatusBarItem.text = `$(check) ${count} completed`;
+    this.transferStatusBarItem.show();
+    setTimeout(() => {
+      if (this.activeTransferCount === 0) {
+        this.transferStatusBarItem.hide();
+      }
+    }, 3000);
+  }
+
   dispose(): void {
     if (this.currentTimeout) {
       clearTimeout(this.currentTimeout);
     }
     this.statusBarItem.dispose();
+    this.transferStatusBarItem.dispose();
     for (const item of this.progressItems.values()) {
       item.dispose();
     }

@@ -181,6 +181,21 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
+  // Register Transfer Queue Tree Provider
+  const { TransferQueueTreeProvider } = require('./providers/transfer-queue-tree');
+  const transferQueueProvider = new TransferQueueTreeProvider();
+  context.subscriptions.push(transferQueueProvider);
+
+  // Update status bar when transfer queue changes
+  transferManager.on('queueUpdate', (queue: any[]) => {
+    const activeCount = queue.filter((q: any) => q.status === 'pending' || q.status === 'transferring').length;
+    statusBar.updateTransferCount(activeCount);
+  });
+
+  transferManager.on('queueComplete', () => {
+    statusBar.updateTransferCount(0);
+  });
+
   // Register commands
   registerCommands(context, remoteTreeProvider, connectionFormProvider, treeView);
 

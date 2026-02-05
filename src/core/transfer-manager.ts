@@ -341,6 +341,31 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
 
   cancel(): void {
     this.cancelled = true;
+    this.queue = [];
+    this.emit('queueUpdate', this.queue);
+  }
+
+  /**
+   * Cancel a specific transfer by ID
+   */
+  cancelItem(id: string): void {
+    const index = this.queue.findIndex(item => item.id === id);
+    if (index !== -1) {
+      this.queue[index].status = 'error';
+      this.queue[index].error = 'Cancelled by user';
+      this.queue.splice(index, 1);
+      this.emit('queueUpdate', this.queue);
+    }
+  }
+
+  /**
+   * Clear completed and error items from queue
+   */
+  clearCompleted(): void {
+    this.queue = this.queue.filter(item =>
+      item.status === 'pending' || item.status === 'transferring'
+    );
+    this.emit('queueUpdate', this.queue);
   }
 
   getQueue(): TransferItem[] {

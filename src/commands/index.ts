@@ -92,6 +92,9 @@ export function registerCommands(
         if (remoteExplorer?.refresh) {
           remoteExplorer.refresh();
         }
+        if (connectionFormProvider?.refresh) {
+          connectionFormProvider.refresh();
+        }
       } catch (error: any) {
         statusBar.error(`Connection failed: ${error.message}`, true);
       }
@@ -125,6 +128,9 @@ export function registerCommands(
         if (remoteExplorer?.refresh) {
           remoteExplorer.refresh();
         }
+        if (connectionFormProvider?.refresh) {
+          connectionFormProvider.refresh();
+        }
       } catch (error: any) {
         statusBar.error(`Connection failed: ${error.message}`, true);
       }
@@ -155,6 +161,9 @@ export function registerCommands(
       if (remoteExplorer?.refresh) {
         remoteExplorer.refresh();
       }
+      if (connectionFormProvider?.refresh) {
+        connectionFormProvider.refresh();
+      }
     } catch (error: any) {
       statusBar.error(`Connection failed: ${error.message}`, true);
     }
@@ -168,6 +177,9 @@ export function registerCommands(
         statusBar.success(`Disconnected: ${item.config.name || item.config.host}`);
         if (remoteExplorer?.refresh) {
           remoteExplorer.refresh();
+        }
+        if (connectionFormProvider?.refresh) {
+          connectionFormProvider.refresh();
         }
       } catch (error: any) {
         statusBar.error(`Disconnect failed: ${error.message}`, true);
@@ -187,6 +199,9 @@ export function registerCommands(
       statusBar.success('Disconnected from all servers');
       if (remoteExplorer?.refresh) {
         remoteExplorer.refresh();
+      }
+      if (connectionFormProvider?.refresh) {
+        connectionFormProvider.refresh();
       }
     } catch (error: any) {
       statusBar.error(`Disconnect failed: ${error.message}`, true);
@@ -1008,9 +1023,29 @@ export function registerCommands(
 
   const cancelTransferCommand = vscode.commands.registerCommand('stackerftp.cancelTransfer', () => {
     transferManager.cancel();
-    statusBar.success('Transfer cancelled');
+    statusBar.success('All transfers cancelled');
   });
 
+  // Show Transfer Queue panel (focus on tree view)
+  const showTransferQueueCommand = vscode.commands.registerCommand('stackerftp.showTransferQueue', async () => {
+    await vscode.commands.executeCommand('stackerftp.transferQueue.focus');
+  });
+
+  // Cancel specific transfer item
+  const cancelTransferItemCommand = vscode.commands.registerCommand('stackerftp.cancelTransferItem', (item: any) => {
+    if (item && item.transferItem) {
+      transferManager.cancelItem(item.transferItem.id);
+      statusBar.success(`Cancelled: ${path.basename(item.transferItem.localPath)}`);
+    }
+  });
+
+  // Clear completed/error transfers
+  const clearTransferQueueCommand = vscode.commands.registerCommand('stackerftp.clearTransferQueue', () => {
+    transferManager.clearCompleted();
+    statusBar.success('Queue cleared');
+  });
+
+  // Legacy quick pick for transfer queue (backwards compatibility)
   const transferQueueCommand = vscode.commands.registerCommand('stackerftp.transferQueue', () => {
     const queue = transferManager.getQueue();
     if (queue.length === 0) {
@@ -1849,8 +1884,8 @@ export function registerCommands(
       const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
-      // Focus on Remote Explorer and show the path
-      await vscode.commands.executeCommand('stackerftp.remoteExplorer.focus');
+      // Focus on Remote Explorer tree view (VS Code auto-generates .focus for views)
+      await vscode.commands.executeCommand('stackerftp.remoteExplorerTree.focus');
 
       statusBar.success(`Remote path: ${remotePath}`);
 
@@ -2485,6 +2520,9 @@ export function registerCommands(
     sortByNameCommand,
     sortBySizeCommand,
     sortByDateCommand,
-    selectAllFilesCommand
+    selectAllFilesCommand,
+    showTransferQueueCommand,
+    cancelTransferItemCommand,
+    clearTransferQueueCommand
   );
 }

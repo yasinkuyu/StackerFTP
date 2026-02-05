@@ -669,8 +669,7 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
 
   private _getHtmlForWebview(webview: vscode.Webview): string {
     const codiconsUri = this._getCodiconsUri(webview);
-    const connectIconUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'resources', 'connect.png'));
-    const disconnectIconUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'resources', 'disconnect.png'));
+    // Using VS Code codicons: codicon-plug for connect, codicon-debug-disconnect for disconnect
 
     return `<!DOCTYPE html>
 <html lang="en">

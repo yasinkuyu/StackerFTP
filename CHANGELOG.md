@@ -2,6 +2,36 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.0.3] - 2026-02-05
+
+### Added
+- Transfer Queue TreeView panel with status bar integration
+- Transfer count indicator in status bar with click-to-view functionality
+- Large file warning (5MB+) with download option
+- Improved symlink handling with broken symlink detection
+- Binary file detection improvements
+
+### Fixed
+- **Connect/Disconnect button visibility bug**: Fixed regex pattern that caused both buttons to appear simultaneously
+- **Remote Explorer server list**: Now always shows ALL configured servers (both connected and disconnected)
+- **Connection state sync**: Remote Explorer and Connections panel now stay in sync when connecting/disconnecting
+- **Connections webview icons**: Removed manual CSS overrides and fixed URI path to use official VS Code codicon assets, ensuring 100% visual consistency
+- Replaced custom PNG icons with native VS Code codicons (`$(plug)` and `$(debug-disconnect)`)
+- Improved error messages for file operations (ENOENT, EPERM, timeout, etc.)
+- Better handling of special file types (sockets, symlinks)
+
+### Changed
+- Status bar now shows active transfer count with spinning icon
+- Unified icon usage across Remote Explorer and Connections panel
+
+---
+
+## [1.0.2] - 2026-02-05
+### Fixed
+- Fixed README claims to match actual codebase implementation
+- Clarified that Web Master Tools (chmod, checksum, etc.) are SFTP-only
+- Fixed visibility of SFTP-only context menu commands on FTP connections
+
 ## [1.0.1] - 2026-02-05
 
 ### Fixed

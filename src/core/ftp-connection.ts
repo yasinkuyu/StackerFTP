@@ -24,7 +24,7 @@ export class FTPConnection extends BaseConnection {
   async connect(): Promise<void> {
     try {
       const secure = this.config.secure === true || this.config.secure === 'implicit';
-      
+
       await this.client.access({
         host: this.config.host,
         port: this.config.port || 21,
@@ -39,7 +39,7 @@ export class FTPConnection extends BaseConnection {
 
       this._connected = true;
       this._currentPath = await this.client.pwd();
-      
+
       logger.info(`FTP${secure ? 'S' : ''} connected to ${this.config.host}:${this.config.port || 21}`);
       this.emit('connected');
     } catch (error) {
@@ -58,22 +58,22 @@ export class FTPConnection extends BaseConnection {
     return this.enqueue(async () => {
       try {
         const list = await this.client.list(remotePath);
-        
+
         const entries: FileEntry[] = [];
-        
+
         for (const item of list) {
           try {
             // Skip invalid entries
             if (!item.name || item.name === '.' || item.name === '..') {
               continue;
             }
-            
+
             const user = item.permissions?.user;
             const group = item.permissions?.group;
             const other = item.permissions?.world;
             let type = this.mapFileType(item.type);
             let isSymlinkToDirectory: boolean | undefined = undefined;
-            
+
             // For symlinks in FTP, try to determine if it's a directory
             // Note: symlink check is done inline to avoid extra queue operations
             if (type === 'symlink') {
@@ -85,7 +85,7 @@ export class FTPConnection extends BaseConnection {
                 isSymlinkToDirectory = false;
               }
             }
-            
+
             entries.push({
               name: item.name,
               type,
@@ -104,7 +104,7 @@ export class FTPConnection extends BaseConnection {
             logger.warn(`Skipping problematic FTP entry: ${item.name}`, itemErr);
           }
         }
-        
+
         return entries;
       } catch (error) {
         logger.error('FTP list error', error);
@@ -125,7 +125,7 @@ export class FTPConnection extends BaseConnection {
           return 'file';
       }
     }
-    
+
     switch (type) {
       case 'd':
       case 'directory':
@@ -142,7 +142,7 @@ export class FTPConnection extends BaseConnection {
     return this.enqueue(async () => {
       try {
         this.emit('transferStart', { direction: 'download', remotePath, localPath });
-        
+
         // Ensure directory exists
         const localDir = path.dirname(localPath);
         if (!fs.existsSync(localDir)) {
@@ -150,7 +150,7 @@ export class FTPConnection extends BaseConnection {
         }
 
         await this.client.downloadTo(localPath, remotePath);
-        
+
         this.emit('transferComplete', { direction: 'download', remotePath, localPath });
       } catch (error) {
         logger.error('FTP download error', error);
@@ -163,7 +163,34 @@ export class FTPConnection extends BaseConnection {
     return this.enqueue(async () => {
       try {
         this.emit('transferStart', { direction: 'upload', localPath, remotePath });
-        await this.client.uploadFrom(localPath, remotePath);
+
+        // Atomic upload: upload to temp file first, then rename
+        // This ensures files are never partially uploaded
+        const tempRemotePath = `${remotePath}.stackerftp.tmp`;
+
+        try {
+          // Upload to temp file
+          await this.client.uploadFrom(localPath, tempRemotePath);
+
+          // Delete existing target file if it exists (rename might fail otherwise)
+          try {
+            await this.client.remove(remotePath);
+          } catch {
+            // Target file might not exist - that's OK
+          }
+
+          // Rename temp file to target
+          await this.client.rename(tempRemotePath, remotePath);
+        } catch (uploadError) {
+          // Clean up temp file on failure
+          try {
+            await this.client.remove(tempRemotePath);
+          } catch {
+            // Ignore cleanup errors
+          }
+          throw uploadError;
+        }
+
         this.emit('transferComplete', { direction: 'upload', localPath, remotePath });
       } catch (error) {
         logger.error('FTP upload error', error);
@@ -200,11 +227,11 @@ export class FTPConnection extends BaseConnection {
         // Safety checks - prevent deletion of critical paths
         const normalizedPath = normalizeRemotePath(remotePath);
         const dangerousPaths = ['/', '/home', '/root', '/var', '/etc', '/usr', '/bin', '/sbin', '/lib', '/opt', '/tmp'];
-        
+
         if (dangerousPaths.includes(normalizedPath) || normalizedPath === '') {
           throw new Error(`Cannot delete critical system path: ${remotePath}`);
         }
-        
+
         if (recursive) {
           await this.client.removeDir(remotePath);
         } else {
@@ -249,7 +276,7 @@ export class FTPConnection extends BaseConnection {
       try {
         const size = await this.client.size(remotePath);
         const fileName = path.basename(remotePath);
-        
+
         return {
           name: fileName,
           type: 'file',

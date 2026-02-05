@@ -125,10 +125,10 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
 
     try {
       let configs = configManager.getConfigs(workspaceRoot);
-      
+
       // Get existing config if editing to preserve all fields
-      const existingConfig = (editIndex !== undefined && editIndex >= 0) 
-        ? configs[editIndex] 
+      const existingConfig = (editIndex !== undefined && editIndex >= 0)
+        ? configs[editIndex]
         : {};
 
       // Merge with existing config to preserve fields not in form
@@ -303,9 +303,7 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
 
   private _getHtmlForWebview(webview: vscode.Webview): string {
     // Get codicon CSS
-    const codiconUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'node_modules', '@vscode/codicons', 'dist', 'codicon.css'));
-    const connectIconUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'resources', 'connect.png'));
-    const disconnectIconUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'resources', 'disconnect.png'));
+    const codiconUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css'));
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -315,31 +313,7 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
   <title>StackerFTP Connections</title>
   <link href="${codiconUri}" rel="stylesheet" />
   <style>
-    @font-face {
-      font-family: 'codicon';
-      src: url('${webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'node_modules', '@vscode/codicons', 'dist', 'codicon.ttf'))}') format('truetype');
-    }
-    
-    .codicon {
-      font-family: 'codicon';
-      font-size: 14px;
-      line-height: 1;
-    }
-    
-    .codicon-lock:before { content: "\\eb99"; }
-    .codicon-folder:before { content: "\\ea83"; }
-    .codicon-plug:before { content: "\\eb12"; }
-    .codicon-debug-disconnect:before { content: "\\eb32"; }
-    .codicon-edit:before { content: "\\ea73"; }
-    .codicon-trash:before { content: "\\ea81"; }
-    .codicon-add:before { content: "\\ea60"; }
-    .codicon-close:before { content: "\\ea76"; }
-    .codicon-check:before { content: "\\eab2"; }
-    .codicon-server:before { content: "\\eb99"; }
-    .codicon-ellipsis:before { content: "\\ea7c"; }
-    .codicon-play:before { content: "\\eb2c"; }
-    .codicon-primitive-square:before { content: "\\eb40"; }
-    .codicon-stop-circle:before { content: "\\eba5"; }
+
     
     /* Button variants */
     .btn-connect {
@@ -614,6 +588,22 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
       border-color: var(--vscode-focusBorder);
     }
 
+    .form-input.input-error {
+      border-color: var(--vscode-inputValidation-errorBorder);
+      background: var(--vscode-inputValidation-errorBackground);
+    }
+
+    .form-input-error-message {
+      color: var(--vscode-inputValidation-errorForeground);
+      font-size: 11px;
+      margin-top: 4px;
+      display: none;
+    }
+
+    .form-input.input-error + .form-input-error-message {
+      display: block;
+    }
+
     .form-input::placeholder {
       color: var(--vscode-input-placeholderForeground);
     }
@@ -882,9 +872,9 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
 
       <!-- Actions -->
       <div class="form-actions">
-        <button class="btn btn-secondary" id="btnCancel">Cancel</button>
-        <button class="btn btn-secondary" id="btnTest">Test</button>
-        <button class="btn btn-primary" id="btnSave">Save</button>
+        <button type="button" class="btn btn-secondary" id="btnCancel">Cancel</button>
+        <button type="button" class="btn btn-secondary" id="btnTest">Test</button>
+        <button type="button" class="btn btn-primary" id="btnSave">Save</button>
       </div>
     </div>
   </div>
@@ -1041,6 +1031,50 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
       };
     }
 
+    function validateForm(data) {
+      let isValid = true;
+      const errors = [];
+
+      // Reset errors
+      document.querySelectorAll('.form-input').forEach(input => {
+        input.classList.remove('input-error');
+      });
+      document.querySelectorAll('.form-input-error-message').forEach(msg => {
+        msg.remove();
+      });
+
+      // Helper to show error
+      const showError = (elementId, message) => {
+        const input = document.getElementById(elementId);
+        if (input) {
+          input.classList.add('input-error');
+          const msg = document.createElement('div');
+          msg.className = 'form-input-error-message';
+          msg.textContent = message;
+          input.parentNode.insertBefore(msg, input.nextSibling);
+        }
+        isValid = false;
+      };
+
+      if (!data.host) {
+        showError('inputHost', 'Host is required');
+      }
+
+      if (data.protocol !== 'sftp' && !data.username) {
+        // Username might be optional for some anon FTP? But usually required.
+        // Let's enforce it for now as per user request for validation.
+        showError('inputUsername', 'Username is required');
+      }
+
+      if (data.protocol === 'sftp') {
+         if (!data.username) {
+            showError('inputUsername', 'Username is required');
+         }
+      }
+
+      return isValid;
+    }
+
     // Form actions
     document.getElementById('btnCancel').addEventListener('click', () => {
       connectionForm.classList.add('hidden');
@@ -1051,16 +1085,44 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
     });
 
     document.getElementById('btnTest').addEventListener('click', () => {
-      const config = getFormData();
-      if (!config.host || !config.username) {
-        return;
+      console.log('Test button clicked');
+      try {
+        const config = getFormData();
+        if (!validateForm(config)) {
+          console.warn('Form validation failed');
+          
+          // Visual feedback for missing fields
+          const btn = document.getElementById('btnTest');
+          const originalText = btn.textContent;
+          btn.textContent = 'Required!';
+          btn.classList.add('btn-disconnect'); // Red color
+          
+          setTimeout(() => { 
+            btn.textContent = 'Test'; 
+            btn.classList.remove('btn-disconnect');
+          }, 2000);
+          
+          return;
+        }
+        
+        // Show immediate feedback
+        const btn = document.getElementById('btnTest');
+        const originalText = btn.textContent;
+        btn.textContent = 'Sending...';
+        
+        vscode.postMessage({ type: 'testConnection', config });
+        console.log('Test message sent to extension', config);
+      } catch (e) {
+        console.error('Error in test button handler:', e);
+        const btn = document.getElementById('btnTest');
+        btn.textContent = 'Error';
+        setTimeout(() => { btn.textContent = 'Test'; }, 2000);
       }
-      vscode.postMessage({ type: 'testConnection', config });
     });
 
     document.getElementById('btnSave').addEventListener('click', () => {
       const config = getFormData();
-      if (!config.host || !config.username) {
+      if (!validateForm(config)) {
         return;
       }
       vscode.postMessage({ type: 'saveConfig', config, index: editingIndex });
@@ -1101,8 +1163,8 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
           </div>
           <div class="connection-actions">
             \${config.connected
-              ? '<button class="btn-icon btn-disconnect" data-action="disconnect" title="Disconnect"><span class="codicon codicon-primitive-square"></span></button>'
-              : '<button class="btn-icon btn-connect" data-action="connect" title="Connect"><span class="codicon codicon-play"></span></button>'
+              ? '<button class="btn-icon btn-disconnect" data-action="disconnect" title="Disconnect"><span class="codicon codicon-debug-disconnect"></span></button>'
+              : '<button class="btn-icon btn-connect" data-action="connect" title="Connect"><span class="codicon codicon-plug"></span></button>'
             }
             <div class="dropdown">
               <button class="btn-icon dropdown-toggle" title="More actions"><span class="codicon codicon-ellipsis"></span></button>

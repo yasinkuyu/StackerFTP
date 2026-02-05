@@ -17,7 +17,7 @@ export class SFTPConnection extends BaseConnection {
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       this.client = new Client();
-      
+
       const connectConfig: any = {
         host: this.config.host,
         port: this.config.port || 22,
@@ -42,13 +42,13 @@ export class SFTPConnection extends BaseConnection {
 
       this.client.on('ready', () => {
         logger.info(`SSH connected to ${this.config.host}:${this.config.port}`);
-        
+
         this.client!.sftp((err, sftp) => {
           if (err) {
             reject(err);
             return;
           }
-          
+
           this.sftp = sftp;
           this._connected = true;
           this.emit('connected');
@@ -100,16 +100,16 @@ export class SFTPConnection extends BaseConnection {
         }
 
         const entries: FileEntry[] = [];
-        
+
         for (const item of list) {
           try {
             const attrs = item.attrs;
             const isSymlink = attrs.isSymbolicLink();
             const entryPath = normalizeRemotePath(path.join(remotePath, item.filename));
-            
+
             let type: 'file' | 'directory' | 'symlink' = 'file';
             let isSymlinkToDirectory = false;
-            
+
             if (attrs.isDirectory()) {
               type = 'directory';
             } else if (isSymlink) {
@@ -124,7 +124,7 @@ export class SFTPConnection extends BaseConnection {
                 // If we can't stat the target, treat as file
               }
             }
-            
+
             entries.push({
               name: item.filename,
               type,
@@ -198,9 +198,9 @@ export class SFTPConnection extends BaseConnection {
 
       const readStream = this.sftp.createReadStream(remotePath);
       const writeStream = fs.createWriteStream(localPath);
-      
+
       let transferred = 0;
-      
+
       readStream.on('data', (chunk: string | Buffer) => {
         transferred += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
         this.emitProgress(path.basename(remotePath), transferred, 0);
@@ -208,7 +208,7 @@ export class SFTPConnection extends BaseConnection {
 
       readStream.on('error', reject);
       writeStream.on('error', reject);
-      
+
       writeStream.on('close', () => {
         this.emit('transferComplete', { direction: 'download', remotePath, localPath });
         resolve();
@@ -235,20 +235,58 @@ export class SFTPConnection extends BaseConnection {
       const totalSize = stats.size;
       let transferred = 0;
 
+      // Atomic upload: upload to temp file first, then rename
+      // This ensures files are never partially uploaded
+      const tempRemotePath = `${remotePath}.stackerftp.tmp`;
+
       const readStream = fs.createReadStream(localPath);
-      const writeStream = this.sftp.createWriteStream(remotePath);
+      const writeStream = this.sftp.createWriteStream(tempRemotePath);
 
       readStream.on('data', (chunk: string | Buffer) => {
         transferred += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
         this.emitProgress(path.basename(localPath), transferred, totalSize);
       });
 
-      readStream.on('error', reject);
-      writeStream.on('error', reject);
-      
+      const cleanup = () => {
+        // Clean up temp file on failure
+        if (this.sftp) {
+          this.sftp.unlink(tempRemotePath, () => {
+            // Ignore cleanup errors
+          });
+        }
+      };
+
+      readStream.on('error', (err) => {
+        cleanup();
+        reject(err);
+      });
+
+      writeStream.on('error', (err: Error) => {
+        cleanup();
+        reject(err);
+      });
+
       writeStream.on('close', () => {
-        this.emit('transferComplete', { direction: 'upload', localPath, remotePath });
-        resolve();
+        if (!this.sftp) {
+          reject(new Error('Connection lost'));
+          return;
+        }
+
+        // Delete existing target file if it exists
+        this.sftp.unlink(remotePath, () => {
+          // Ignore error - file might not exist
+
+          // Rename temp file to target
+          this.sftp!.rename(tempRemotePath, remotePath, (err: any) => {
+            if (err) {
+              cleanup();
+              reject(new Error(`Failed to finalize upload: ${err.message}`));
+              return;
+            }
+            this.emit('transferComplete', { direction: 'upload', localPath, remotePath });
+            resolve();
+          });
+        });
       });
 
       readStream.pipe(writeStream);
@@ -303,7 +341,7 @@ export class SFTPConnection extends BaseConnection {
     // Safety checks - prevent deletion of critical paths
     const normalizedPath = normalizeRemotePath(remotePath);
     const dangerousPaths = ['/', '/home', '/root', '/var', '/etc', '/usr', '/bin', '/sbin', '/lib', '/opt', '/tmp'];
-    
+
     if (dangerousPaths.includes(normalizedPath) || normalizedPath === '') {
       throw new Error(`Cannot delete critical system path: ${remotePath}`);
     }
@@ -379,27 +417,27 @@ export class SFTPConnection extends BaseConnection {
   // Fallback SFTP-based recursive deletion
   private async _rmdirFallback(remotePath: string): Promise<void> {
     const entries = await this._list(remotePath);
-    
+
     // Separate files and directories
     const files = entries.filter(e => e.type !== 'directory');
     const dirs = entries.filter(e => e.type === 'directory');
-    
+
     // Delete files in parallel (batch of 10)
     const batchSize = 10;
     for (let i = 0; i < files.length; i += batchSize) {
       const batch = files.slice(i, i + batchSize);
       await Promise.all(batch.map(entry => {
         const entryPath = normalizeRemotePath(path.join(remotePath, entry.name));
-        return this._delete(entryPath).catch(() => {});
+        return this._delete(entryPath).catch(() => { });
       }));
     }
-    
+
     // Delete subdirectories in parallel (batch of 5)
     for (let i = 0; i < dirs.length; i += 5) {
       const batch = dirs.slice(i, i + 5);
       await Promise.all(batch.map(entry => {
         const entryPath = normalizeRemotePath(path.join(remotePath, entry.name));
-        return this._rmdirFallback(entryPath).catch(() => {});
+        return this._rmdirFallback(entryPath).catch(() => { });
       }));
     }
 
@@ -492,7 +530,7 @@ export class SFTPConnection extends BaseConnection {
       }
 
       const modeNum = typeof mode === 'string' ? parseInt(mode, 8) : mode;
-      
+
       this.sftp.chmod(remotePath, modeNum, (err: any) => {
         if (err) reject(err);
         else resolve();
@@ -530,7 +568,7 @@ export class SFTPConnection extends BaseConnection {
       }
 
       const buffer = Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf-8');
-      
+
       this.sftp.writeFile(remotePath, buffer, (err: any) => {
         if (err) reject(err);
         else resolve();
