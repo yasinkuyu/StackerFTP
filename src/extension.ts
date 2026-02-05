@@ -292,6 +292,12 @@ async function handleFileSave(document: vscode.TextDocument, workspaceRoot: stri
     }
   }
 
+  // Check for active connection FIRST - before showing any dialog
+  if (!connectionManager.isConnected(config)) {
+    logger.debug(`No active connection for ${config.name || config.host}, skipping auto-upload`);
+    return;
+  }
+
   // Ask for confirmation once per session
   if (!autoUploadConfirmed) {
     const choice = await vscode.window.showInformationMessage(
@@ -312,17 +318,7 @@ async function handleFileSave(document: vscode.TextDocument, workspaceRoot: stri
   }
 
   try {
-    // Only upload if there's an active connection - don't auto-connect
-    if (!connectionManager.isConnected(config)) {
-      logger.debug(`No active connection for ${config.name || config.host}, skipping auto-upload`);
-      return;
-    }
-
-    const connection = connectionManager.getConnection(config);
-    if (!connection) {
-      return;
-    }
-
+    const connection = connectionManager.getConnection(config)!;
     const remotePath = path.join(config.remotePath, relativePath).replace(/\\/g, '/');
 
     const remoteDir = path.dirname(remotePath);
