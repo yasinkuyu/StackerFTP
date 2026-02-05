@@ -929,6 +929,26 @@
           "command": "stackerftp.newFolder",
           "when": "view == stackerftp.remoteExplorerTree && viewItem == directory",
           "group": "1_files@2"
+        },
+        {
+          "command": "stackerftp.connect",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem == disconnected",
+          "group": "inline"
+        },
+        {
+          "command": "stackerftp.connect",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem == disconnected",
+          "group": "1_connection"
+        },
+        {
+          "command": "stackerftp.disconnect",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem == connected",
+          "group": "inline"
+        },
+        {
+          "command": "stackerftp.disconnect",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem == connected",
+          "group": "1_connection"
         }
       ],
       "scm/title": [

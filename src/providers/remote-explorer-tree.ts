@@ -128,6 +128,15 @@ export class RemoteConfigTreeItem extends vscode.TreeItem {
 
     // Use 'connected' contextValue so inline buttons work (new file, new folder)
     this.contextValue = connected ? 'connected' : 'disconnected';
+
+    // Allow clicking to connect if disconnected
+    if (!connected) {
+      this.command = {
+        command: 'stackerftp.connect',
+        title: 'Connect',
+        arguments: [this]
+      };
+    }
   }
 }
 

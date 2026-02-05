@@ -1,6 +1,6 @@
 /**
  * StackerFTP - Connection Hopping (Jump Host) Support
- * 
+ *  
  * Enables connections through intermediate SSH servers (hop/bastion hosts)
  * local -> hop -> target
  */
@@ -11,7 +11,7 @@ import { FTPConfig, HopConfig } from '../types';
 import { logger } from '../utils/logger';
 
 export class ConnectionHopping {
-  
+
   /**
    * Create a connection through a hop (jump host)
    */
@@ -21,9 +21,9 @@ export class ConnectionHopping {
     }
 
     const hops = Array.isArray(targetConfig.hop) ? targetConfig.hop : [targetConfig.hop];
-    
+
     logger.info(`Connecting through ${hops.length} hop(s)`);
-    
+
     // Start with first hop (direct connection)
     let currentClient = await this.createSSHConnection({
       host: targetConfig.host,
@@ -38,7 +38,7 @@ export class ConnectionHopping {
     for (let i = 0; i < hops.length; i++) {
       const hop = hops[i];
       logger.info(`Connecting to hop ${i + 1}: ${hop.host}`);
-      
+
       // Forward connection through current client to next hop
       currentClient = await this.forwardThroughClient(currentClient, hop);
     }
@@ -49,7 +49,7 @@ export class ConnectionHopping {
   private createSSHConnection(config: HopConfig): Promise<Client> {
     return new Promise((resolve, reject) => {
       const client = new Client();
-      
+
       const connectConfig: any = {
         host: config.host,
         port: config.port || 22,
@@ -95,7 +95,7 @@ export class ConnectionHopping {
 
         // Create new client connection through the forwarded stream
         const newClient = new Client();
-        
+
         const connectConfig: any = {
           sock: stream,
           username: target.username,
@@ -142,7 +142,7 @@ export class ConnectionHopping {
       if (!hopConfig) {
         break;
       }
-      
+
       hops.push(hopConfig);
 
       const choice = await vscode.window.showQuickPick(

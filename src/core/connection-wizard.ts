@@ -129,7 +129,7 @@ export class ConnectionWizard {
 
   private async enterPort(): Promise<boolean> {
     const defaultPort = this.config.port || 22;
-    
+
     const port = await vscode.window.showInputBox({
       title: 'Port',
       value: String(defaultPort),
@@ -171,7 +171,7 @@ export class ConnectionWizard {
 
   private async selectAuth(): Promise<boolean> {
     const isSFTP = this.config.protocol === 'sftp';
-    
+
     const authOptions: { label: string; description: string; type: 'password' | 'key' }[] = [
       {
         label: '$(key) Password',
@@ -289,7 +289,7 @@ export class ConnectionWizard {
       {
         label: '$(eye-closed) Ignore Common Files',
         picked: true,
-        config: { 
+        config: {
           ignore: ['.git', '.DS_Store', 'node_modules', '*.log', '.vscode']
         }
       },
@@ -343,10 +343,10 @@ export class ConnectionWizard {
     try {
       // Load existing configs
       const configs = configManager.getConfigs(workspaceRoot);
-      
+
       // Add new config
       configs.push(config);
-      
+
       // Save
       await configManager.saveConfig(workspaceRoot, configs);
 
@@ -417,7 +417,7 @@ export class ConnectionWizard {
     }
 
     // Update config
-    const configIndex = configs.findIndex(c => 
+    const configIndex = configs.findIndex(c =>
       (c.name || c.host) === (selectedConfig.config.name || selectedConfig.config.host)
     );
 

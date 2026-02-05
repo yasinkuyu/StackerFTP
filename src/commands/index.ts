@@ -80,9 +80,23 @@ export function registerCommands(
 
   // ==================== Connection Commands ====================
 
-  const connectCommand = vscode.commands.registerCommand('stackerftp.connect', async () => {
+  const connectCommand = vscode.commands.registerCommand('stackerftp.connect', async (item?: any) => {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
+
+    // Handle direct connection from tree view
+    if (item && item.config) {
+      try {
+        await connectionManager.connect(item.config);
+        statusBar.success(`Connected to ${item.config.name || item.config.host}`);
+        if (remoteExplorer?.refresh) {
+          remoteExplorer.refresh();
+        }
+      } catch (error: any) {
+        statusBar.error(`Connection failed: ${error.message}`, true);
+      }
+      return;
+    }
 
     const configs = configManager.getConfigs(workspaceRoot);
 
@@ -146,7 +160,21 @@ export function registerCommands(
     }
   });
 
-  const disconnectCommand = vscode.commands.registerCommand('stackerftp.disconnect', async () => {
+  const disconnectCommand = vscode.commands.registerCommand('stackerftp.disconnect', async (item?: any) => {
+    // Handle disconnection from tree view
+    if (item && item.config) {
+      try {
+        await connectionManager.disconnect(item.config);
+        statusBar.success(`Disconnected: ${item.config.name || item.config.host}`);
+        if (remoteExplorer?.refresh) {
+          remoteExplorer.refresh();
+        }
+      } catch (error: any) {
+        statusBar.error(`Disconnect failed: ${error.message}`, true);
+      }
+      return;
+    }
+
     const activeConnections = connectionManager.getActiveConnections();
 
     if (activeConnections.length === 0) {
