@@ -154,8 +154,16 @@ export class FileWatcher implements vscode.Disposable {
             return;
           }
 
-          // Now establish connection
-          const uploadConnection = await connectionManager.ensureConnection(this.config);
+          // Only upload if there's an active connection - don't auto-connect
+          if (!connectionManager.isConnected(this.config)) {
+            logger.debug(`No active connection, skipping auto-upload: ${relativePath}`);
+            return;
+          }
+
+          const uploadConnection = connectionManager.getConnection(this.config);
+          if (!uploadConnection) {
+            return;
+          }
           const stat = fs.statSync(filePath);
           if (stat.isDirectory()) {
             await uploadConnection.mkdir(remotePath);
@@ -174,8 +182,16 @@ export class FileWatcher implements vscode.Disposable {
 
         case 'delete':
           if (watcherConfig?.autoDelete !== false) {
-            // Establish connection for delete operation
-            const deleteConnection = await connectionManager.ensureConnection(this.config);
+            // Only delete if there's an active connection
+            if (!connectionManager.isConnected(this.config)) {
+              logger.debug(`No active connection, skipping auto-delete: ${relativePath}`);
+              return;
+            }
+
+            const deleteConnection = connectionManager.getConnection(this.config);
+            if (!deleteConnection) {
+              return;
+            }
             try {
               await deleteConnection.delete(remotePath);
               logger.info(`Auto-deleted: ${relativePath}`);

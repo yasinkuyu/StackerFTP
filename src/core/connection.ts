@@ -12,10 +12,10 @@ export interface TransferProgress {
   percentage: number;
 }
 
-export type ConnectionEvent = 
-  | 'connected' 
-  | 'disconnected' 
-  | 'error' 
+export type ConnectionEvent =
+  | 'connected'
+  | 'disconnected'
+  | 'error'
   | 'progress'
   | 'transferStart'
   | 'transferComplete';
@@ -31,7 +31,7 @@ export abstract class BaseConnection extends EventEmitter {
   protected config: FTPConfig;
   protected _connected = false;
   protected _currentPath = '';
-  
+
   // Operation queue for sequential execution
   private operationQueue: QueueItem<unknown>[] = [];
   private isProcessingQueue = false;
@@ -41,7 +41,7 @@ export abstract class BaseConnection extends EventEmitter {
     this.config = config;
     this._currentPath = config.remotePath;
   }
-  
+
   /**
    * Execute operation in queue to prevent concurrent access
    */
@@ -55,14 +55,14 @@ export abstract class BaseConnection extends EventEmitter {
       this.processQueue();
     });
   }
-  
+
   private async processQueue(): Promise<void> {
     if (this.isProcessingQueue) {
       return;
     }
-    
+
     this.isProcessingQueue = true;
-    
+
     while (this.operationQueue.length > 0) {
       const item = this.operationQueue.shift();
       if (item) {
@@ -74,7 +74,7 @@ export abstract class BaseConnection extends EventEmitter {
         }
       }
     }
-    
+
     this.isProcessingQueue = false;
   }
 

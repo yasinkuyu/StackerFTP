@@ -48,7 +48,7 @@ export function markFileAsUploaded(filePath: string): void {
 export function wasRecentlyUploaded(filePath: string): boolean {
   const uploadTime = recentlyUploadedFiles.get(filePath);
   if (!uploadTime) return false;
-  
+
   const elapsed = Date.now() - uploadTime;
   if (elapsed > UPLOAD_TRACKING_DURATION_MS) {
     recentlyUploadedFiles.delete(filePath);
@@ -312,7 +312,17 @@ async function handleFileSave(document: vscode.TextDocument, workspaceRoot: stri
   }
 
   try {
-    const connection = await connectionManager.ensureConnection(config);
+    // Only upload if there's an active connection - don't auto-connect
+    if (!connectionManager.isConnected(config)) {
+      logger.debug(`No active connection for ${config.name || config.host}, skipping auto-upload`);
+      return;
+    }
+
+    const connection = connectionManager.getConnection(config);
+    if (!connection) {
+      return;
+    }
+
     const remotePath = path.join(config.remotePath, relativePath).replace(/\\/g, '/');
 
     const remoteDir = path.dirname(remotePath);
@@ -331,10 +341,10 @@ async function handleFileSave(document: vscode.TextDocument, workspaceRoot: stri
     }
 
     await transferManager.uploadFile(connection, document.fileName, remotePath, config);
-    
+
     // Mark as recently uploaded to prevent duplicate from file watcher
     markFileAsUploaded(document.fileName);
-    
+
     vscode.window.setStatusBarMessage(`$(cloud-upload) Uploaded: ${path.basename(document.fileName)}`, 3000);
     logger.info(`Auto-uploaded: ${relativePath}`);
   } catch (error) {
