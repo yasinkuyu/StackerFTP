@@ -214,6 +214,7 @@ export class ConnectionManager {
         this.primaryConnectionKey = key;
       }
       this.updateStatusBar();
+      this._onConnectionChanged.fire();
     });
 
     connection.on('disconnected', () => {
@@ -224,6 +225,7 @@ export class ConnectionManager {
         this.primaryConnectionKey = undefined;
       }
       this.updateStatusBar();
+      this._onConnectionChanged.fire();
     });
 
     connection.on('error', (error) => {
@@ -267,6 +269,7 @@ export class ConnectionManager {
       this.primaryConnectionKey = undefined;
     }
     this.updateStatusBar();
+    this._onConnectionChanged.fire();
   }
 
   getConnection(config: FTPConfig): BaseConnection | undefined {
