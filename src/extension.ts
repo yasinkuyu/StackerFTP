@@ -17,6 +17,7 @@ import { logger } from './utils/logger';
 import { statusBar } from './utils/status-bar';
 import { registerCommands } from './commands';
 import { fileWatcherManager } from './core/file-watcher';
+import { matchesPattern } from './utils/helpers';
 
 let remoteExplorerProvider: RemoteExplorerWebviewProvider;
 let remoteTreeProvider: RemoteExplorerTreeProvider;
@@ -231,8 +232,17 @@ export function activate(context: vscode.ExtensionContext): void {
       const editMappings = (global as any).stackerftpEditMappings;
       if (editMappings && editMappings.has(document.fileName)) {
         const metadata = editMappings.get(document.fileName);
+
+        // Only upload if there's an active connection - don't auto-connect
+        if (!connectionManager.isConnected(metadata.config)) {
+          vscode.window.showWarningMessage(
+            `Cannot upload "${path.basename(metadata.remotePath)}" - no active connection. Please connect first.`
+          );
+          return;
+        }
+
         try {
-          const connection = await connectionManager.ensureConnection(metadata.config);
+          const connection = connectionManager.getConnection(metadata.config)!;
           await transferManager.uploadFile(connection, document.fileName, metadata.remotePath, metadata.config);
           statusBar.success(`Uploaded: ${path.basename(metadata.remotePath)}`);
         } catch (error: any) {
@@ -283,13 +293,8 @@ async function handleFileSave(document: vscode.TextDocument, workspaceRoot: stri
   }
 
   const relativePath = path.relative(workspaceRoot, document.fileName);
-  if (config.ignore) {
-    for (const pattern of config.ignore) {
-      const regex = new RegExp(pattern.replace(/\*/g, '.*'));
-      if (regex.test(relativePath)) {
-        return;
-      }
-    }
+  if (config.ignore && matchesPattern(relativePath, config.ignore)) {
+    return;
   }
 
   // Check for active connection FIRST - before showing any dialog
