@@ -2,7 +2,7 @@
   "name": "stackerftp",
   "displayName": "StackerFTP - Professional SFTP/FTP Client",
   "description": "Professional SFTP, FTP & FTPS client for VS Code, Cursor, and Windsurf. Features a native Remote Explorer, bi-directional sync, upload on save, and advanced WebMaster tools.",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "publisher": "yasinkuyu",
   "author": "Insya, Yasin Kuyu",
   "license": "MIT",
