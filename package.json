@@ -45,7 +45,10 @@
     "pearai"
   ],
   "activationEvents": [
-    "onFileSystem:stackerftp-remote"
+    "onFileSystem:stackerftp-remote",
+    "onSecondarySideBarView:stackerftp.remoteExplorerTree",
+    "workspaceContains:**/.vscode/sftp.json",
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -195,6 +198,11 @@
       {
         "command": "stackerftp.config",
         "title": "SFTP: Config",
+        "category": "StackerFTP"
+      },
+      {
+        "command": "stackerftp.showOutput",
+        "title": "SFTP: Show Output",
         "category": "StackerFTP"
       },
       {

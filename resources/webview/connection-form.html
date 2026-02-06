@@ -1,0 +1,110 @@
+<!-- Connection List -->
+<div id="loadingOverlay" class="loading">
+  <div class="spinner"></div>
+  <span style="margin-left: 8px; font-size: 11px; opacity: 0.8;">Loading...</span>
+</div>
+
+<div class="connection-list" id="connectionList" class="hidden">
+  <div class="empty-state" id="emptyState">
+    <p>No connections configured</p>
+    <button class="btn btn-primary" id="btnFirstConnection">Create Connection</button>
+  </div>
+</div>
+
+<!-- Hidden buttons for JS compatibility -->
+<button id="btnHeaderNew" style="display:none;"></button>
+<button id="btnHeaderRefresh" style="display:none;"></button>
+
+<!-- Connection Form -->
+<div class="form-section hidden" id="connectionForm">
+  <div id="formMessage" class="form-message hidden"></div>
+  <div class="form-title">
+    <span id="formTitle">New Connection</span>
+  </div>
+
+  <!-- Protocol Selection -->
+  <div class="protocol-tabs">
+    <button class="protocol-tab active" data-protocol="sftp">SFTP</button>
+    <button class="protocol-tab" data-protocol="ftp">FTP</button>
+    <button class="protocol-tab" data-protocol="ftps">FTPS</button>
+  </div>
+
+  <!-- Basic Info -->
+  <div class="form-row">
+    <label class="form-label">Connection Name</label>
+    <input type="text" class="form-input" id="inputName" placeholder="My Server">
+  </div>
+
+  <div class="form-row form-row-inline">
+    <div>
+      <label class="form-label">Host</label>
+      <input type="text" class="form-input" id="inputHost" placeholder="example.com">
+    </div>
+    <div>
+      <label class="form-label">Port</label>
+      <input type="number" class="form-input" id="inputPort" placeholder="22">
+    </div>
+  </div>
+
+  <div class="form-row">
+    <label class="form-label">Username</label>
+    <input type="text" class="form-input" id="inputUsername" placeholder="username">
+  </div>
+
+  <!-- Auth Section -->
+  <div class="form-row">
+    <label class="form-label">Password</label>
+    <input type="password" class="form-input" id="inputPassword" placeholder="Enter password">
+  </div>
+
+  <!-- SFTP Key Auth -->
+  <div id="sftpAuthSection">
+    <div class="collapsible-header" id="toggleKeyAuth">
+      <span>▶</span> Use Private Key
+    </div>
+    <div class="collapsible-content" id="keyAuthContent">
+      <div class="form-row">
+        <label class="form-label">Private Key Path</label>
+        <div class="form-input-group">
+          <input type="text" class="form-input" id="inputPrivateKey" placeholder="~/.ssh/id_rsa">
+          <button class="btn btn-secondary" id="btnBrowseKey">Browse</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Passphrase (optional)</label>
+        <input type="password" class="form-input" id="inputPassphrase" placeholder="Key passphrase">
+      </div>
+    </div>
+  </div>
+
+  <!-- Remote Path -->
+  <div class="form-row">
+    <label class="form-label">Remote Path</label>
+    <input type="text" class="form-input" id="inputRemotePath" placeholder="/var/www/html">
+  </div>
+
+  <!-- Options -->
+  <div class="form-row">
+    <label class="form-checkbox">
+      <input type="checkbox" id="inputUploadOnSave">
+      Upload on Save
+    </label>
+  </div>
+
+  <!-- FTPS Options -->
+  <div id="ftpsOptions" class="hidden">
+    <div class="form-row">
+      <label class="form-checkbox">
+        <input type="checkbox" id="inputSecure">
+        Use TLS/SSL
+      </label>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="form-actions">
+    <button type="button" class="btn btn-secondary" id="btnCancel">Cancel</button>
+    <button type="button" class="btn btn-secondary" id="btnTest">Test</button>
+    <button type="button" class="btn btn-primary" id="btnSave">Save</button>
+  </div>
+</div>

@@ -68,7 +68,14 @@ export function wasRecentlyUploaded(filePath: string): boolean {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  // Register Connection Form Provider (always visible)
+  // 1. Fundamental Command Registration (Always available)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('stackerftp.showOutput', () => {
+      logger.show();
+    })
+  );
+
+  // 2. Register Global Providers
   connectionFormProvider = new ConnectionFormProvider(context.extensionUri);
   providerContainer.connectionFormProvider = connectionFormProvider;
   context.subscriptions.push(
@@ -78,16 +85,18 @@ export function activate(context: vscode.ExtensionContext): void {
     )
   );
 
-  // Register commands
+  // 3. Register All Feature Commands (before early exit)
   registerCommands(context, providerContainer);
 
+  // 4. Workspace Check & Feature-specific Initialization
   const workspaceFolders = vscode.workspace.workspaceFolders;
 
   if (!workspaceFolders || workspaceFolders.length === 0) {
-    logger.info('No workspace folder open, waiting for folder...');
+    logger.info('No workspace folder open, features will activate on folder open.');
 
+    // Show welcome message
     vscode.window.showInformationMessage(
-      'StackerFTP: Open a workspace folder to start using SFTP features',
+      'StackerFTP: Please open a folder to start using SFTP features.',
       'Open Folder'
     ).then(selection => {
       if (selection === 'Open Folder') {
@@ -100,7 +109,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const workspaceRoot = workspaceFolders[0].uri.fsPath;
 
-  // Register Remote Document Provider for viewing remote files
+  // 5. Remote Explorer & File System Providers
   remoteDocumentProvider = new RemoteDocumentProvider();
   context.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider(
@@ -109,7 +118,20 @@ export function activate(context: vscode.ExtensionContext): void {
     )
   );
 
-  // Register viewContent command
+  // 6. Native TreeView Setup
+  remoteTreeProvider = new RemoteExplorerTreeProvider(workspaceRoot);
+  providerContainer.remoteExplorer = remoteTreeProvider;
+
+  const treeView = vscode.window.createTreeView('stackerftp.remoteExplorerTree', {
+    treeDataProvider: remoteTreeProvider,
+    showCollapseAll: true,
+    canSelectMany: true
+  });
+
+  providerContainer.treeView = treeView;
+  context.subscriptions.push(treeView);
+
+  // 7. Register viewContent command
   context.subscriptions.push(
     vscode.commands.registerCommand('stackerftp.viewContent', async (item?: any) => {
       if (!item || !item.entry) {
@@ -120,16 +142,14 @@ export function activate(context: vscode.ExtensionContext): void {
       const remotePath = item.entry.path;
       const fileName = item.entry.name || path.basename(remotePath);
 
-      // Check for system files
       if (RemoteDocumentProvider.isSystemFile(remotePath)) {
         statusBar.warn(`Cannot view system file: ${fileName}`);
         return;
       }
 
-      // Check for binary files
       if (RemoteDocumentProvider.isBinaryFile(remotePath)) {
         const choice = await vscode.window.showWarningMessage(
-          `"${fileName}" is a binary file and cannot be viewed as text. Would you like to download it instead?`,
+          `"${fileName}" is a binary file and cannot be viewed as text. Download instead?`,
           'Download', 'Cancel'
         );
         if (choice === 'Download') {
@@ -138,7 +158,6 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      // Store config for multi-connection support
       if (item.config) {
         RemoteDocumentProvider.setConfigForPath(remotePath, item.config);
       }
@@ -153,54 +172,11 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
 
-  // Register Connection Form Provider (always visible)
-  connectionFormProvider = new ConnectionFormProvider(context.extensionUri);
-  context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(
-      ConnectionFormProvider.viewType,
-      connectionFormProvider
-    )
-  );
-
-  // Register Native TreeView for Remote Explorer
-  remoteTreeProvider = new RemoteExplorerTreeProvider(workspaceRoot);
-  providerContainer.remoteExplorer = remoteTreeProvider;
-
-  const treeView = vscode.window.createTreeView('stackerftp.remoteExplorerTree', {
-    treeDataProvider: remoteTreeProvider,
-    showCollapseAll: true,
-    canSelectMany: true
-  });
-
-  providerContainer.treeView = treeView;
-  context.subscriptions.push(treeView);
-  context.subscriptions.push(
-    vscode.commands.registerCommand('stackerftp.tree.openFile', (item) => {
-      remoteTreeProvider.openFile(item);
-    })
-  );
-  context.subscriptions.push(
-    vscode.commands.registerCommand('stackerftp.tree.download', (item) => {
-      remoteTreeProvider.downloadFile(item);
-    })
-  );
-  context.subscriptions.push(
-    vscode.commands.registerCommand('stackerftp.tree.delete', (item) => {
-      remoteTreeProvider.deleteFile(item);
-    })
-  );
-  context.subscriptions.push(
-    vscode.commands.registerCommand('stackerftp.tree.refresh', async () => {
-      await remoteTreeProvider.refreshWithProgress();
-    })
-  );
-
-  // Register Transfer Queue Tree Provider
+  // 8. Transfer Queue & File Watcher
   const { TransferQueueTreeProvider } = require('./providers/transfer-queue-tree');
   const transferQueueProvider = new TransferQueueTreeProvider();
   context.subscriptions.push(transferQueueProvider);
 
-  // Update status bar when transfer queue changes
   transferManager.on('queueUpdate', (queue: any[]) => {
     const activeCount = queue.filter((q: any) => q.status === 'pending' || q.status === 'transferring').length;
     statusBar.updateTransferCount(activeCount);
@@ -210,64 +186,35 @@ export function activate(context: vscode.ExtensionContext): void {
     statusBar.updateTransferCount(0);
   });
 
-  // Load initial configuration
+  // 9. Startup Tasks
   loadConfiguration(workspaceRoot);
-
-  // Start file watcher if enabled
   startFileWatcher(workspaceRoot);
 
-  // Watch for workspace changes
+  // 10. Event Listeners (Workspace changes, Save)
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(async event => {
-      // Kaldırılan klasörleri temizle
       for (const removed of event.removed) {
-        const removedPath = removed.uri.fsPath;
-        logger.info(`Workspace folder removed: ${removedPath}`);
-        // File watcher'ları durdur
         fileWatcherManager.stopAll();
-        // Bağlantıları kapat
         await connectionManager.disconnect();
       }
-
-      // Eklenen klasörleri yükle
       for (const added of event.added) {
-        const newRoot = added.uri.fsPath;
-        await loadConfiguration(newRoot);
+        await loadConfiguration(added.uri.fsPath);
       }
-    })
-  );
-
-  // Watch for file changes (upload on save + config reload)
-  context.subscriptions.push(
+    }),
     vscode.workspace.onDidSaveTextDocument(async document => {
-      // Check if it's the config file
       const configPath = path.join(workspaceRoot, '.vscode', 'sftp.json');
       if (document.fileName === configPath) {
-        logger.info('Config file changed, reloading...');
         await loadConfiguration(workspaceRoot);
-
-        // Refresh connection form to show updated configs
-        if (connectionFormProvider) {
-          connectionFormProvider.refresh();
-        }
-
+        if (connectionFormProvider) connectionFormProvider.refresh();
         statusBar.success('Configuration reloaded');
         return;
       }
 
-      // Check if this is a temp file from Edit Local
+      // Handle Edit Local
       const editMappings = (global as any).stackerftpEditMappings;
       if (editMappings && editMappings.has(document.fileName)) {
         const metadata = editMappings.get(document.fileName);
-
-        // Only upload if there's an active connection - don't auto-connect
-        if (!connectionManager.isConnected(metadata.config)) {
-          vscode.window.showWarningMessage(
-            `Cannot upload "${path.basename(metadata.remotePath)}" - no active connection. Please connect first.`
-          );
-          return;
-        }
-
+        if (!connectionManager.isConnected(metadata.config)) return;
         try {
           const connection = connectionManager.getConnection(metadata.config)!;
           await transferManager.uploadFile(connection, document.fileName, metadata.remotePath, metadata.config);
@@ -278,18 +225,16 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      // Handle upload on save
       handleFileSave(document, workspaceRoot);
     })
   );
 
-
-  // NOTE: FileSystemProvider for 'stackerftp' scheme was removed as it was
-  // a placeholder implementation. Remote file viewing uses RemoteDocumentProvider
-  // with 'stackerftp-remote' scheme, and editing uses 'editInLocal' workflow.
-
   logger.info('StackerFTP extension activated successfully');
 }
+
+// NOTE: FileSystemProvider for 'stackerftp' scheme was removed as it was
+// a placeholder implementation. Remote file viewing uses RemoteDocumentProvider
+// with 'stackerftp-remote' scheme, and editing uses 'editInLocal' workflow.
 
 async function loadConfiguration(workspaceRoot: string): Promise<void> {
   try {

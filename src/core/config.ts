@@ -30,7 +30,7 @@ export class ConfigManager {
 
   async loadConfig(workspaceRoot: string): Promise<FTPConfig[]> {
     const configPath = this.getConfigPath(workspaceRoot);
-    
+
     try {
       if (!fs.existsSync(configPath)) {
         return [];
@@ -38,16 +38,16 @@ export class ConfigManager {
 
       const content = fs.readFileSync(configPath, 'utf-8');
       const parsed = JSON.parse(content);
-      
+
       // Handle both single config and array of configs
       const configs: FTPConfig[] = Array.isArray(parsed) ? parsed : [parsed];
-      
+
       // Resolve Remote-FS references and set defaults
       const configsWithDefaults = configs.map(config => {
         // Remote-FS Integration: resolve remote reference from user settings
         const resolvedConfig = this.resolveRemoteFsConfig(config);
         const vsConfig = vscode.workspace.getConfiguration('stackerftp');
-        
+
         return {
           port: resolvedConfig.protocol === 'sftp' ? 22 : 21,
           uploadOnSave: false,
@@ -63,7 +63,7 @@ export class ConfigManager {
 
       this.configs.set(workspaceRoot, configsWithDefaults);
       logger.info(`Loaded ${configsWithDefaults.length} configuration(s) from ${configPath}`);
-      
+
       return configsWithDefaults;
     } catch (error) {
       logger.error('Failed to load configuration', error);
@@ -82,7 +82,7 @@ export class ConfigManager {
 
       const content = JSON.stringify(configs.length === 1 ? configs[0] : configs, null, 2);
       fs.writeFileSync(configPath, content, 'utf-8');
-      
+
       this.configs.set(workspaceRoot, configs);
       logger.info(`Saved configuration to ${configPath}`);
     } catch (error) {
@@ -103,12 +103,12 @@ export class ConfigManager {
     };
 
     await this.saveConfig(workspaceRoot, [defaultConfig]);
-    
+
     // Open the config file
     const configPath = this.getConfigPath(workspaceRoot);
     const doc = await vscode.workspace.openTextDocument(configPath);
     await vscode.window.showTextDocument(doc);
-    
+
     vscode.window.showInformationMessage(
       'StackerFTP: Configuration file created. Please update it with your server details.',
       'Got it'
@@ -122,33 +122,33 @@ export class ConfigManager {
   getActiveConfig(workspaceRoot: string): FTPConfig | undefined {
     const configs = this.getConfigs(workspaceRoot);
     if (configs.length === 0) return undefined;
-    
+
     if (configs.length === 1) return configs[0];
-    
+
     // Multiple configs - check for profile
     const profile = this.currentProfile.get(workspaceRoot);
     if (profile) {
-      const configWithProfile = configs.find(c => 
+      const configWithProfile = configs.find(c =>
         c.profiles && c.profiles[profile]
       );
       if (configWithProfile) {
         return this.mergeWithProfile(configWithProfile, profile);
       }
     }
-    
+
     // Return first config or default profile
     const firstConfig = configs[0];
     if (firstConfig.defaultProfile && firstConfig.profiles) {
       return this.mergeWithProfile(firstConfig, firstConfig.defaultProfile);
     }
-    
+
     return firstConfig;
   }
 
   private mergeWithProfile(config: FTPConfig, profileName: string): FTPConfig {
     const profile = config.profiles?.[profileName];
     if (!profile) return config;
-    
+
     return {
       ...config,
       ...profile,
@@ -170,7 +170,7 @@ export class ConfigManager {
     const remoteName = config.remote;
     const vsConfig = vscode.workspace.getConfiguration('stackerftp');
     const remotes = vsConfig.get<{ [key: string]: RemoteFsConfig }>('remotes') || {};
-    
+
     const remoteConfig = remotes[remoteName];
     if (!remoteConfig) {
       logger.warn(`Remote-FS: Remote "${remoteName}" not found in user settings. Add it to "stackerftp.remotes.${remoteName}" in settings.json`);
@@ -178,7 +178,7 @@ export class ConfigManager {
     }
 
     logger.info(`Remote-FS: Resolved remote "${remoteName}" from user settings`);
-    
+
     // Merge remote config with local config (local overrides remote)
     return {
       ...remoteConfig,
@@ -198,7 +198,7 @@ export class ConfigManager {
   getAvailableRemotes(): { name: string; config: RemoteFsConfig }[] {
     const vsConfig = vscode.workspace.getConfiguration('stackerftp');
     const remotes = vsConfig.get<{ [key: string]: RemoteFsConfig }>('remotes') || {};
-    
+
     return Object.entries(remotes).map(([name, config]) => ({
       name,
       config
@@ -217,13 +217,13 @@ export class ConfigManager {
   getAvailableProfiles(workspaceRoot: string): string[] {
     const configs = this.getConfigs(workspaceRoot);
     const profiles = new Set<string>();
-    
+
     configs.forEach(config => {
       if (config.profiles) {
         Object.keys(config.profiles).forEach(p => profiles.add(p));
       }
     });
-    
+
     return Array.from(profiles);
   }
 
@@ -236,17 +236,23 @@ export class ConfigManager {
     const configPath = this.getConfigPath(workspaceRoot);
     const pattern = new vscode.RelativePattern(workspaceRoot, path.join(CONFIG_DIR, CONFIG_FILE_NAME));
     const watcher = vscode.workspace.createFileSystemWatcher(pattern);
-    
+
     watcher.onDidChange(() => {
       logger.info('Configuration file changed, reloading...');
       this.loadConfig(workspaceRoot).then(callback);
     });
-    
+
     watcher.onDidCreate(() => {
       logger.info('Configuration file created, loading...');
       this.loadConfig(workspaceRoot).then(callback);
     });
-    
+
+    watcher.onDidDelete(() => {
+      logger.info('Configuration file deleted, clearing...');
+      this.configs.delete(workspaceRoot);
+      callback();
+    });
+
     return watcher;
   }
 }

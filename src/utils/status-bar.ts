@@ -20,7 +20,7 @@ class StatusBarNotifier {
   private transferStatusBarItem: vscode.StatusBarItem;
   private messageQueue: QueuedMessage[] = [];
   private isProcessing = false;
-  private defaultText = '';
+  private defaultText = ''; // No persistent text for notification bar
   private currentTimeout: NodeJS.Timeout | undefined;
   private progressItems: Map<string, vscode.StatusBarItem> = new Map();
   private activeTransferCount = 0;
@@ -28,10 +28,13 @@ class StatusBarNotifier {
   private constructor() {
     this.statusBarItem = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Left,
-      99 // Slightly lower priority than connection status bar
+      99 // Lower priority than connection bar
     );
     this.statusBarItem.name = 'StackerFTP Notifications';
+    this.statusBarItem.text = '$(output) StackerFTP';
+    this.statusBarItem.tooltip = 'StackerFTP: Click to show output';
     this.statusBarItem.command = 'stackerftp.showOutput';
+    // Do not call show() here - it will show when notification arrives
 
     // Transfer queue status bar item
     this.transferStatusBarItem = vscode.window.createStatusBarItem(
