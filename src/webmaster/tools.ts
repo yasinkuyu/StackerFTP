@@ -7,10 +7,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { BaseConnection } from '../core/connection';
-import { FileEntry, ChecksumResult, SearchResult, FileInfo } from '../types';
+import { FileEntry, ChecksumResult, SearchResult, FileInfo, FTPConfig } from '../types';
 import { formatFileSize, formatDate, formatPermissions, calculateChecksum } from '../utils/helpers';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
+import { lookup as lookupMimeType } from 'mime-types';
+import { RemoteDocumentProvider } from '../providers/remote-document-provider';
 
 export class WebMasterTools {
   
@@ -145,6 +147,10 @@ export class WebMasterTools {
       }
     }
 
+    const mimeType = entry.type === 'directory'
+      ? 'inode/directory'
+      : (lookupMimeType(entry.name) || undefined);
+
     return {
       path: entry.path,
       name: entry.name,
@@ -157,6 +163,7 @@ export class WebMasterTools {
         : 'N/A',
       owner: String(entry.owner || 'N/A'),
       group: String(entry.group || 'N/A'),
+      mimeType: mimeType ? String(mimeType) : undefined,
       checksum
     };
   }
@@ -191,6 +198,7 @@ export class WebMasterTools {
           <tr><td>Permissions</td><td>${info.permissions}</td></tr>
           <tr><td>Owner</td><td>${info.owner}</td></tr>
           <tr><td>Group</td><td>${info.group}</td></tr>
+          <tr><td>MIME</td><td>${info.mimeType || 'N/A'}</td></tr>
           ${info.checksum ? `
           <tr><td>Checksum (MD5)</td><td class="checksum">${info.checksum.remote}</td></tr>
           ` : ''}
@@ -241,7 +249,7 @@ export class WebMasterTools {
     return results;
   }
 
-  async showSearchResults(results: SearchResult[]): Promise<void> {
+  async showSearchResults(results: SearchResult[], config?: FTPConfig): Promise<void> {
     if (results.length === 0) {
       statusBar.success('No results found');
       return;
@@ -261,8 +269,21 @@ export class WebMasterTools {
     });
 
     if (selected) {
-      // TODO: Implement opening remote file at specific line
-      logger.info(`Selected search result: ${selected.result.path}:${selected.result.line}`);
+      try {
+        if (config) {
+          RemoteDocumentProvider.setConfigForPath(selected.result.path, config);
+        }
+        const uri = RemoteDocumentProvider.createUri(selected.result.path);
+        const doc = await vscode.workspace.openTextDocument(uri);
+        const editor = await vscode.window.showTextDocument(doc, { preview: true });
+        const line = Math.max(selected.result.line - 1, 0);
+        const column = Math.max(selected.result.column || 0, 0);
+        const position = new vscode.Position(line, column);
+        editor.selection = new vscode.Selection(position, position);
+        editor.revealRange(new vscode.Range(position, position));
+      } catch (error) {
+        logger.warn(`Failed to open search result: ${selected.result.path}`, error);
+      }
     }
   }
 

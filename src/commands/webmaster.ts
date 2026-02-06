@@ -46,6 +46,36 @@ export function registerWebMasterCommands(): vscode.Disposable[] {
     }
   });
 
+  const compareChecksumCommand = vscode.commands.registerCommand('stackerftp.webmaster.compareChecksum', async (item: any) => {
+    if (!item?.entry || item.entry.type !== 'file') {
+      statusBar.error('Select a remote file to compare');
+      return;
+    }
+
+    const workspaceRoot = getWorkspaceRoot();
+    if (!workspaceRoot) return;
+
+    const config = item.config || configManager.getActiveConfig(workspaceRoot);
+    if (!config) return;
+
+    try {
+      const localPick = await vscode.window.showOpenDialog({
+        title: 'Select local file to compare',
+        canSelectFiles: true,
+        canSelectFolders: false,
+        canSelectMany: false
+      });
+
+      if (!localPick || localPick.length === 0) return;
+
+      const connection = item.connectionRef || await connectionManager.ensureConnection(config);
+      const result = await webMasterTools.compareChecksums(connection, localPick[0].fsPath, item.entry.path, 'md5');
+      await webMasterTools.showChecksumResult(result, item.entry.name);
+    } catch (error: any) {
+      statusBar.error(`Checksum compare failed: ${error.message}`);
+    }
+  });
+
   const fileInfoCommand = vscode.commands.registerCommand('stackerftp.webmaster.fileInfo', async (item: any) => {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
@@ -79,7 +109,7 @@ export function registerWebMasterCommands(): vscode.Disposable[] {
     try {
       const connection = await connectionManager.ensureConnection(config);
       const results = await webMasterTools.searchInRemoteFiles(connection, config.remotePath, pattern);
-      await webMasterTools.showSearchResults(results);
+      await webMasterTools.showSearchResults(results, config);
     } catch (error: any) {
       statusBar.error(`Search failed: ${error.message}`);
     }
@@ -219,6 +249,7 @@ export function registerWebMasterCommands(): vscode.Disposable[] {
   disposables.push(
     chmodCommand,
     checksumCommand,
+    compareChecksumCommand,
     fileInfoCommand,
     searchCommand,
     backupCommand,

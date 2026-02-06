@@ -9,12 +9,21 @@ import { BaseConnection } from './connection';
 import { FileEntry, FTPConfig } from '../types';
 import { logger } from '../utils/logger';
 import { normalizeRemotePath } from '../utils/helpers';
+import { connectionHopping } from './connection-hopping';
 
 export class SFTPConnection extends BaseConnection {
   private client: Client | null = null;
   private sftp: SFTPWrapper | null = null;
 
   async connect(): Promise<void> {
+    if (this.config.hop) {
+      const client = await connectionHopping.connectThroughHop(this.config);
+      this.attachClientHandlers(client);
+      this.client = client;
+      await this.initializeSftp();
+      return;
+    }
+
     return new Promise((resolve, reject) => {
       this.client = new Client();
 
@@ -40,20 +49,14 @@ export class SFTPConnection extends BaseConnection {
         connectConfig.password = this.config.password;
       }
 
-      this.client.on('ready', () => {
+      this.client.on('ready', async () => {
         logger.info(`SSH connected to ${this.config.host}:${this.config.port}`);
-
-        this.client!.sftp((err, sftp) => {
-          if (err) {
-            reject(err);
-            return;
-          }
-
-          this.sftp = sftp;
-          this._connected = true;
-          this.emit('connected');
+        try {
+          await this.initializeSftp();
           resolve();
-        });
+        } catch (err) {
+          reject(err);
+        }
       });
 
       this.client.on('error', (err) => {
@@ -70,6 +73,41 @@ export class SFTPConnection extends BaseConnection {
       });
 
       this.client.connect(connectConfig);
+    });
+  }
+
+  private attachClientHandlers(client: Client): void {
+    client.on('error', (err) => {
+      logger.error('SSH connection error', err);
+      this.emit('error', err);
+    });
+
+    client.on('close', () => {
+      logger.info('SSH connection closed');
+      this._connected = false;
+      this.sftp = null;
+      this.emit('disconnected');
+    });
+  }
+
+  private initializeSftp(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.client) {
+        reject(new Error('SSH client not initialized'));
+        return;
+      }
+
+      this.client.sftp((err, sftp) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        this.sftp = sftp;
+        this._connected = true;
+        this.emit('connected');
+        resolve();
+      });
     });
   }
 

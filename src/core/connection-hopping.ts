@@ -25,23 +25,21 @@ export class ConnectionHopping {
     logger.info(`Connecting through ${hops.length} hop(s)`);
 
     // Start with first hop (direct connection)
-    let currentClient = await this.createSSHConnection({
-      host: targetConfig.host,
-      port: targetConfig.port || 22,
-      username: targetConfig.username,
-      password: targetConfig.password,
-      privateKeyPath: targetConfig.privateKeyPath,
-      passphrase: targetConfig.passphrase
-    });
+    let currentClient = await this.createSSHConnection(hops[0]);
 
     // Chain through additional hops
-    for (let i = 0; i < hops.length; i++) {
+    for (let i = 1; i < hops.length; i++) {
       const hop = hops[i];
       logger.info(`Connecting to hop ${i + 1}: ${hop.host}`);
 
       // Forward connection through current client to next hop
       currentClient = await this.forwardThroughClient(currentClient, hop);
     }
+
+    // Finally connect to target through last hop
+    const targetHop = this.toHopConfig(targetConfig);
+    logger.info(`Connecting to target through hops: ${targetConfig.host}`);
+    currentClient = await this.forwardThroughClient(currentClient, targetHop);
 
     return currentClient;
   }
@@ -128,6 +126,17 @@ export class ConnectionHopping {
         newClient.connect(connectConfig);
       });
     });
+  }
+
+  private toHopConfig(config: FTPConfig): HopConfig {
+    return {
+      host: config.host,
+      port: config.port || 22,
+      username: config.username,
+      password: config.password,
+      privateKeyPath: config.privateKeyPath,
+      passphrase: config.passphrase
+    };
   }
 
   /**

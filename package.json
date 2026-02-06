@@ -2,7 +2,7 @@
   "name": "stackerftp",
   "displayName": "StackerFTP - Professional SFTP/FTP Client",
   "description": "Professional SFTP, FTP & FTPS client for VS Code, Cursor, and Windsurf. Features a native Remote Explorer, bi-directional sync, upload on save, and advanced WebMaster tools.",
-  "version": "1.0.5",
+  "version": "1.0.8",
   "publisher": "yasinkuyu",
   "author": "Insya, Yasin Kuyu",
   "license": "MIT",
@@ -46,7 +46,17 @@
   ],
   "activationEvents": [
     "onFileSystem:stackerftp-remote",
-    "onView:stackerftp.remoteExplorer"
+    "onView:stackerftp.remoteExplorerTree",
+    "onView:stackerftp.connectionForm",
+    "onCommand:stackerftp.config",
+    "onCommand:stackerftp.connect",
+    "onCommand:stackerftp.quickConnect",
+    "onCommand:stackerftp.newConnection",
+    "onCommand:stackerftp.upload",
+    "onCommand:stackerftp.download",
+    "onCommand:stackerftp.syncToRemote",
+    "onCommand:stackerftp.syncToLocal",
+    "onCommand:stackerftp.syncBothWays"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -90,6 +100,11 @@
           "type": "boolean",
           "default": false,
           "description": "Watch local files for changes"
+        },
+        "stackerftp.autoReconnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically reconnect when a connection drops"
         },
         "stackerftp.defaultSyntaxHighlighting": {
           "type": "boolean",
@@ -391,6 +406,12 @@
         "title": "Calculate Checksum",
         "category": "StackerFTP - WebMaster",
         "icon": "$(check)"
+      },
+      {
+        "command": "stackerftp.webmaster.compareChecksum",
+        "title": "Compare Checksum with Local File",
+        "category": "StackerFTP - WebMaster",
+        "icon": "$(diff)"
       },
       {
         "command": "stackerftp.webmaster.search",
@@ -926,9 +947,14 @@
           "group": "5_modify@5"
         },
         {
+          "command": "stackerftp.webmaster.compareChecksum",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /^(sftp|ftp|ftps)-file$/",
+          "group": "5_modify@6"
+        },
+        {
           "command": "stackerftp.webmaster.backup",
           "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /^sftp-(file|directory)$/",
-          "group": "5_modify@6"
+          "group": "5_modify@7"
         },
         {
           "command": "stackerftp.tree.delete",
@@ -1111,22 +1137,24 @@
     "package": "vsce package"
   },
   "devDependencies": {
+    "@types/mime-types": "^2.1.4",
     "@types/node": "^20.0.0",
     "@types/ssh2": "^1.11.0",
     "@types/vscode": "^1.74.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "eslint": "^8.0.0",
-    "typescript": "^5.0.0",
-    "vsce": "^2.15.0",
     "ovsx": "0.10.9",
-    "vitest": "^1.6.0"
+    "typescript": "^5.0.0",
+    "vitest": "^1.6.0",
+    "vsce": "^2.15.0"
   },
   "dependencies": {
+    "@vscode/codicons": "^0.0.35",
     "basic-ftp": "^5.0.0",
-    "ssh2": "^1.15.0",
-    "minimatch": "^9.0.0",
     "ignore": "^5.3.0",
-    "@vscode/codicons": "^0.0.35"
+    "mime-types": "^2.1.35",
+    "minimatch": "^9.0.0",
+    "ssh2": "^1.15.0"
   }
 }

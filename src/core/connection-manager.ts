@@ -16,6 +16,9 @@ export class ConnectionManager {
   private statusBarItem: vscode.StatusBarItem;
   private activeConnectionKey: string | undefined;
   private primaryConnectionKey: string | undefined;
+  private manualDisconnects: Set<string> = new Set();
+  private reconnectTimers: Map<string, NodeJS.Timeout> = new Map();
+  private reconnectAttempts: Map<string, number> = new Map();
 
   private _onConnectionChanged: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
   public readonly onConnectionChanged: vscode.Event<void> = this._onConnectionChanged.event;
@@ -213,6 +216,8 @@ export class ConnectionManager {
       if (!this.primaryConnectionKey) {
         this.primaryConnectionKey = key;
       }
+      this.manualDisconnects.delete(key);
+      this.clearReconnectState(key);
       this.updateStatusBar();
       this._onConnectionChanged.fire();
     });
@@ -220,6 +225,12 @@ export class ConnectionManager {
     connection.on('disconnected', () => {
       logger.info(`Disconnected from ${config.host}`);
       statusBar.info(`Disconnected: ${displayName}`);
+      // Auto-reconnect if enabled and not a manual disconnect
+      if (!this.manualDisconnects.has(key)) {
+        this.scheduleReconnect(config, key);
+      } else {
+        this.manualDisconnects.delete(key);
+      }
       // Clear primary if this was it
       if (this.primaryConnectionKey === key) {
         this.primaryConnectionKey = undefined;
@@ -250,6 +261,8 @@ export class ConnectionManager {
       const key = this.getConnectionKey(config);
       const connection = this.connections.get(key);
       if (connection) {
+        this.manualDisconnects.add(key);
+        this.clearReconnectState(key);
         await connection.disconnect();
         this.connections.delete(key);
         if (this.activeConnectionKey === key) {
@@ -262,6 +275,8 @@ export class ConnectionManager {
     } else {
       // Disconnect all
       for (const [key, connection] of this.connections) {
+        this.manualDisconnects.add(key);
+        this.clearReconnectState(key);
         await connection.disconnect();
       }
       this.connections.clear();
@@ -301,6 +316,50 @@ export class ConnectionManager {
       return connection;
     }
     return this.connect(config);
+  }
+
+  private scheduleReconnect(config: FTPConfig, key: string): void {
+    if (config.autoReconnect === false) return;
+
+    // Avoid auto reconnect if no credentials are available
+    if (!config.password && !config.privateKeyPath) {
+      logger.warn(`Auto-reconnect skipped for ${config.host}: no stored credentials`);
+      return;
+    }
+
+    if (this.reconnectTimers.has(key)) return;
+
+    const attempt = (this.reconnectAttempts.get(key) || 0) + 1;
+    this.reconnectAttempts.set(key, attempt);
+
+    const delay = Math.min(30000, 2000 * attempt);
+    logger.info(`Scheduling reconnect to ${config.host} in ${delay}ms (attempt ${attempt})`);
+
+    const timer = setTimeout(async () => {
+      this.reconnectTimers.delete(key);
+      try {
+        const existing = this.getConnection(config);
+        if (existing && existing.connected) {
+          this.clearReconnectState(key);
+          return;
+        }
+        await this.connect(config);
+      } catch (error) {
+        logger.warn(`Reconnect attempt ${attempt} failed for ${config.host}`, error);
+        this.scheduleReconnect(config, key);
+      }
+    }, delay);
+
+    this.reconnectTimers.set(key, timer);
+  }
+
+  private clearReconnectState(key: string): void {
+    const timer = this.reconnectTimers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      this.reconnectTimers.delete(key);
+    }
+    this.reconnectAttempts.delete(key);
   }
 
   dispose(): void {

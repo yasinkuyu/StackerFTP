@@ -15,7 +15,7 @@ A professional-grade FTP/SFTP client extension for Visual Studio Code and all it
 - **Download on Open**: Automatically download files when opened from remote
 - **Connection Profiles**: Switch between multiple server configurations
 - **Multi-Connection Support**: Connect to multiple servers simultaneously
-- [ ] **Connection Hopping**: Connect through intermediate servers (Coming Soon)
+- [x] **Connection Hopping**: Connect through intermediate servers
 - **File Watcher**: Monitor local files for changes and auto-upload
 
 ### 📁 File Management

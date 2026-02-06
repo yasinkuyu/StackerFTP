@@ -10,6 +10,8 @@ vsc-extension-quickstart.md
 **/*.ts
 !**/*.d.ts
 node_modules/**
+.npm-cache/
+.npm/
 !node_modules/basic-ftp/**
 !node_modules/ssh2/**
 !node_modules/minimatch/**

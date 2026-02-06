@@ -164,6 +164,11 @@
           "default": 10000,
           "description": "Connection timeout in milliseconds"
         },
+        "autoReconnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically reconnect when the connection drops"
+        },
         "hop": {
           "oneOf": [
             { "$ref": "#/definitions/hopConfig" },

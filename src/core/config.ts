@@ -46,6 +46,7 @@ export class ConfigManager {
       const configsWithDefaults = configs.map(config => {
         // Remote-FS Integration: resolve remote reference from user settings
         const resolvedConfig = this.resolveRemoteFsConfig(config);
+        const vsConfig = vscode.workspace.getConfiguration('stackerftp');
         
         return {
           port: resolvedConfig.protocol === 'sftp' ? 22 : 21,
@@ -55,6 +56,7 @@ export class ConfigManager {
           keepalive: 10000,
           passive: true,
           secure: false,
+          autoReconnect: vsConfig.get<boolean>('autoReconnect', true),
           ...resolvedConfig
         };
       });

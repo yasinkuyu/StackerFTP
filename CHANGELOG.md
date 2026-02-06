@@ -2,7 +2,35 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
-## [1.0.5] - 2026-02-06
+## [1.0.9] - 2026-02-06
+
+### Added
+- **Connection Hopping**: Jump host support wired into SFTP connect flow.
+- **Auto Reconnect**: New `stackerftp.autoReconnect` setting with backoff retry for dropped connections.
+- **Checksum Compare**: Compare remote file checksum with a selected local file.
+- **MIME Type**: Display MIME type in File Info panel.
+- **Search Results Navigation**: Open remote file at the selected search result line.
+- **Activation Events**: Added `onCommand` activations to prevent "command not found" issues.
+- **Tests**: Added Vitest config and initial helper tests.
+- **Docs**: Updated README to mark Connection Hopping as available.
+
+### Changed
+- **Remote Preview**: Skip preview for large files with a clear download prompt.
+- **Commands**: Split WebMaster and View commands into separate modules.
+- **Performance**: Replaced critical sync fs calls with async equivalents.
+
+## [1.0.8] - 2026-02-06
+
+### Added
+- **Feature Visibility**: Enabled "Compare Checksum" and other WebMaster tools for FTP and FTPS protocols (previously SFTP only).
+- **Documentation**: Updated README to reflect "Connection Hopping" feature status.
+
+## [1.0.7] - 2026-02-06
+
+### Fixed
+- **Package Size**: Optimized extension package by excluding unnecessary cache files, reducing size from 24MB to ~2MB.
+
+## [1.0.6] - 2026-02-06
 
 ### Added
 - **Atomic Uploads**: Implemented atomic upload logic for SFTP to prevent partial file uploads and ensure data integrity.

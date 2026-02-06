@@ -44,6 +44,7 @@ export interface FTPConfig {
   hop?: HopConfig | HopConfig[];
   // Remote-FS Integration: reference to a remote defined in user settings
   remote?: string;
+  autoReconnect?: boolean;
 }
 
 // Remote-FS Integration: Remote definition in user settings
