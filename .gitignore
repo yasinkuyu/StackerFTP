@@ -12,6 +12,8 @@ node_modules/
 .vscode-test/
 coverage/
 .nyc_output/
+.npm-cache/
+.npm/
 
 # VS Code specific
 vsc-extension-quickstart.md
