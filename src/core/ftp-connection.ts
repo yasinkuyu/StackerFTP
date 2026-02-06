@@ -145,9 +145,7 @@ export class FTPConnection extends BaseConnection {
 
         // Ensure directory exists
         const localDir = path.dirname(localPath);
-        if (!fs.existsSync(localDir)) {
-          fs.mkdirSync(localDir, { recursive: true });
-        }
+        await fs.promises.mkdir(localDir, { recursive: true });
 
         await this.client.downloadTo(localPath, remotePath);
 
@@ -321,14 +319,11 @@ export class FTPConnection extends BaseConnection {
       const tempPath = path.join(os.tmpdir(), `stackerftp-${uniqueId}.tmp`);
       try {
         await this.client.downloadTo(tempPath, remotePath);
-        const content = fs.readFileSync(tempPath);
-        return content;
+        return await fs.promises.readFile(tempPath);
       } finally {
         // Her durumda temizle
         try {
-          if (fs.existsSync(tempPath)) {
-            fs.unlinkSync(tempPath);
-          }
+          await fs.promises.unlink(tempPath);
         } catch (cleanupError) {
           logger.warn('Failed to cleanup temp file', cleanupError);
         }
@@ -342,14 +337,12 @@ export class FTPConnection extends BaseConnection {
       const tempPath = path.join(os.tmpdir(), `stackerftp-${uniqueId}.tmp`);
       try {
         const buffer = Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf-8');
-        fs.writeFileSync(tempPath, buffer);
+        await fs.promises.writeFile(tempPath, buffer);
         await this.client.uploadFrom(tempPath, remotePath);
       } finally {
         // Her durumda temizle
         try {
-          if (fs.existsSync(tempPath)) {
-            fs.unlinkSync(tempPath);
-          }
+          await fs.promises.unlink(tempPath);
         } catch (cleanupError) {
           logger.warn('Failed to cleanup temp file', cleanupError);
         }

@@ -1107,6 +1107,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
+    "test": "vitest",
     "package": "vsce package"
   },
   "devDependencies": {
@@ -1118,7 +1119,8 @@
     "eslint": "^8.0.0",
     "typescript": "^5.0.0",
     "vsce": "^2.15.0",
-    "ovsx": "0.10.9"
+    "ovsx": "0.10.9",
+    "vitest": "^1.6.0"
   },
   "dependencies": {
     "basic-ftp": "^5.0.0",

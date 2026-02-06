@@ -150,7 +150,10 @@ export class FileWatcher implements vscode.Disposable {
             return;
           }
 
-          if (!fs.existsSync(filePath)) {
+          let stat: fs.Stats;
+          try {
+            stat = await fs.promises.stat(filePath);
+          } catch {
             return;
           }
 
@@ -164,7 +167,6 @@ export class FileWatcher implements vscode.Disposable {
           if (!uploadConnection) {
             return;
           }
-          const stat = fs.statSync(filePath);
           if (stat.isDirectory()) {
             await uploadConnection.mkdir(remotePath);
           } else {

@@ -5,11 +5,14 @@ All notable changes to the "StackerFTP" extension will be documented in this fil
 ## [1.0.5] - 2026-02-06
 
 ### Added
+- **Atomic Uploads**: Implemented atomic upload logic for SFTP to prevent partial file uploads and ensure data integrity.
+- **Unit Testing**: Integrated Vitest for robust unit testing of core components.
 - **Fork Compatibility**: Added metadata keywords and explicit README mentions for Cursor, Antigravity, Windsurf, VSCodium, Trae, and PearAI.
 - **Improved Symlinks**: Enhanced symlink display in Remote Explorer to show target paths more clearly.
 
 ### Changed
 - **Maintenance**: Minor bug fixes and performance improvements in Remote Explorer.
+- **Package Management**: Improved `.gitignore` and `package-lock.json` handling for better environment consistency.
 
 ## [1.0.4] - 2026-02-05
 

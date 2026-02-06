@@ -9,12 +9,14 @@ import * as os from 'os';
 import { configManager } from '../core/config';
 import { connectionManager } from '../core/connection-manager';
 import { transferManager } from '../core/transfer-manager';
-import { webMasterTools } from '../webmaster/tools';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
 import { normalizeRemotePath, formatFileSize, sanitizeRelativePath } from '../utils/helpers';
 import { ConnectionWizard } from '../core/connection-wizard';
 import { createGitIntegration } from '../core/git-integration';
+import { getWorkspaceRoot } from './utils';
+import { registerWebMasterCommands } from './webmaster';
+import { registerViewCommands } from './view';
 
 import { ConnectionFormProvider } from '../providers/connection-form-provider';
 
@@ -1128,217 +1130,6 @@ export function registerCommands(
     });
   });
 
-  // ==================== Web Master Commands ====================
-
-  const chmodCommand = vscode.commands.registerCommand('stackerftp.webmaster.chmod', async (item: any) => {
-    const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) return;
-
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) return;
-
-    try {
-      const connection = await connectionManager.ensureConnection(config);
-      await webMasterTools.showChmodDialog(connection, item.entry);
-
-    } catch (error: any) {
-      statusBar.error(`chmod failed: ${error.message}`);
-    }
-  });
-
-  const checksumCommand = vscode.commands.registerCommand('stackerftp.webmaster.checksum', async (item: any) => {
-    const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) return;
-
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) return;
-
-    try {
-      const connection = await connectionManager.ensureConnection(config);
-      const algorithm = await vscode.window.showQuickPick(
-        ['md5', 'sha1', 'sha256'],
-        { placeHolder: 'Select checksum algorithm' }
-      ) as 'md5' | 'sha1' | 'sha256';
-
-      if (!algorithm) return;
-
-      const checksum = await webMasterTools.calculateRemoteChecksum(connection, item.entry.path, algorithm);
-      await webMasterTools.showChecksumResult({ algorithm, remote: checksum }, item.entry.name);
-    } catch (error: any) {
-      statusBar.error(`Checksum failed: ${error.message}`);
-    }
-  });
-
-  const fileInfoCommand = vscode.commands.registerCommand('stackerftp.webmaster.fileInfo', async (item: any) => {
-    const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) return;
-
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) return;
-
-    try {
-      const connection = await connectionManager.ensureConnection(config);
-      const info = await webMasterTools.getFileInfo(connection, item.entry);
-      await webMasterTools.showFileInfo(info);
-    } catch (error: any) {
-      statusBar.error(`Failed to get file info: ${error.message}`);
-    }
-  });
-
-  const searchCommand = vscode.commands.registerCommand('stackerftp.webmaster.search', async () => {
-    const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) return;
-
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) return;
-
-    const pattern = await vscode.window.showInputBox({
-      prompt: 'Enter search pattern',
-      placeHolder: 'search text'
-    });
-
-    if (!pattern) return;
-
-    try {
-      const connection = await connectionManager.ensureConnection(config);
-      const results = await webMasterTools.searchInRemoteFiles(connection, config.remotePath, pattern);
-      await webMasterTools.showSearchResults(results);
-    } catch (error: any) {
-      statusBar.error(`Search failed: ${error.message}`);
-    }
-  });
-
-  const backupCommand = vscode.commands.registerCommand('stackerftp.webmaster.backup', async (item: any) => {
-    if (!item?.entry) {
-      statusBar.error('No file or folder selected');
-      return;
-    }
-
-    const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) return;
-
-    // Use item's config if available, otherwise get active config
-    const config = item.config || configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      statusBar.error('No configuration found');
-      return;
-    }
-
-    // Check if protocol supports exec (SFTP only)
-    if (config.protocol !== 'sftp') {
-      statusBar.warn('Backup requires SFTP protocol');
-      return;
-    }
-
-    const backupName = await vscode.window.showInputBox({
-      prompt: 'Enter backup name (optional)',
-      placeHolder: `backup-${new Date().toISOString().split('T')[0]}`
-    });
-
-    if (backupName === undefined) return; // User cancelled
-
-    try {
-      const connection = item.connectionRef || await connectionManager.ensureConnection(config);
-      const backupPath = await webMasterTools.createBackup(connection, item.entry.path, backupName || undefined);
-      statusBar.success(`Backup created: ${backupPath}`);
-    } catch (error: any) {
-      statusBar.error(`Backup failed: ${error.message}`);
-    }
-  });
-
-  const compareFoldersCommand = vscode.commands.registerCommand('stackerftp.webmaster.compareFolders', async () => {
-    const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) return;
-
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) return;
-
-    try {
-      const connection = await connectionManager.ensureConnection(config);
-
-      vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
-        title: 'Comparing folders...',
-        cancellable: false
-      }, async (progress) => {
-        progress.report({ message: 'Scanning local files...' });
-        const result = await webMasterTools.compareFolders(connection, workspaceRoot, config.remotePath);
-
-        progress.report({ message: 'Done' });
-
-        // Show results
-        const items = [
-          `$(file-add) Only in local: ${result.onlyLocal.length}`,
-          `$(file-subtract) Only in remote: ${result.onlyRemote.length}`,
-          `$(git-compare) Different: ${result.different.length}`
-        ];
-
-        const selected = await vscode.window.showQuickPick(items, {
-          title: 'Folder Comparison Results',
-          canPickMany: false
-        });
-
-        if (selected) {
-          let detailList: string[] = [];
-          if (selected.includes('Only in local')) {
-            detailList = result.onlyLocal.slice(0, 50);
-          } else if (selected.includes('Only in remote')) {
-            detailList = result.onlyRemote.slice(0, 50);
-          } else if (selected.includes('Different')) {
-            detailList = result.different.slice(0, 50);
-          }
-
-          if (detailList.length > 0) {
-            await vscode.window.showQuickPick(detailList, {
-              title: selected,
-              placeHolder: `Showing ${Math.min(detailList.length, 50)} of ${detailList.length} files`
-            });
-          }
-        }
-      });
-    } catch (error: any) {
-      statusBar.error(`Folder comparison failed: ${error.message}`);
-    }
-  });
-
-  const replaceCommand = vscode.commands.registerCommand('stackerftp.webmaster.replace', async () => {
-    const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) return;
-
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) return;
-
-    try {
-      const connection = await connectionManager.ensureConnection(config);
-      await webMasterTools.showFindAndReplaceDialog(connection, config.remotePath);
-    } catch (error: any) {
-      statusBar.error(`Find and replace failed: ${error.message}`);
-    }
-  });
-
-  const purgeCacheCommand = vscode.commands.registerCommand('stackerftp.webmaster.purgeCache', async () => {
-    const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) return;
-
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) return;
-
-    const choice = await vscode.window.showWarningMessage(
-      'Purge remote cache directories?',
-      { modal: true },
-      'Yes', 'No'
-    );
-
-    if (choice !== 'Yes') return;
-
-    try {
-      const connection = await connectionManager.ensureConnection(config);
-      await webMasterTools.purgeRemoteCache(connection, config.remotePath);
-    } catch (error: any) {
-      statusBar.error(`Purge cache failed: ${error.message}`);
-    }
-  });
-
   // ==================== Connection Wizard Commands ====================
 
   const newConnectionCommand = vscode.commands.registerCommand('stackerftp.newConnection', async () => {
@@ -2391,157 +2182,6 @@ export function registerCommands(
     }
   });
 
-  // ==================== Select Primary Connection Command ====================
-
-  const selectPrimaryConnectionCommand = vscode.commands.registerCommand('stackerftp.selectPrimaryConnection', async () => {
-    const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) return;
-
-    const configs = configManager.getConfigs(workspaceRoot);
-    if (configs.length === 0) {
-      statusBar.success('No connections configured. Use "StackerFTP: New Connection" to add one.');
-      return;
-    }
-
-    const activeConns = connectionManager.getAllActiveConnections();
-    const primaryConfig = connectionManager.getPrimaryConfig();
-
-    const items = configs.map(config => {
-      const isConnected = connectionManager.isConnected(config);
-      const isPrimary = primaryConfig && config.name === primaryConfig.name && config.host === primaryConfig.host;
-
-      let icon = '$(primitive-square)'; // Default disconnected
-      if (isPrimary) icon = '$(star-full)';
-      else if (isConnected) icon = '$(star-empty)';
-
-      let description = `${config.protocol?.toUpperCase()} • ${config.username}@${config.host}`;
-      let detail = 'Disconnected - Click to connect';
-
-      if (isPrimary) detail = 'Primary Connection - Click to manage';
-      else if (isConnected) detail = 'Connected - Click to set as Primary';
-
-      return {
-        label: `${icon} ${config.name || config.host}`,
-        description,
-        detail,
-        config,
-        isPrimary,
-        isConnected
-      };
-    });
-
-    // Add connect all / disconnect all options if relevant
-    if (activeConns.length > 0) {
-      items.push({
-        label: '$(close-all) Disconnect All',
-        description: `Disconnect from all ${activeConns.length} servers`,
-        detail: '',
-        config: null as any,
-        isPrimary: false,
-        isConnected: false
-      });
-    }
-
-    const selected = await vscode.window.showQuickPick(items, {
-      placeHolder: 'Manage Connections (Select to connect or set as primary)',
-      title: `Connections (${activeConns.length} active)`
-    });
-
-    if (!selected) return;
-
-    if (!selected.config) {
-      // Disconnect all
-      await connectionManager.disconnect();
-      statusBar.success('Disconnected from all servers');
-      vscode.commands.executeCommand('stackerftp.tree.refresh');
-      return;
-    }
-
-    if (selected.isPrimary) {
-      // Already primary - maybe verify or disconnect?
-      // For now, let's offer to disconnect this specific one
-      const action = await vscode.window.showQuickPick(
-        ['Disconnect', 'Keep as Primary'],
-        { placeHolder: `Action for ${selected.config.name || selected.config.host}` }
-      );
-
-      if (action === 'Disconnect') {
-        await connectionManager.disconnect(selected.config);
-        vscode.commands.executeCommand('stackerftp.tree.refresh');
-      }
-    } else if (selected.isConnected) {
-      // Connected but not primary - set as primary
-      connectionManager.setPrimaryConnection(selected.config);
-      statusBar.success(`Primary connection set to: ${selected.config.name || selected.config.host}`);
-      vscode.commands.executeCommand('stackerftp.tree.refresh');
-    } else {
-      // Disconnected - connect and set as primary (if it's the first connection, connectionManager does this automatically)
-      try {
-        await connectionManager.connect(selected.config);
-        // If there are other connections, we might want to enforce this as primary explicitly
-        if (activeConns.length > 0) {
-          connectionManager.setPrimaryConnection(selected.config);
-        }
-        vscode.commands.executeCommand('stackerftp.tree.refresh');
-      } catch (error: any) {
-        statusBar.error(`Connection failed: ${error.message}`, true);
-      }
-    }
-  });
-
-  // ==================== View Settings Commands ====================
-
-  const toggleHiddenFilesCommand = vscode.commands.registerCommand('stackerftp.toggleHiddenFiles', async () => {
-    const config = vscode.workspace.getConfiguration('stackerftp');
-    const current = config.get<boolean>('showHiddenFiles', false);
-    await config.update('showHiddenFiles', !current, vscode.ConfigurationTarget.Workspace);
-    statusBar.success(`Hidden files: ${!current ? 'shown' : 'hidden'}`);
-    if (remoteExplorer?.refresh) {
-      remoteExplorer.refresh();
-    }
-  });
-
-  const sortByNameCommand = vscode.commands.registerCommand('stackerftp.sortByName', async () => {
-    const config = vscode.workspace.getConfiguration('stackerftp');
-    await config.update('remoteExplorerSortOrder', 'name', vscode.ConfigurationTarget.Workspace);
-    statusBar.success('Sorted by name');
-    if (remoteExplorer?.refresh) {
-      remoteExplorer.refresh();
-    }
-  });
-
-  const sortBySizeCommand = vscode.commands.registerCommand('stackerftp.sortBySize', async () => {
-    const config = vscode.workspace.getConfiguration('stackerftp');
-    await config.update('remoteExplorerSortOrder', 'size', vscode.ConfigurationTarget.Workspace);
-    statusBar.success('Sorted by size');
-    if (remoteExplorer?.refresh) {
-      remoteExplorer.refresh();
-    }
-  });
-
-  const sortByDateCommand = vscode.commands.registerCommand('stackerftp.sortByDate', async () => {
-    const config = vscode.workspace.getConfiguration('stackerftp');
-    await config.update('remoteExplorerSortOrder', 'date', vscode.ConfigurationTarget.Workspace);
-    statusBar.success('Sorted by date');
-    if (remoteExplorer?.refresh) {
-      remoteExplorer.refresh();
-    }
-  });
-
-  const selectAllFilesCommand = vscode.commands.registerCommand('stackerftp.selectAllFiles', async () => {
-    statusBar.info('Select All: Use Ctrl+A in the file list');
-  });
-
-  // ==================== Helper Functions ====================
-
-  function getWorkspaceRoot(): string | undefined {
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (!workspaceFolders || workspaceFolders.length === 0) {
-      statusBar.error('No workspace folder open');
-      return undefined;
-    }
-    return workspaceFolders[0].uri.fsPath;
-  }
 
   // Register all commands
   context.subscriptions.push(
@@ -2569,14 +2209,6 @@ export function registerCommands(
     clearLogsCommand,
     cancelTransferCommand,
     transferQueueCommand,
-    chmodCommand,
-    checksumCommand,
-    fileInfoCommand,
-    searchCommand,
-    backupCommand,
-    compareFoldersCommand,
-    replaceCommand,
-    purgeCacheCommand,
     newConnectionCommand,
     switchProtocolCommand,
     quickConnectCommand,
@@ -2601,14 +2233,13 @@ export function registerCommands(
     copyToOtherRemoteCommand,
     compareRemotesCommand,
     syncBetweenRemotesCommand,
-    selectPrimaryConnectionCommand,
-    toggleHiddenFilesCommand,
-    sortByNameCommand,
-    sortBySizeCommand,
-    sortByDateCommand,
-    selectAllFilesCommand,
     showTransferQueueCommand,
     cancelTransferItemCommand,
     clearTransferQueueCommand
+  );
+
+  context.subscriptions.push(
+    ...registerWebMasterCommands(),
+    ...registerViewCommands(remoteExplorer)
   );
 }

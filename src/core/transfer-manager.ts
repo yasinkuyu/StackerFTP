@@ -33,6 +33,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     remotePath: string,
     config: FTPConfig
   ): Promise<void> {
+    const stats = await fs.promises.stat(localPath);
     const item: TransferItem = {
       id: generateId(),
       localPath,
@@ -40,7 +41,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       direction: 'upload',
       status: 'pending',
       progress: 0,
-      size: fs.statSync(localPath).size,
+      size: stats.size,
       transferred: 0,
       // Store config for per-item connection lookup (prevents cross-server bug)
       config
@@ -157,7 +158,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       skipped: []
     };
 
-    const files = this.getLocalFiles(localPath);
+    const files = await this.getLocalFiles(localPath);
     const concurrency = vscode.workspace.getConfiguration('stackerftp').get<number>('transferConcurrency', 5);
 
     // Process files in batches
@@ -235,14 +236,10 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       try {
         // Ensure local directory exists
         const localDir = path.dirname(localFilePath);
-        if (!fs.existsSync(localDir)) {
-          fs.mkdirSync(localDir, { recursive: true });
-        }
+        await fs.promises.mkdir(localDir, { recursive: true });
 
         if (file.type === 'directory') {
-          if (!fs.existsSync(localFilePath)) {
-            fs.mkdirSync(localFilePath, { recursive: true });
-          }
+          await fs.promises.mkdir(localFilePath, { recursive: true });
         } else {
           // Show file name in status bar
           statusBar.streamFileName('download', relativePath);
@@ -297,24 +294,24 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     };
   }
 
-  private getLocalFiles(dir: string): string[] {
+  private async getLocalFiles(dir: string): Promise<string[]> {
     const files: string[] = [];
 
-    const traverse = (currentDir: string) => {
-      const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    const traverse = async (currentDir: string) => {
+      const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
 
       for (const entry of entries) {
         const fullPath = path.join(currentDir, entry.name);
 
         if (entry.isDirectory()) {
-          traverse(fullPath);
+          await traverse(fullPath);
         } else {
           files.push(fullPath);
         }
       }
     };
 
-    traverse(dir);
+    await traverse(dir);
     return files;
   }
 

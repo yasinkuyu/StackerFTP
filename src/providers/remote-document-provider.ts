@@ -10,6 +10,7 @@ import { configManager } from '../core/config';
 import { connectionManager } from '../core/connection-manager';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
+import { formatFileSize } from '../utils/helpers';
 
 // Binary file extensions that should not be opened as text
 const BINARY_EXTENSIONS = new Set([
@@ -114,6 +115,18 @@ export class RemoteDocumentProvider implements vscode.TextDocumentContentProvide
       }
 
       const connection = await connectionManager.ensureConnection(config);
+
+      // File size guard to avoid loading large files into memory
+      try {
+        const stat = await connection.stat(remotePath);
+        if (stat?.size !== undefined && stat.size > MAX_PREVIEW_SIZE) {
+          return `// File too large to preview: ${path.basename(remotePath)}\n` +
+            `// Size: ${formatFileSize(stat.size)} (limit: ${formatFileSize(MAX_PREVIEW_SIZE)})\n` +
+            `// Use "Download" to save this file locally.`;
+        }
+      } catch {
+        // If stat fails, continue to attempt readFile for backward compatibility
+      }
 
       // Read file content from remote
       const content = await connection.readFile(remotePath);

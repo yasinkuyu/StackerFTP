@@ -181,22 +181,19 @@ export class SFTPConnection extends BaseConnection {
     return this.enqueue(() => this._download(remotePath, localPath));
   }
 
-  private _download(remotePath: string, localPath: string): Promise<void> {
+  private async _download(remotePath: string, localPath: string): Promise<void> {
+    if (!this.sftp) {
+      throw new Error('Not connected');
+    }
+
+    this.emit('transferStart', { direction: 'download', remotePath, localPath });
+
+    // Ensure directory exists
+    const localDir = path.dirname(localPath);
+    await fs.promises.mkdir(localDir, { recursive: true });
+
     return new Promise((resolve, reject) => {
-      if (!this.sftp) {
-        reject(new Error('Not connected'));
-        return;
-      }
-
-      this.emit('transferStart', { direction: 'download', remotePath, localPath });
-
-      // Ensure directory exists
-      const localDir = path.dirname(localPath);
-      if (!fs.existsSync(localDir)) {
-        fs.mkdirSync(localDir, { recursive: true });
-      }
-
-      const readStream = this.sftp.createReadStream(remotePath);
+      const readStream = this.sftp!.createReadStream(remotePath);
       const writeStream = fs.createWriteStream(localPath);
 
       let transferred = 0;
@@ -222,25 +219,24 @@ export class SFTPConnection extends BaseConnection {
     return this.enqueue(() => this._upload(localPath, remotePath));
   }
 
-  private _upload(localPath: string, remotePath: string): Promise<void> {
+  private async _upload(localPath: string, remotePath: string): Promise<void> {
+    if (!this.sftp) {
+      throw new Error('Not connected');
+    }
+
+    this.emit('transferStart', { direction: 'upload', localPath, remotePath });
+
+    const stats = await fs.promises.stat(localPath);
+    const totalSize = stats.size;
+    let transferred = 0;
+
+    // Atomic upload: upload to temp file first, then rename
+    // This ensures files are never partially uploaded
+    const tempRemotePath = `${remotePath}.stackerftp.tmp`;
+
     return new Promise((resolve, reject) => {
-      if (!this.sftp) {
-        reject(new Error('Not connected'));
-        return;
-      }
-
-      this.emit('transferStart', { direction: 'upload', localPath, remotePath });
-
-      const stats = fs.statSync(localPath);
-      const totalSize = stats.size;
-      let transferred = 0;
-
-      // Atomic upload: upload to temp file first, then rename
-      // This ensures files are never partially uploaded
-      const tempRemotePath = `${remotePath}.stackerftp.tmp`;
-
       const readStream = fs.createReadStream(localPath);
-      const writeStream = this.sftp.createWriteStream(tempRemotePath);
+      const writeStream = this.sftp!.createWriteStream(tempRemotePath);
 
       readStream.on('data', (chunk: string | Buffer) => {
         transferred += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
