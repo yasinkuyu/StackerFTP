@@ -4,7 +4,10 @@ import { connectionManager } from '../core/connection-manager';
 import { statusBar } from '../utils/status-bar';
 import { getWorkspaceRoot } from './utils';
 
-export function registerViewCommands(remoteExplorer?: any): vscode.Disposable[] {
+import { ProviderContainer } from './index';
+
+export function registerViewCommands(container: ProviderContainer): vscode.Disposable[] {
+  const { remoteExplorer } = container;
   const disposables: vscode.Disposable[] = [];
 
   const selectPrimaryConnectionCommand = vscode.commands.registerCommand('stackerftp.selectPrimaryConnection', async () => {

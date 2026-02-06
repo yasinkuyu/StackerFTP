@@ -24,6 +24,14 @@ let remoteTreeProvider: RemoteExplorerTreeProvider;
 let connectionFormProvider: ConnectionFormProvider;
 let remoteDocumentProvider: RemoteDocumentProvider;
 
+import { ProviderContainer } from './commands/index';
+
+const providerContainer: ProviderContainer = {
+  remoteExplorer: undefined,
+  connectionFormProvider: undefined,
+  treeView: undefined
+};
+
 // Session-based auto-upload confirmation state
 // Session-based auto-upload confirmation state (per host)
 const autoUploadConfirmedHosts: Set<string> = new Set();
@@ -60,14 +68,18 @@ export function wasRecentlyUploaded(filePath: string): boolean {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  logger.info('StackerFTP extension activating...');
-
-  // Register show output command for status bar click
+  // Register Connection Form Provider (always visible)
+  connectionFormProvider = new ConnectionFormProvider(context.extensionUri);
+  providerContainer.connectionFormProvider = connectionFormProvider;
   context.subscriptions.push(
-    vscode.commands.registerCommand('stackerftp.showOutput', () => {
-      logger.show();
-    })
+    vscode.window.registerWebviewViewProvider(
+      ConnectionFormProvider.viewType,
+      connectionFormProvider
+    )
   );
+
+  // Register commands
+  registerCommands(context, providerContainer);
 
   const workspaceFolders = vscode.workspace.workspaceFolders;
 
@@ -152,6 +164,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Register Native TreeView for Remote Explorer
   remoteTreeProvider = new RemoteExplorerTreeProvider(workspaceRoot);
+  providerContainer.remoteExplorer = remoteTreeProvider;
 
   const treeView = vscode.window.createTreeView('stackerftp.remoteExplorerTree', {
     treeDataProvider: remoteTreeProvider,
@@ -159,6 +172,7 @@ export function activate(context: vscode.ExtensionContext): void {
     canSelectMany: true
   });
 
+  providerContainer.treeView = treeView;
   context.subscriptions.push(treeView);
   context.subscriptions.push(
     vscode.commands.registerCommand('stackerftp.tree.openFile', (item) => {
@@ -195,9 +209,6 @@ export function activate(context: vscode.ExtensionContext): void {
   transferManager.on('queueComplete', () => {
     statusBar.updateTransferCount(0);
   });
-
-  // Register commands
-  registerCommands(context, remoteTreeProvider, connectionFormProvider, treeView);
 
   // Load initial configuration
   loadConfiguration(workspaceRoot);

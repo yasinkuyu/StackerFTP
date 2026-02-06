@@ -2,28 +2,26 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
-## [1.0.9] - 2026-02-06
-
-### Added
-- **Connection Hopping**: Jump host support wired into SFTP connect flow.
-- **Auto Reconnect**: New `stackerftp.autoReconnect` setting with backoff retry for dropped connections.
-- **Checksum Compare**: Compare remote file checksum with a selected local file.
-- **MIME Type**: Display MIME type in File Info panel.
-- **Search Results Navigation**: Open remote file at the selected search result line.
-- **Activation Events**: Added `onCommand` activations to prevent "command not found" issues.
-- **Tests**: Added Vitest config and initial helper tests.
-- **Docs**: Updated README to mark Connection Hopping as available.
-
-### Changed
-- **Remote Preview**: Skip preview for large files with a clear download prompt.
-- **Commands**: Split WebMaster and View commands into separate modules.
-- **Performance**: Replaced critical sync fs calls with async equivalents.
-
 ## [1.0.8] - 2026-02-06
 
 ### Added
-- **Feature Visibility**: Enabled "Compare Checksum" and other WebMaster tools for FTP and FTPS protocols (previously SFTP only).
-- **Documentation**: Updated README to reflect "Connection Hopping" feature status.
+- **Connection Hopping**: Support for Jump hosts in SFTP connections.
+- **Auto Reconnect**: Automatic reconnection with backoff retry for dropped connections.
+- **Checksum Compare**: Ability to compare remote file checksums with local files.
+- **MIME Type**: File Info panel now displays MIME types for remote files.
+- **Search Navigation**: Navigate directly to search results in remote files.
+- **Support for FTP/FTPS**: "Compare Checksum" and other WebMaster tools are now available for FTP/FTPS.
+- **Unit Tests**: Added automated unit tests for core functionality.
+
+### Fixed
+- **Activation Fix**: Commands now register correctly even when opening the extension without a workspace.
+- **Security & Validation**: Removed non-essential files to resolve Marketplace security warnings and manifest errors.
+- **Package Size**: Significantly reduced extension size by optimized packaging (from 24MB to ~900KB).
+- **Download Prompt**: Large files now show a clear download prompt instead of hung previews.
+
+### Changed
+- **Performance**: Improved responsiveness through asynchronous file operations.
+- **Documentation**: Updated README with new features and protocol alignment.
 
 ## [1.0.7] - 2026-02-06
 

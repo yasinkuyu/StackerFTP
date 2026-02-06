@@ -20,12 +20,17 @@ import { registerViewCommands } from './view';
 
 import { ConnectionFormProvider } from '../providers/connection-form-provider';
 
+export interface ProviderContainer {
+  remoteExplorer?: any;
+  connectionFormProvider?: ConnectionFormProvider;
+  treeView?: vscode.TreeView<any>;
+}
+
 export function registerCommands(
   context: vscode.ExtensionContext,
-  remoteExplorer?: any,
-  connectionFormProvider?: ConnectionFormProvider,
-  treeView?: vscode.TreeView<any>
+  container: ProviderContainer
 ): void {
+  const { remoteExplorer, connectionFormProvider, treeView } = container;
 
   // ==================== Configuration Commands ====================
 
@@ -2238,8 +2243,11 @@ export function registerCommands(
     clearTransferQueueCommand
   );
 
+  const viewDisposables = registerViewCommands(container);
+  const webMasterDisposables = registerWebMasterCommands();
+
   context.subscriptions.push(
-    ...registerWebMasterCommands(),
-    ...registerViewCommands(remoteExplorer)
+    ...webMasterDisposables,
+    ...viewDisposables
   );
 }
