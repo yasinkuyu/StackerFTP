@@ -2,6 +2,17 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.1.0] - 2026-02-06
+
+### Fixed
+- **Config Sync**: Added automatic refresh and deletion detection for `sftp.json` configuration file. Manual deletions from the explorer now accurately reflect in the connections list.
+
+### Refactored
+- **Webview Optimization**: Extracted all inline HTML, CSS, and JavaScript from the connection form provider into separate modular files (`resources/webview/`), improving maintainability and reducing the main provider's size by ~1000 lines.
+
+### Changed
+- **Status Bar**: Consolidated status bar items. Transfer notifications are now non-persistent and use the standard `$(output)` icon for cleaner UI.
+
 ## [1.0.8] - 2026-02-06
 
 ### Added
