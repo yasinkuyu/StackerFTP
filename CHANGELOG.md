@@ -2,6 +2,15 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.0.5] - 2026-02-06
+
+### Added
+- **Fork Compatibility**: Added metadata keywords and explicit README mentions for Cursor, Antigravity, Windsurf, VSCodium, Trae, and PearAI.
+- **Improved Symlinks**: Enhanced symlink display in Remote Explorer to show target paths more clearly.
+
+### Changed
+- **Maintenance**: Minor bug fixes and performance improvements in Remote Explorer.
+
 ## [1.0.4] - 2026-02-05
 
 ### Fixed

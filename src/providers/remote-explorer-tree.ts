@@ -43,6 +43,10 @@ export class RemoteTreeItem extends vscode.TreeItem {
       this.description = formatFileSize(entry.size);
     } else if (entry.type === 'symlink') {
       this.description = entry.target ? `→ ${entry.target}` : '→ symlink';
+      // If symlink target is a directory, ensure description reflects that if target path is not enough
+      if (entry.isSymlinkToDirectory && entry.target) {
+        this.description = `→ [Dir] ${entry.target}`;
+      }
     } else {
       // Directories show nothing in description, details in tooltip
       this.description = '';

@@ -12,9 +12,9 @@ vsc-extension-quickstart.md
 node_modules/**
 !node_modules/basic-ftp/**
 !node_modules/ssh2/**
-!node_modules/ssh2-sftp-client/**
 !node_modules/minimatch/**
 !node_modules/ignore/**
+!node_modules/@vscode/codicons/**
 webpack.config.js
 .git/**
 .github/**

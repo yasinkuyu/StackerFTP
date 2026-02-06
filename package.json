@@ -1,8 +1,8 @@
 {
   "name": "stackerftp",
-  "displayName": "StackerFTP - SFTP/FTP/FTPS Client",
-  "description": "Advanced SFTP/FTP/FTPS client with native Remote Explorer and Connection Wizard. Streamline your remote workflow with built-in Webmaster tools and bi-directional Sync.",
-  "version": "1.0.4",
+  "displayName": "StackerFTP - Professional SFTP/FTP Client",
+  "description": "Professional SFTP, FTP & FTPS client for VS Code, Cursor, and Windsurf. Features a native Remote Explorer, bi-directional sync, upload on save, and advanced WebMaster tools.",
+  "version": "1.0.5",
   "publisher": "yasinkuyu",
   "author": "Insya, Yasin Kuyu",
   "license": "MIT",
@@ -16,29 +16,36 @@
   },
   "icon": "resources/icon.png",
   "engines": {
-    "vscode": "^1.74.0"
+    "vscode": "^1.75.0"
   },
   "categories": [
     "Other",
-    "Debuggers",
-    "Visualization"
+    "Programming Languages",
+    "SCM Providers"
   ],
   "keywords": [
     "ftp",
     "sftp",
     "ftps",
+    "ssh",
     "remote",
     "sync",
     "upload",
     "download",
     "deploy",
+    "deployment",
     "webmaster",
-    "file manager"
+    "file manager",
+    "security",
+    "cursor",
+    "antigravity",
+    "windsurf",
+    "vscodium",
+    "trae",
+    "pearai"
   ],
   "activationEvents": [
-    "onStartupFinished",
-    "onCommand:stackerftp.remoteExplorer",
-    "onCommand:stackerftp.config",
+    "onFileSystem:stackerftp-remote",
     "onView:stackerftp.remoteExplorer"
   ],
   "main": "./out/extension.js",

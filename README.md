@@ -51,6 +51,14 @@ A professional-grade FTP/SFTP client extension for Visual Studio Code and all it
 - **Logging**: Comprehensive logging for debugging
 - **Git Integration**: Upload only git-changed files
 
+## 🎯 Compatibility
+
+StackerFTP is designed to work seamlessly with Visual Studio Code and all its major forks and alternative marketplaces.
+
+- **Supported IDEs**: VS Code, Cursor, Antigravity, Windsurf, VSCodium, PearAI, Trae and more.
+- **Marketplaces**: Available on the official [VS Code Marketplace](https://marketplace.visualstudio.com/) and [Open VSX Registry](https://open-vsx.org/).
+
+
 ## Installation
 
 ### From VSIX (Manual)
