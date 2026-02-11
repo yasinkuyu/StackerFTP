@@ -103,14 +103,19 @@ export class RemoteDocumentProvider implements vscode.TextDocumentContentProvide
 
       // Check for binary content by looking for null bytes in first 8KB
       // This catches binary files that weren't detected by extension
+      // BUT we skip this for known text extensions
+      const isKnownText = RemoteDocumentProvider.isBinaryFile(remotePath) === false;
       const checkBuffer = content.slice(0, 8192);
       let nullCount = 0;
-      for (let i = 0; i < checkBuffer.length; i++) {
-        if (checkBuffer[i] === 0) {
-          nullCount++;
-          // If more than 1% null bytes, it's likely binary
-          if (nullCount > checkBuffer.length * 0.01) {
-            return `// Binary file detected: ${path.basename(remotePath)}\n// This file contains binary data and cannot be displayed as text.\n// Use "Download" to save this file locally.`;
+
+      if (!isKnownText) {
+        for (let i = 0; i < checkBuffer.length; i++) {
+          if (checkBuffer[i] === 0) {
+            nullCount++;
+            // If more than 1% null bytes, it's likely binary
+            if (nullCount > checkBuffer.length * 0.01) {
+              return `// Binary file detected: ${path.basename(remotePath)}\n// This file contains binary data and cannot be displayed as text.\n// Use "Download" to save this file locally.`;
+            }
           }
         }
       }
@@ -118,9 +123,11 @@ export class RemoteDocumentProvider implements vscode.TextDocumentContentProvide
       const textContent = content.toString('utf8');
 
       // Additional check: if the text has too many replacement characters, it's probably binary
-      const replacementCharCount = (textContent.match(/\uFFFD/g) || []).length;
-      if (replacementCharCount > textContent.length * 0.05) {
-        return `// Binary file detected: ${path.basename(remotePath)}\n// This file appears to contain binary data that cannot be displayed as text.\n// Use "Download" to save this file locally.`;
+      if (!isKnownText) {
+        const replacementCharCount = (textContent.match(/\uFFFD/g) || []).length;
+        if (replacementCharCount > textContent.length * 0.05) {
+          return `// Binary file detected: ${path.basename(remotePath)}\n// This file appears to contain binary data that cannot be displayed as text.\n// Use "Download" to save this file locally.`;
+        }
       }
 
       // Cache the content

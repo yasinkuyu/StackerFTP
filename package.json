@@ -45,11 +45,6 @@
     "pearai"
   ],
   "activationEvents": [
-    "onView:stackerftp.remoteExplorerTree",
-    "onView:stackerftp.connectionForm",
-    "onView:stackerftp.transferQueue",
-    "onFileSystem:stackerftp-remote",
-    "workspaceContains:**/.vscode/sftp.json",
     "onStartupFinished"
   ],
   "main": "./dist/extension.js",
