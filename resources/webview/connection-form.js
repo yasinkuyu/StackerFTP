@@ -374,4 +374,8 @@ window.addEventListener('message', event => {
 if (!configs.length) {
     loadingOverlay.classList.remove('hidden');
 }
+
+// Signal readiness to backend
+console.log('StackerFTP: Webview ready');
+vscode.postMessage({ type: 'ready' });
 vscode.postMessage({ type: 'loadConfigs' });

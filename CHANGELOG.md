@@ -2,6 +2,14 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.1.2] - 2026-02-11
+
+### Fixed
+- **Platform Integrity**: Switched to `vscode.workspace.fs` for secure file access across all environments.
+- **Config Support**: Added support for JSON with comments (JSONC) in `sftp.json`.
+- **Webview Handshake**: Implemented ready-handshake to eliminate race conditions during panel initialization.
+- **Remote Explorer**: Optimized icon rendering and ensured loading indicators are always dismissed precisely.
+
 ## [1.1.1] - 2026-02-11
 
 ### Fixed

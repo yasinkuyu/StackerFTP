@@ -30,26 +30,49 @@ export class ConfigManager {
 
   async loadConfig(workspaceRoot: string): Promise<FTPConfig[]> {
     const configPath = this.getConfigPath(workspaceRoot);
+    const configUri = vscode.Uri.file(configPath);
 
     try {
-      if (!fs.existsSync(configPath)) {
+      // Check if file exists using VS Code's FS API
+      try {
+        await vscode.workspace.fs.stat(configUri);
+      } catch {
+        logger.info(`Config file not found: ${configPath}`);
         return [];
       }
 
-      const content = fs.readFileSync(configPath, 'utf-8');
-      const parsed = JSON.parse(content);
+      const contentUint8 = await vscode.workspace.fs.readFile(configUri);
+      const content = new TextDecoder().decode(contentUint8);
+
+      // Clean comments from JSON (simple regex approach for common // and /* */)
+      const cleanJson = content
+        .replace(/\\"|"(?:\\"|[^"])*"|(\/\/.*|\/\*[\s\S]*?\*\/)/g, (m, g) => (g ? "" : m))
+        .trim();
+
+      if (!cleanJson) {
+        logger.warn('Configuration file is empty');
+        return [];
+      }
+
+      let parsed;
+      try {
+        parsed = JSON.parse(cleanJson);
+      } catch (e) {
+        logger.error(`JSON Parse Error in ${configPath}: ${e}`);
+        statusBar.error(`Config Error: Invalid JSON in sftp.json`, true);
+        throw e;
+      }
 
       // Handle both single config and array of configs
-      const configs: FTPConfig[] = Array.isArray(parsed) ? parsed : [parsed];
+      const configs: FTPConfig[] = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
 
       // Resolve Remote-FS references and set defaults
-      const configsWithDefaults = configs.map(config => {
+      const configsWithDefaults = configs.filter(c => c && typeof c === 'object').map(config => {
         // Remote-FS Integration: resolve remote reference from user settings
         const resolvedConfig = this.resolveRemoteFsConfig(config);
         const vsConfig = vscode.workspace.getConfiguration('stackerftp');
 
         return {
-          port: resolvedConfig.protocol === 'sftp' ? 22 : 21,
           uploadOnSave: false,
           syncMode: 'update' as const,
           connTimeout: 10000,
@@ -57,7 +80,8 @@ export class ConfigManager {
           passive: true,
           secure: false,
           autoReconnect: vsConfig.get<boolean>('autoReconnect', true),
-          ...resolvedConfig
+          ...resolvedConfig,
+          port: config.port || (resolvedConfig.protocol === 'sftp' ? 22 : 21),
         };
       });
 
@@ -67,7 +91,8 @@ export class ConfigManager {
       return configsWithDefaults;
     } catch (error) {
       logger.error('Failed to load configuration', error);
-      throw new Error(`Failed to load SFTP config: ${error}`);
+      // Don't throw here to prevent blocking view loading, just return empty and log
+      return this.configs.get(workspaceRoot) || [];
     }
   }
 

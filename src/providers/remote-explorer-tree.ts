@@ -52,11 +52,8 @@ export class RemoteTreeItem extends vscode.TreeItem {
       this.description = '';
     }
 
-    // Use VS Code's native file/folder icons via resourceUri
+    // Use VS Code's native file/folder icons where appropriate
     if (entry.type === 'directory') {
-      // Use resourceUri for native folder icon from theme
-      const cleanPath = entry.path.replace(/^\/+/, '');
-      this.resourceUri = vscode.Uri.file(`/tmp/stackerftp-icons/${cleanPath}`);
       this.iconPath = vscode.ThemeIcon.Folder;
     } else if (entry.type === 'symlink') {
       // Symlinks get special handling
@@ -67,10 +64,11 @@ export class RemoteTreeItem extends vscode.TreeItem {
       }
     } else {
       // For files, use the file icon based on extension
-      // Remove leading slashes and create a proper file URI for icon detection
+      // We use a virtual path only if needed for icon theme, but let's avoid it if possible
+      // to prevent VS Code from trying to access non-existent files
       const cleanPath = entry.path.replace(/^\/+/, '');
-      this.resourceUri = vscode.Uri.file(`/tmp/stackerftp-icons/${cleanPath}`);
-      this.iconPath = undefined; // Let VS Code decide based on resourceUri
+      this.resourceUri = vscode.Uri.parse(`stackerftp-remote:/${cleanPath}`);
+      this.iconPath = undefined; // Let VS Code decide based on resourceUri scheme if theme supports it
     }
 
     // Prefix contextValue with protocol for filtering in package.json
@@ -275,6 +273,7 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
 
       if (!conn || !conn.connected) {
         logger.error('No valid connection for config');
+        this.hideLoading();
         return [];
       }
 
@@ -284,14 +283,14 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       try {
         this.showLoading(`Loading ${element.config.name || element.config.host}...`);
         const entries = await conn.list(remotePath);
-        this.hideLoading();
         logger.info(`Listed ${entries.length} entries`);
         this.fileCache.set(remotePath, entries);
         return this.sortEntries(entries, element.config, conn);
       } catch (error: any) {
-        this.hideLoading();
         logger.error(`Failed to list: ${error.message}`, error);
         return [];
+      } finally {
+        this.hideLoading();
       }
     }
 
@@ -300,6 +299,7 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       const conn = element.connectionRef || connectionManager.getConnection(element.config);
       if (!conn || !conn.connected) {
         logger.error('No connection for directory listing');
+        this.hideLoading();
         return [];
       }
 
@@ -307,13 +307,13 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
         this.showLoading(`Loading ${element.entry.name}...`);
         logger.info(`Listing directory: ${element.entry.path}`);
         const entries = await conn.list(element.entry.path);
-        this.hideLoading();
         this.fileCache.set(element.entry.path, entries);
         return this.sortEntries(entries, element.config, conn);
       } catch (error: any) {
-        this.hideLoading();
         logger.error(`Failed to list directory: ${error.message}`, error);
         return [];
+      } finally {
+        this.hideLoading();
       }
     }
 

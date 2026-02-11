@@ -60,11 +60,13 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
       localResourceRoots: [this._extensionUri]
     };
 
-    webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
+    const nonce = this._getNonce();
+    webviewView.webview.html = this._getHtmlForWebview(webviewView.webview, nonce);
 
     webviewView.webview.onDidReceiveMessage(async (data) => {
       try {
         switch (data.type) {
+          case 'ready': // Added ready handshake
           case 'loadConfigs':
             await this._sendConfigs();
             break;
@@ -90,15 +92,11 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
             await this._handleBrowsePrivateKey();
             break;
           case 'showForm':
-            // Focus the connection form view to ensure it's visible and expanded
             vscode.commands.executeCommand('setContext', 'stackerftp.formVisible', true);
-            // Ensure Connections panel is expanded by focusing it
             vscode.commands.executeCommand('stackerftp.connectionForm.focus');
             break;
           case 'hideForm':
-            // Focus Remote Explorer to expand it and show files
             vscode.commands.executeCommand('setContext', 'stackerftp.formVisible', false);
-            // Refresh and focus Remote Explorer
             vscode.commands.executeCommand('stackerftp.tree.refresh');
             vscode.commands.executeCommand('stackerftp.remoteExplorerTree.focus');
             break;
@@ -109,7 +107,17 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
       }
     });
 
-    this._sendConfigs();
+    // Send initial configs with a small delay to ensure webview is ready
+    setTimeout(() => this._sendConfigs(), 500);
+  }
+
+  private _getNonce() {
+    let text = '';
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    for (let i = 0; i < 32; i++) {
+      text += possible.charAt(Math.floor(Math.random() * possible.length));
+    }
+    return text;
   }
 
   private async _resolveWorkspaceRoot(requireSelection: boolean = false): Promise<string | undefined> {
@@ -368,18 +376,23 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
     this._view?.webview.postMessage({ type: 'triggerNewForm' });
   }
 
-  private _getHtmlForWebview(webview: vscode.Webview): string {
+  private _getHtmlForWebview(webview: vscode.Webview, nonce: string): string {
     // Get paths to resources
     const resourcesPath = path.join(this._extensionUri.fsPath, 'resources', 'webview');
 
-    // Read files
-    const htmlPath = path.join(resourcesPath, 'connection-form.html');
-    const cssPath = path.join(resourcesPath, 'connection-form.css');
-    const jsPath = path.join(resourcesPath, 'connection-form.js');
+    // Read files safely
+    let htmlContent = '';
+    let cssContent = '';
+    let jsContent = '';
 
-    const htmlContent = fs.readFileSync(htmlPath, 'utf8');
-    const cssContent = fs.readFileSync(cssPath, 'utf8');
-    const jsContent = fs.readFileSync(jsPath, 'utf8');
+    try {
+      htmlContent = fs.readFileSync(path.join(resourcesPath, 'connection-form.html'), 'utf8');
+      cssContent = fs.readFileSync(path.join(resourcesPath, 'connection-form.css'), 'utf8');
+      jsContent = fs.readFileSync(path.join(resourcesPath, 'connection-form.js'), 'utf8');
+    } catch (e) {
+      logger.error('Failed to read webview resources from disk', e);
+      htmlContent = `<div style="padding: 20px;"><h3>Error loading view resources</h3><p>${e}</p></div>`;
+    }
 
     // Get codicon CSS URI
     const codiconUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'node_modules', '@vscode', 'codicons', 'dist', 'codicon.css'));
@@ -389,7 +402,7 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https:; script-src 'unsafe-inline' 'unsafe-eval' ${webview.cspSource}; style-src 'unsafe-inline' ${webview.cspSource}; font-src ${webview.cspSource};">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https:; script-src 'nonce-${nonce}' ${webview.cspSource}; style-src 'unsafe-inline' ${webview.cspSource}; font-src ${webview.cspSource};">
   <title>StackerFTP Connections</title>
   <link href="${codiconUri}" rel="stylesheet" />
   <style>
@@ -398,8 +411,10 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
 </head>
 <body>
     ${htmlContent}
-    <script>
-      ${jsContent}
+    <script nonce="${nonce}">
+      (function() {
+        ${jsContent}
+      })();
     </script>
 </body>
 </html>`;
