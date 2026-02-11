@@ -2188,8 +2188,39 @@ export function registerCommands(
   });
 
 
+  // ==================== Tree View Specific Commands ====================
+  // These are used by the native TreeView and passed config explicitly
+
+  const treeOpenFileCommand = vscode.commands.registerCommand('stackerftp.tree.openFile', async (item: any, config: any) => {
+    if (container.remoteExplorer) {
+      await container.remoteExplorer.openFile(item, config);
+    }
+  });
+
+  const treeDownloadCommand = vscode.commands.registerCommand('stackerftp.tree.download', async (item: any, config: any) => {
+    if (container.remoteExplorer) {
+      await container.remoteExplorer.downloadFile(item, config);
+    }
+  });
+
+  const treeDeleteCommand = vscode.commands.registerCommand('stackerftp.tree.delete', async (item: any, config: any) => {
+    if (container.remoteExplorer) {
+      await container.remoteExplorer.deleteFile(item, config);
+    }
+  });
+
+  const treeRefreshCommand = vscode.commands.registerCommand('stackerftp.tree.refresh', () => {
+    if (container.remoteExplorer) {
+      container.remoteExplorer.refresh();
+    }
+  });
+
   // Register all commands
   context.subscriptions.push(
+    treeOpenFileCommand,
+    treeDownloadCommand,
+    treeDeleteCommand,
+    treeRefreshCommand,
     configCommand,
     connectCommand,
     disconnectCommand,

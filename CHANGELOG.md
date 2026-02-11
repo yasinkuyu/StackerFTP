@@ -2,6 +2,13 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.1.5] - 2026-02-11
+
+### Fixed
+- **Missing Command Error**: Fixed critical "command not found" error for `stackerftp.tree.openFile` and other tree commands in the Native TreeView.
+- **Registration Alignment**: Ensured all commands defined in `package.json` are correctly registered in the extension activation cycle.
+- **Native Explorer Reliability**: Improved handler logic for tree items to ensure configurations are passed accurately.
+
 ## [1.1.4] - 2026-02-11
 
 ### Fixed

@@ -10,45 +10,11 @@ import { configManager } from '../core/config';
 import { connectionManager } from '../core/connection-manager';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
-import { formatFileSize } from '../utils/helpers';
-
-// Binary file extensions that should not be opened as text
-const BINARY_EXTENSIONS = new Set([
-  // Images
-  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp', '.svg', '.tiff', '.tif', '.raw', '.cr2', '.nef', '.heic', '.heif',
-  // Documents
-  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.odt', '.ods', '.odp',
-  // Archives
-  '.zip', '.tar', '.gz', '.rar', '.7z', '.bz2', '.xz', '.lz', '.lzma', '.cab', '.iso', '.dmg', '.pkg', '.deb', '.rpm',
-  // Executables & Libraries
-  '.exe', '.dll', '.so', '.dylib', '.a', '.lib', '.o', '.obj', '.class', '.pyc', '.pyo', '.wasm',
-  // Media
-  '.mp3', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', '.m4a', '.m4v', '.ogg', '.ogv', '.wav', '.flac', '.aac',
-  // Fonts
-  '.ttf', '.otf', '.woff', '.woff2', '.eot',
-  // Graphics/Design
-  '.psd', '.ai', '.sketch', '.fig', '.xd', '.eps', '.indd',
-  // Databases
-  '.db', '.sqlite', '.sqlite3', '.mdb', '.accdb', '.dbf',
-  // Binary Data
-  '.bin', '.dat', '.data', '.dump', '.img', '.rom', '.sav',
-  // Certificates & Keys
-  '.cer', '.crt', '.der', '.p12', '.pfx', '.pem', '.key',
-  // Other
-  '.swf', '.fla', '.blend', '.fbx', '.max', '.maya', '.unity', '.unitypackage'
-]);
+import { formatFileSize, isBinaryFile, isSystemFile } from '../utils/helpers';
 
 // Maximum file size for preview (5MB) - larger files should be downloaded
 const MAX_PREVIEW_SIZE = 5 * 1024 * 1024;
 
-// System files/folders that should be skipped
-const SYSTEM_PATTERNS = [
-  '__MACOSX',
-  '.DS_Store',
-  'Thumbs.db',
-  '.git',
-  '.svn'
-];
 
 export class RemoteDocumentProvider implements vscode.TextDocumentContentProvider {
   public static readonly scheme = 'stackerftp-remote';
@@ -62,12 +28,11 @@ export class RemoteDocumentProvider implements vscode.TextDocumentContentProvide
   private static _configMap = new Map<string, any>();
 
   static isBinaryFile(filePath: string): boolean {
-    const ext = path.extname(filePath).toLowerCase();
-    return BINARY_EXTENSIONS.has(ext);
+    return isBinaryFile(filePath);
   }
 
   static isSystemFile(filePath: string): boolean {
-    return SYSTEM_PATTERNS.some(pattern => filePath.includes(pattern));
+    return isSystemFile(filePath);
   }
 
   static setConfigForPath(remotePath: string, config: any): void {

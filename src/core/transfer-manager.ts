@@ -34,25 +34,28 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     config: FTPConfig
   ): Promise<void> {
     const stats = await fs.promises.stat(localPath);
-    const item: TransferItem = {
-      id: generateId(),
-      localPath,
-      remotePath,
-      direction: 'upload',
-      status: 'pending',
-      progress: 0,
-      size: stats.size,
-      transferred: 0,
-      // Store config for per-item connection lookup (prevents cross-server bug)
-      config
-    };
+    return new Promise(async (resolve, reject) => {
+      const item: TransferItem = {
+        id: generateId(),
+        localPath,
+        remotePath,
+        direction: 'upload',
+        status: 'pending',
+        progress: 0,
+        size: stats.size,
+        transferred: 0,
+        config,
+        resolve,
+        reject
+      };
 
-    this.queue.push(item);
-    this.emit('queueUpdate', this.queue);
+      this.queue.push(item);
+      this.emit('queueUpdate', this.queue);
 
-    if (!this.active) {
-      await this.processQueue();
-    }
+      if (!this.active) {
+        this.processQueue();
+      }
+    });
   }
 
   async downloadFile(
@@ -61,25 +64,28 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     localPath: string,
     config?: FTPConfig
   ): Promise<void> {
-    const item: TransferItem = {
-      id: generateId(),
-      localPath,
-      remotePath,
-      direction: 'download',
-      status: 'pending',
-      progress: 0,
-      size: 0,
-      transferred: 0,
-      // Store config for per-item connection lookup (prevents cross-server bug)
-      config: config || connection.getConfig()
-    };
+    return new Promise(async (resolve, reject) => {
+      const item: TransferItem = {
+        id: generateId(),
+        localPath,
+        remotePath,
+        direction: 'download',
+        status: 'pending',
+        progress: 0,
+        size: 0,
+        transferred: 0,
+        config: config || connection.getConfig(),
+        resolve,
+        reject
+      };
 
-    this.queue.push(item);
-    this.emit('queueUpdate', this.queue);
+      this.queue.push(item);
+      this.emit('queueUpdate', this.queue);
 
-    if (!this.active) {
-      await this.processQueue();
-    }
+      if (!this.active) {
+        this.processQueue();
+      }
+    });
   }
 
   /**
@@ -124,11 +130,19 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
           item.status = 'completed';
           item.progress = 100;
           item.endTime = new Date();
+
+          if ((item as any).resolve) {
+            (item as any).resolve();
+          }
         } catch (error: any) {
           item.status = 'error';
           item.error = error.message;
           item.endTime = new Date();
           logger.error(`Transfer failed: ${item.remotePath}`, error);
+
+          if ((item as any).reject) {
+            (item as any).reject(error);
+          }
         }
 
         this.emit('transferComplete', item);
@@ -296,44 +310,62 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
 
   private async getLocalFiles(dir: string): Promise<string[]> {
     const files: string[] = [];
+    const MAX_FILES = 100000; // Safety limit
+    const MAX_DEPTH = 50;
 
-    const traverse = async (currentDir: string) => {
+    const traverse = async (currentDir: string, depth: number) => {
+      if (depth > MAX_DEPTH || files.length >= MAX_FILES) return;
+
       const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
 
       for (const entry of entries) {
+        if (files.length >= MAX_FILES) break;
         const fullPath = path.join(currentDir, entry.name);
 
         if (entry.isDirectory()) {
-          await traverse(fullPath);
+          await traverse(fullPath, depth + 1);
         } else {
           files.push(fullPath);
         }
       }
     };
 
-    await traverse(dir);
+    await traverse(dir, 0);
+    if (files.length >= MAX_FILES) {
+      logger.warn(`Directory traversal reached limit of ${MAX_FILES} files. Some files may have been skipped.`);
+      statusBar.warn('Sync limit reached (100k files).');
+    }
     return files;
   }
 
   private async getRemoteFiles(connection: BaseConnection, remotePath: string): Promise<any[]> {
     const files: any[] = [];
+    const MAX_FILES = 100000; // Safety limit
+    const MAX_DEPTH = 50;
 
-    const traverse = async (currentPath: string) => {
+    const traverse = async (currentPath: string, depth: number) => {
+      if (depth > MAX_DEPTH || files.length >= MAX_FILES) return;
+
       const entries = await connection.list(currentPath);
 
       for (const entry of entries) {
+        if (files.length >= MAX_FILES) break;
         const fullPath = normalizeRemotePath(path.join(currentPath, entry.name));
 
         if (entry.type === 'directory') {
           files.push({ ...entry, path: fullPath });
-          await traverse(fullPath);
+          await traverse(fullPath, depth + 1);
         } else {
           files.push({ ...entry, path: fullPath });
         }
       }
     };
 
-    await traverse(remotePath);
+    await traverse(remotePath, 0);
+    if (files.length >= MAX_FILES) {
+      logger.warn(`Remote directory traversal reached limit of ${MAX_FILES} files. Some files may have been skipped.`);
+      statusBar.warn('Sync limit reached (100k files).');
+    }
     return files;
   }
 

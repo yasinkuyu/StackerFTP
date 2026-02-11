@@ -293,3 +293,35 @@ export function mergeConfig(base: any, override: any): any {
   }
   return result;
 }
+
+// Binary file extensions that should not be opened as text
+export const BINARY_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp', '.svg', '.tiff', '.tif', '.raw', '.cr2', '.nef', '.heic', '.heif',
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.odt', '.ods', '.odp',
+  '.zip', '.tar', '.gz', '.rar', '.7z', '.bz2', '.xz', '.lz', '.lzma', '.cab', '.iso', '.dmg', '.pkg', '.deb', '.rpm',
+  '.exe', '.dll', '.so', '.dylib', '.a', '.lib', '.o', '.obj', '.class', '.pyc', '.pyo', '.wasm',
+  '.mp3', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', '.m4a', '.m4v', '.ogg', '.ogv', '.wav', '.flac', '.aac',
+  '.ttf', '.otf', '.woff', '.woff2', '.eot',
+  '.psd', '.ai', '.sketch', '.fig', '.xd', '.eps', '.indd',
+  '.db', '.sqlite', '.sqlite3', '.mdb', '.accdb', '.dbf',
+  '.bin', '.dat', '.data', '.dump', '.img', '.rom', '.sav',
+  '.cer', '.crt', '.der', '.p12', '.pfx', '.pem', '.key',
+  '.swf', '.fla', '.blend', '.fbx', '.max', '.maya', '.unity', '.unitypackage'
+]);
+
+export const SYSTEM_PATTERNS = [
+  '__MACOSX',
+  '.DS_Store',
+  'Thumbs.db',
+  '.git',
+  '.svn'
+];
+
+export function isBinaryFile(filePath: string): boolean {
+  const ext = path.extname(filePath).toLowerCase();
+  return BINARY_EXTENSIONS.has(ext);
+}
+
+export function isSystemFile(filePath: string): boolean {
+  return SYSTEM_PATTERNS.some(pattern => filePath.includes(pattern));
+}

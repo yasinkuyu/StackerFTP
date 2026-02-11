@@ -13,7 +13,7 @@ import { BaseConnection } from '../core/connection';
 import { FileEntry, FTPConfig } from '../types';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
-import { formatFileSize, formatDate, normalizeRemotePath } from '../utils/helpers';
+import { formatFileSize, formatDate, normalizeRemotePath, isBinaryFile, isSystemFile } from '../utils/helpers';
 import { RemoteDocumentProvider } from './remote-document-provider';
 
 export class RemoteTreeItem extends vscode.TreeItem {
@@ -566,13 +566,13 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
         fs.mkdirSync(targetDir, { recursive: true });
       }
 
-      await conn.download(item.path, targetPath);
+      await transferManager.downloadFile(conn, item.path, targetPath, config);
 
       const targetUri = vscode.Uri.file(targetPath);
       await vscode.commands.executeCommand('vscode.open', targetUri);
 
       progress.complete();
-      logger.info(`Opened binary file: ${item.path} -> ${targetPath}`);
+      logger.info(`Opened binary file via transferManager: ${item.path} -> ${targetPath}`);
     } catch (error: any) {
       logger.error('Failed to open binary file', error);
       progress.fail(`Failed to open: ${error.message}`);
@@ -580,8 +580,7 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
   }
 
   private isSystemFile(filePath: string): boolean {
-    const systemPatterns = ['__MACOSX', '.DS_Store', 'Thumbs.db'];
-    return systemPatterns.some(pattern => filePath.includes(pattern));
+    return isSystemFile(filePath);
   }
 
   private getLanguageId(fileName: string): string {

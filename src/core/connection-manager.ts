@@ -19,6 +19,7 @@ export class ConnectionManager {
   private manualDisconnects: Set<string> = new Set();
   private reconnectTimers: Map<string, NodeJS.Timeout> = new Map();
   private reconnectAttempts: Map<string, number> = new Map();
+  private ongoingConnections: Map<string, Promise<BaseConnection>> = new Map();
 
   private _onConnectionChanged: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
   public readonly onConnectionChanged: vscode.Event<void> = this._onConnectionChanged.event;
@@ -173,87 +174,104 @@ export class ConnectionManager {
       return existing;
     }
 
-    // If no password and no private key, prompt for password
-    let workingConfig = { ...config };
-    if (!workingConfig.password && !workingConfig.privateKeyPath) {
-      const password = await vscode.window.showInputBox({
-        prompt: `Enter password for ${workingConfig.username}@${workingConfig.host}`,
-        password: true,
-        ignoreFocusOut: true
-      });
-
-      if (password === undefined) {
-        throw new Error('Connection cancelled - no password provided');
-      }
-
-      workingConfig.password = password;
+    // Check if there is an ongoing connection attempt for this key
+    const ongoing = this.ongoingConnections.get(key);
+    if (ongoing) {
+      return ongoing;
     }
 
-    // Show connecting status
-    const progress = statusBar.startProgress('connect', `Connecting to ${displayName}...`);
+    // Use a promise to track this connection attempt
+    const connectionPromise = (async () => {
+      try {
+        // If no password and no private key, prompt for password
+        let workingConfig = { ...config };
+        if (!workingConfig.password && !workingConfig.privateKeyPath) {
+          const password = await vscode.window.showInputBox({
+            prompt: `Enter password for ${workingConfig.username}@${workingConfig.host}`,
+            password: true,
+            ignoreFocusOut: true
+          });
 
-    // Create new connection based on protocol
-    let connection: BaseConnection;
+          if (password === undefined) {
+            throw new Error('Connection cancelled - no password provided');
+          }
 
-    switch (workingConfig.protocol) {
-      case 'sftp':
-        connection = new SFTPConnection(workingConfig);
-        break;
-      case 'ftp':
-      case 'ftps':
-        connection = new FTPConnection(workingConfig);
-        break;
-      default:
-        progress.fail(`Unsupported protocol: ${workingConfig.protocol}`);
-        throw new Error(`Unsupported protocol: ${workingConfig.protocol}`);
-    }
+          workingConfig.password = password;
+        }
 
-    // Set up event handlers
-    connection.on('connected', () => {
-      logger.info(`Connected to ${displayName}`);
-      progress.complete(`Connected: ${displayName}`);
-      // Set as primary if first connection
-      if (!this.primaryConnectionKey) {
-        this.primaryConnectionKey = key;
+        // Show connecting status
+        const progress = statusBar.startProgress('connect', `Connecting to ${displayName}...`);
+
+        // Create new connection based on protocol
+        let connection: BaseConnection;
+
+        switch (workingConfig.protocol) {
+          case 'sftp':
+            connection = new SFTPConnection(workingConfig);
+            break;
+          case 'ftp':
+          case 'ftps':
+            connection = new FTPConnection(workingConfig);
+            break;
+          default:
+            progress.fail(`Unsupported protocol: ${workingConfig.protocol}`);
+            throw new Error(`Unsupported protocol: ${workingConfig.protocol}`);
+        }
+
+        // Set up event handlers
+        connection.on('connected', () => {
+          logger.info(`Connected to ${displayName}`);
+          progress.complete(`Connected: ${displayName}`);
+          // Set as primary if first connection
+          if (!this.primaryConnectionKey) {
+            this.primaryConnectionKey = key;
+          }
+          this.manualDisconnects.delete(key);
+          this.clearReconnectState(key);
+          this.updateStatusBar();
+          this._onConnectionChanged.fire();
+        });
+
+        connection.on('disconnected', () => {
+          logger.info(`Disconnected from ${config.host}`);
+          statusBar.info(`Disconnected: ${displayName}`);
+          // Auto-reconnect if enabled and not a manual disconnect
+          if (!this.manualDisconnects.has(key)) {
+            this.scheduleReconnect(config, key);
+          } else {
+            this.manualDisconnects.delete(key);
+          }
+          // Clear primary if this was it
+          if (this.primaryConnectionKey === key) {
+            this.primaryConnectionKey = undefined;
+          }
+          this.updateStatusBar();
+          this._onConnectionChanged.fire();
+        });
+
+        connection.on('error', (error) => {
+          logger.error(`Connection error on ${config.host}`, error);
+          statusBar.error(`Error: ${error.message}`, true);
+        });
+
+        // Connect
+        try {
+          await connection.connect();
+          this.connections.set(key, connection);
+          this.activeConnectionKey = key;
+          return connection;
+        } catch (error: any) {
+          progress.fail(`Connection failed: ${displayName}`);
+          throw error;
+        }
+      } finally {
+        // Remove from ongoing connections map either way
+        this.ongoingConnections.delete(key);
       }
-      this.manualDisconnects.delete(key);
-      this.clearReconnectState(key);
-      this.updateStatusBar();
-      this._onConnectionChanged.fire();
-    });
+    })();
 
-    connection.on('disconnected', () => {
-      logger.info(`Disconnected from ${config.host}`);
-      statusBar.info(`Disconnected: ${displayName}`);
-      // Auto-reconnect if enabled and not a manual disconnect
-      if (!this.manualDisconnects.has(key)) {
-        this.scheduleReconnect(config, key);
-      } else {
-        this.manualDisconnects.delete(key);
-      }
-      // Clear primary if this was it
-      if (this.primaryConnectionKey === key) {
-        this.primaryConnectionKey = undefined;
-      }
-      this.updateStatusBar();
-      this._onConnectionChanged.fire();
-    });
-
-    connection.on('error', (error) => {
-      logger.error(`Connection error on ${config.host}`, error);
-      statusBar.error(`Error: ${error.message}`, true);
-    });
-
-    // Connect
-    try {
-      await connection.connect();
-      this.connections.set(key, connection);
-      this.activeConnectionKey = key;
-      return connection;
-    } catch (error: any) {
-      progress.fail(`Connection failed: ${displayName}`);
-      throw error;
-    }
+    this.ongoingConnections.set(key, connectionPromise);
+    return connectionPromise;
   }
 
   async disconnect(config?: FTPConfig): Promise<void> {

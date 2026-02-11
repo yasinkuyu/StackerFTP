@@ -94,6 +94,10 @@ export interface TransferItem {
   connectionId?: string;
   /** Config for this transfer to ensure correct server targeting */
   config?: FTPConfig;
+  /** Internal promise resolution - used for awaiting specific transfers */
+  resolve?: () => void;
+  /** Internal promise rejection - used for awaiting specific transfers */
+  reject?: (error: Error) => void;
 }
 
 export interface SyncResult {
