@@ -12,34 +12,34 @@ vsc-extension-quickstart.md
 !**/*.d.ts
 
 # Dependencies
-node_modules/**
-.npm-cache/**
+node_modules/.bin/**
+node_modules/**/test/**
+node_modules/**/doc/**
+node_modules/**/example/**
+node_modules/**/*.md
+node_modules/**/*.map
+node_modules/**/*.ts
+node_modules/**/.travis.yml
+node_modules/**/.editorconfig
+node_modules/**/gulpfile.js
+node_modules/**/bower.json
+node_modules/**/.npmignore
+node_modules/**/.jshintrc
+node_modules/**/.nycrc
+node_modules/**/vitest.config.ts
+node_modules/**/vitest.config.js
+node_modules/**/tsconfig.json
+node_modules/**/eslint.json
+node_modules/**/.vscode/**
+
+# Caches and Temp files
 .npm/**
-
-# Whitelist ONLY essential dependency files
-!node_modules/basic-ftp/package.json
-!node_modules/basic-ftp/dist/**
-!node_modules/basic-ftp/index.js
-
-!node_modules/ssh2/package.json
-!node_modules/ssh2/index.js
-!node_modules/ssh2/lib/**
-!node_modules/ssh2/lib/protocol/crypto/build/Release/sshcrypto.node
-
-!node_modules/minimatch/package.json
-!node_modules/minimatch/dist/**
-!node_modules/minimatch/index.js
-!node_modules/minimatch/minimatch.js
-
-!node_modules/ignore/package.json
-!node_modules/ignore/index.js
-
-!node_modules/@vscode/codicons/package.json
-!node_modules/@vscode/codicons/dist/**
-
-!node_modules/tweetnacl/package.json
-!node_modules/tweetnacl/nacl.js
-!node_modules/tweetnacl/nacl.d.ts
+.npm-cache/**
+.cache/**
+.temp/**
+.tmp/**
+dist-test/**
+coverage/**
 
 # Internal documentation and tools
 DEVELOPMENT.md

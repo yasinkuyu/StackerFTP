@@ -308,6 +308,7 @@ function escapeHtml(text) {
 // Message handler
 window.addEventListener('message', event => {
     const msg = event.data;
+    console.log('StackerFTP: Webview received message', msg.type);
 
     switch (msg.type) {
         case 'configs':
@@ -372,10 +373,11 @@ window.addEventListener('message', event => {
 
 // Initial load - show loading only if no cache
 if (!configs.length) {
+    console.log('StackerFTP: Initial load, showing loading overlay');
     loadingOverlay.classList.remove('hidden');
 }
 
 // Signal readiness to backend
-console.log('StackerFTP: Webview ready');
+console.log('StackerFTP: Webview signaling ready');
 vscode.postMessage({ type: 'ready' });
 vscode.postMessage({ type: 'loadConfigs' });

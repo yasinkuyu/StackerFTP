@@ -61,7 +61,9 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
     };
 
     const nonce = this._getNonce();
-    webviewView.webview.html = this._getHtmlForWebview(webviewView.webview, nonce);
+    this._getHtmlForWebview(webviewView.webview, nonce).then(html => {
+      webviewView.webview.html = html;
+    });
 
     webviewView.webview.onDidReceiveMessage(async (data) => {
       try {
@@ -376,21 +378,32 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
     this._view?.webview.postMessage({ type: 'triggerNewForm' });
   }
 
-  private _getHtmlForWebview(webview: vscode.Webview, nonce: string): string {
+  private async _getHtmlForWebview(webview: vscode.Webview, nonce: string): Promise<string> {
     // Get paths to resources
-    const resourcesPath = path.join(this._extensionUri.fsPath, 'resources', 'webview');
+    const resourcesPath = vscode.Uri.joinPath(this._extensionUri, 'resources', 'webview');
 
-    // Read files safely
+    // Read files safely using VS Code FS API
     let htmlContent = '';
     let cssContent = '';
     let jsContent = '';
 
     try {
-      htmlContent = fs.readFileSync(path.join(resourcesPath, 'connection-form.html'), 'utf8');
-      cssContent = fs.readFileSync(path.join(resourcesPath, 'connection-form.css'), 'utf8');
-      jsContent = fs.readFileSync(path.join(resourcesPath, 'connection-form.js'), 'utf8');
+      const htmlUri = vscode.Uri.joinPath(resourcesPath, 'connection-form.html');
+      const cssUri = vscode.Uri.joinPath(resourcesPath, 'connection-form.css');
+      const jsUri = vscode.Uri.joinPath(resourcesPath, 'connection-form.js');
+
+      const [htmlData, cssData, jsData] = await Promise.all([
+        vscode.workspace.fs.readFile(htmlUri),
+        vscode.workspace.fs.readFile(cssUri),
+        vscode.workspace.fs.readFile(jsUri)
+      ]);
+
+      const decoder = new TextDecoder('utf-8');
+      htmlContent = decoder.decode(htmlData);
+      cssContent = decoder.decode(cssData);
+      jsContent = decoder.decode(jsData);
     } catch (e) {
-      logger.error('Failed to read webview resources from disk', e);
+      logger.error('Failed to read webview resources using VS Code FS', e);
       htmlContent = `<div style="padding: 20px;"><h3>Error loading view resources</h3><p>${e}</p></div>`;
     }
 

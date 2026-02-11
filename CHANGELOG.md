@@ -2,6 +2,13 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.1.3] - 2026-02-11
+
+### Fixed
+- **Marketplace Build Fix**: Fixed critical issue where the extension failed to load when installed from Marketplace (missing dependencies).
+- **Package Optimization**: Reduced VSIX size from 42MB to 1.3MB by excluding cache files.
+- **Reliability**: Refactored resource loading to use native VS Code FileSystem API.
+
 ## [1.1.2] - 2026-02-11
 
 ### Fixed
