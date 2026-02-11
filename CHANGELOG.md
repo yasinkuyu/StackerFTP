@@ -2,6 +2,13 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.1.1] - 2026-02-11
+
+### Fixed
+- **Connection Panel**: Fixed issue where the panel would get stuck on loading due to missing CSP and JavaScript errors during initial setup.
+- **Remote Explorer**: Fixed stuck loading indicator when refreshing the explorer or opening connection nodes.
+- **UI Stability**: Added safety checks for connection configurations to prevent frontend crashes.
+
 ## [1.1.0] - 2026-02-06
 
 ### Fixed

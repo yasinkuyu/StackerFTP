@@ -245,6 +245,7 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       const configs = configManager.getConfigs(this.workspaceRoot);
 
       if (configs.length === 0) {
+        this.hideLoading();
         logger.info('No configs found, returning empty');
         return [];
       }
@@ -254,13 +255,16 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
 
       const primaryConfig = connectionManager.getPrimaryConfig();
 
-      return configs.map(config => {
+      const result = configs.map(config => {
         const connection = connectionManager.getConnection(config);
         const isConnected = connection?.connected ?? false;
         const isPrimary = !!(primaryConfig && config.name === primaryConfig.name && config.host === primaryConfig.host);
 
         return new RemoteConfigTreeItem(config, isConnected, isPrimary, connection);
       });
+
+      this.hideLoading();
+      return result;
     }
 
     // Handle RemoteConfigTreeItem (connection node)

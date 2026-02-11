@@ -246,7 +246,7 @@ function renderConnections() {
       </div>
       <div class="connection-info">
         <div class="connection-name">${escapeHtml(config.name || config.host)}</div>
-        <div class="connection-details">${config.protocol.toUpperCase()} · ${config.username}@${config.host}</div>
+        <div class="connection-details">${(config.protocol || 'SFTP').toUpperCase()} · ${config.username}@${config.host}</div>
       </div>
       <div class="connection-actions">
         ${config.connected

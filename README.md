@@ -63,22 +63,23 @@ StackerFTP is designed to work seamlessly with Visual Studio Code and all its ma
 
 ### From VSIX (Manual)
 1. Download the latest `.vsix` file from [releases](https://github.com/yasinkuyu/stackerftp/releases)
-2. Open VS Code
+2. Open VS Code or your IDE (Cursor, Windsurf, Antigravity, etc.)
 3. Go to Extensions view (Ctrl+Shift+X)
 4. Click "..." (More Actions) → "Install from VSIX..."
 5. Select the downloaded `.vsix` file
 
-### From Marketplace (Coming Soon)
-```
-Search for "StackerFTP" in the Extensions marketplace
-```
+### From Marketplace
+1. Open VS Code or your IDE (Cursor, Windsurf, Antigravity, etc.)
+2. Go to Extensions view (Ctrl+Shift+X)
+3. Search for "StackerFTP"
+4. Click **Install**
 
 ## Quick Start
 
 ### 1. Configure Connection
 
 #### Option A: New Connection Button (Recommended)
-1. Open a workspace folder in VS Code
+1. Open a workspace folder in your IDE
 2. Click StackerFTP icon in the sidebar
 3. Click the "+" button in the Connections header
 4. Fill in your connection details
