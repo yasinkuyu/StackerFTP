@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { configManager } from '../core/config';
 import { connectionManager } from '../core/connection-manager';
+import { transferManager } from '../core/transfer-manager';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
 import { formatFileSize, isBinaryFile, isSystemFile } from '../utils/helpers';
@@ -23,6 +24,17 @@ export class RemoteDocumentProvider implements vscode.TextDocumentContentProvide
   readonly onDidChange = this._onDidChange.event;
 
   private _cache = new Map<string, string>();
+
+  constructor() {
+    // Invalidate cache when a file is uploaded
+    transferManager.on('transferComplete', (item) => {
+      if (item.direction === 'upload' && item.status === 'completed') {
+        const uri = RemoteDocumentProvider.createUri(item.remotePath);
+        this.refresh(uri);
+        logger.info(`Remote cache invalidated: ${item.remotePath}`);
+      }
+    });
+  }
 
   // Store config info in URI query for multi-connection support
   private static _configMap = new Map<string, any>();
