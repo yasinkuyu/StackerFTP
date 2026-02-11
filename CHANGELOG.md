@@ -2,11 +2,17 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
-## [1.1.6] - 2026-02-11
+## [1.1.6] - 2026-02-12
 ### Optimized
-- **Performance**: Bundled extension with `esbuild` for faster startup and significantly reduced package size.
-- **Package Size**: Reduced VSIX file count from 650+ to 175 files.
-- **Clean Build**: Optimized `.vscodeignore` to exclude development assets.
+- **Performance**: Bundled extension with `esbuild`, reducing VSIX size from ~15MB to **1.4MB** and improving activation speed.
+- **Dependency Management**: Optimized `.vscodeignore` and moved critical assets (codicons) to production dependencies to ensure reliable UI rendering in bundled environments.
+- **Dynamic Imports**: Replaced all dynamic `require` calls with static `import`s for better bundler compatibility.
+
+### Fixed
+- **UI Icons**: Fixed missing connection icons in the sidebar by correcting Codicon class usage and asset packaging.
+- **Binary Detection**: Improved binary detection logic and added a whitelist for common text extensions (PHP, JS, SQL, etc.) to prevent incorrect "Binary file" warnings.
+- **Cache Synchronization**: Fixed a bug where remote previews showed stale content; added automatic cache invalidation after successful file uploads.
+- **Activation Reliability**: Fixed silent activation failures by ensuring all `ssh2` sub-dependencies are correctly included in the VSIX.
 
 ## [1.1.5] - 2026-02-11
 
