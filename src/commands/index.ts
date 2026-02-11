@@ -566,7 +566,7 @@ export function registerCommands(
       const content = await connection.readFile(item.entry.path);
 
       // Create a temporary file
-      const tempDir = path.join(require('os').tmpdir(), 'stackerftp');
+      const tempDir = path.join(os.tmpdir(), 'stackerftp');
       if (!fs.existsSync(tempDir)) {
         fs.mkdirSync(tempDir, { recursive: true });
       }
@@ -979,7 +979,7 @@ export function registerCommands(
 
       // Download remote file to temp
       const connection = await connectionManager.ensureConnection(activeConfig);
-      const tempDir = path.join(require('os').tmpdir(), 'stackerftp-diff');
+      const tempDir = path.join(os.tmpdir(), 'stackerftp-diff');
       if (!fs.existsSync(tempDir)) {
         fs.mkdirSync(tempDir, { recursive: true });
       }

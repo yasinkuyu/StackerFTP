@@ -319,6 +319,11 @@ export const SYSTEM_PATTERNS = [
 
 export function isBinaryFile(filePath: string): boolean {
   const ext = path.extname(filePath).toLowerCase();
+
+  // Explicitly allow common text-based programming languages even if they have weird chars
+  const textExtensions = new Set(['.php', '.js', '.ts', '.html', '.css', '.json', '.xml', '.yml', '.yaml', '.txt', '.md', '.sql', '.sh', '.py', '.rb']);
+  if (textExtensions.has(ext)) return false;
+
   return BINARY_EXTENSIONS.has(ext);
 }
 

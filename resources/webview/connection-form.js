@@ -237,12 +237,12 @@ function renderConnections() {
     configs.forEach((config, index) => {
         const item = document.createElement('div');
         item.className = 'connection-item' + (config.connected ? ' connected' : '');
-        const protocolIconClass = config.protocol === 'sftp' ? 'codicon-lock' : 'codicon-folder';
+        const protocolIconClass = config.protocol === 'sftp' ? 'codicon-lock' : 'codicon-cloud';
         const statusClass = config.connected ? 'status-connected' : '';
 
         item.innerHTML = `
       <div class="connection-icon ${statusClass}">
-        <span class="codicon ${protocolIconClass}"></span>
+        <i class="codicon ${protocolIconClass}"></i>
       </div>
       <div class="connection-info">
         <div class="connection-name">${escapeHtml(config.name || config.host)}</div>

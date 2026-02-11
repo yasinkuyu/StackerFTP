@@ -2,6 +2,12 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.1.6] - 2026-02-11
+### Optimized
+- **Performance**: Bundled extension with `esbuild` for faster startup and significantly reduced package size.
+- **Package Size**: Reduced VSIX file count from 650+ to 175 files.
+- **Clean Build**: Optimized `.vscodeignore` to exclude development assets.
+
 ## [1.1.5] - 2026-02-11
 
 ### Fixed

@@ -18,6 +18,7 @@ import { statusBar } from './utils/status-bar';
 import { registerCommands } from './commands';
 import { fileWatcherManager } from './core/file-watcher';
 import { matchesPattern } from './utils/helpers';
+import { TransferQueueTreeProvider } from './providers/transfer-queue-tree';
 
 let remoteExplorerProvider: RemoteExplorerWebviewProvider;
 let remoteTreeProvider: RemoteExplorerTreeProvider;
@@ -173,7 +174,6 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // 8. Transfer Queue & File Watcher
-  const { TransferQueueTreeProvider } = require('./providers/transfer-queue-tree');
   const transferQueueProvider = new TransferQueueTreeProvider();
   context.subscriptions.push(transferQueueProvider);
 

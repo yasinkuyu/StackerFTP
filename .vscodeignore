@@ -2,6 +2,8 @@
 .vscode/**
 .vscode-test/**
 src/**
+out/**
+esbuild.js
 .gitignore
 .yarnrc
 vsc-extension-quickstart.md
@@ -12,25 +14,8 @@ vsc-extension-quickstart.md
 !**/*.d.ts
 
 # Dependencies
-node_modules/.bin/**
-node_modules/**/test/**
-node_modules/**/doc/**
-node_modules/**/example/**
-node_modules/**/*.md
-node_modules/**/*.map
-node_modules/**/*.ts
-node_modules/**/.travis.yml
-node_modules/**/.editorconfig
-node_modules/**/gulpfile.js
-node_modules/**/bower.json
-node_modules/**/.npmignore
-node_modules/**/.jshintrc
-node_modules/**/.nycrc
-node_modules/**/vitest.config.ts
-node_modules/**/vitest.config.js
-node_modules/**/tsconfig.json
-node_modules/**/eslint.json
-node_modules/**/.vscode/**
+# vsce automatically excludes devDependencies.
+# We keep only production dependencies (ssh2 and its subtree).
 
 # Caches and Temp files
 .npm/**
@@ -46,6 +31,7 @@ DEVELOPMENT.md
 FEATURE_PLAN.md
 FEATURES.md
 .claude/
+brain/
 
 # Recursive VSIX & Logs
 **/*.vsix

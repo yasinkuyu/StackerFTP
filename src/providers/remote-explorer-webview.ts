@@ -14,6 +14,7 @@ import { FileEntry, FTPConfig } from '../types';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
 import { formatFileSize, formatDate, normalizeRemotePath } from '../utils/helpers';
+import * as fs from 'fs';
 
 export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'stackerftp.remoteExplorer';
@@ -635,8 +636,8 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
       const localDir = path.dirname(localPath);
 
       // Ensure local directory exists
-      if (!require('fs').existsSync(localDir)) {
-        require('fs').mkdirSync(localDir, { recursive: true });
+      if (!fs.existsSync(localDir)) {
+        fs.mkdirSync(localDir, { recursive: true });
       }
 
       // Download file to workspace

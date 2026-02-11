@@ -2,7 +2,7 @@
   "name": "stackerftp",
   "displayName": "StackerFTP - Professional SFTP/FTP Client",
   "description": "Professional SFTP, FTP & FTPS client for VS Code, Cursor, and Windsurf. Features a native Remote Explorer, bi-directional sync, upload on save, and advanced WebMaster tools.",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "publisher": "yasinkuyu",
   "author": "Insya, Yasin Kuyu",
   "license": "MIT",
@@ -45,12 +45,14 @@
     "pearai"
   ],
   "activationEvents": [
+    "onView:stackerftp.remoteExplorerTree",
+    "onView:stackerftp.connectionForm",
+    "onView:stackerftp.transferQueue",
     "onFileSystem:stackerftp-remote",
-    "onSecondarySideBarView:stackerftp.remoteExplorerTree",
     "workspaceContains:**/.vscode/sftp.json",
     "onStartupFinished"
   ],
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "contributes": {
     "configuration": {
       "type": "object",
@@ -1120,9 +1122,11 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "npm run bundle",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "bundle": "node esbuild.js --minify",
+    "bundle:dev": "node esbuild.js",
     "lint": "eslint src --ext ts",
     "test": "vitest",
     "package": "vsce package"
@@ -1134,18 +1138,19 @@
     "@types/vscode": "^1.74.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
+    "esbuild": "^0.27.3",
     "eslint": "^8.0.0",
     "ovsx": "0.10.9",
     "typescript": "^5.0.0",
     "vitest": "^1.6.0",
-    "vsce": "^2.15.0"
-  },
-  "dependencies": {
-    "@vscode/codicons": "^0.0.35",
+    "vsce": "^2.15.0",
     "basic-ftp": "^5.0.0",
     "ignore": "^5.3.0",
     "mime-types": "^2.1.35",
-    "minimatch": "^9.0.0",
-    "ssh2": "^1.15.0"
+    "minimatch": "^9.0.0"
+  },
+  "dependencies": {
+    "ssh2": "^1.15.0",
+    "@vscode/codicons": "^0.0.35"
   }
 }

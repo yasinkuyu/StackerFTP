@@ -15,6 +15,8 @@ import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
 import { formatFileSize, formatDate, normalizeRemotePath, isBinaryFile, isSystemFile } from '../utils/helpers';
 import { RemoteDocumentProvider } from './remote-document-provider';
+import * as os from 'os';
+import * as fs from 'fs';
 
 export class RemoteTreeItem extends vscode.TreeItem {
   public isLoading: boolean = false;
@@ -517,14 +519,9 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       } else if (errMsg.includes('ETIMEDOUT') || errMsg.includes('timeout')) {
         statusBar.error(`Connection timeout reading: ${fileName}`, true);
       } else if (errMsg.includes('binary') || errMsg.includes('null')) {
-        // File might be binary but wasn't detected
-        const choice = await vscode.window.showWarningMessage(
-          `"${fileName}" appears to contain binary data and cannot be displayed as text.`,
-          'Download Instead', 'Cancel'
-        );
-        if (choice === 'Download Instead') {
-          await this.downloadFile(item);
-        }
+        // Fallback for files like adminer.php that might have null bytes but are essentially text
+        logger.warn(`File detected as binary by VS Code, falling back to local download: ${fileName}`);
+        await this.openBinaryFile(item, config, fileName);
       } else {
         statusBar.error(`Failed to open: ${errMsg}`, true);
       }
@@ -543,8 +540,6 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       const conn = connectionManager.getConnection(config) || this.connection;
       if (!conn) throw new Error('No active connection');
 
-      const os = require('os');
-      const fs = require('fs');
 
       // Check user preference
       const downloadOnOpen = config.downloadOnOpen ?? false;
