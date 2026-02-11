@@ -23,7 +23,6 @@ export class RemoteTreeItem extends vscode.TreeItem {
     public readonly entry: FileEntry,
     public readonly config: FTPConfig,
     public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-    public readonly connectionRef?: BaseConnection,
     loading: boolean = false
   ) {
     super(entry.name, collapsibleState);
@@ -80,7 +79,7 @@ export class RemoteTreeItem extends vscode.TreeItem {
       this.command = {
         command: 'stackerftp.tree.openFile',
         title: 'Open Remote File',
-        arguments: [this]
+        arguments: [this.entry, this.config]
       };
     }
   }
@@ -114,8 +113,7 @@ export class RemoteConfigTreeItem extends vscode.TreeItem {
   constructor(
     public readonly config: FTPConfig,
     public readonly connected: boolean,
-    public readonly isPrimary: boolean,
-    public readonly connectionRef?: BaseConnection
+    public readonly isPrimary: boolean
   ) {
     super(config.name || config.host,
       connected ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
@@ -147,7 +145,7 @@ export class RemoteConfigTreeItem extends vscode.TreeItem {
       this.command = {
         command: 'stackerftp.connect',
         title: 'Connect',
-        arguments: [this]
+        arguments: [{ config: this.config }]
       };
     }
   }
@@ -228,7 +226,6 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
         element.entry,
         element.config,
         element.collapsibleState,
-        element.connectionRef,
         true // loading = true
       );
     }
@@ -258,7 +255,7 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
         const isConnected = connection?.connected ?? false;
         const isPrimary = !!(primaryConfig && config.name === primaryConfig.name && config.host === primaryConfig.host);
 
-        return new RemoteConfigTreeItem(config, isConnected, isPrimary, connection);
+        return new RemoteConfigTreeItem(config, isConnected, isPrimary);
       });
 
       this.hideLoading();
@@ -267,7 +264,7 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
 
     // Handle RemoteConfigTreeItem (connection node)
     if (element instanceof RemoteConfigTreeItem) {
-      const conn = element.connectionRef || connectionManager.getConnection(element.config);
+      const conn = connectionManager.getConnection(element.config);
       const remotePath = element.config.remotePath || '/';
       logger.info(`RemoteConfigTreeItem getChildren - config: ${element.config.name}, path: ${remotePath}`);
 
@@ -296,7 +293,7 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
 
     if (element instanceof RemoteTreeItem && (element.entry.type === 'directory' || (element.entry.type === 'symlink' && element.entry.isSymlinkToDirectory))) {
       // Directory level - show contents (including symlinks to directories)
-      const conn = element.connectionRef || connectionManager.getConnection(element.config);
+      const conn = connectionManager.getConnection(element.config);
       if (!conn || !conn.connected) {
         logger.error('No connection for directory listing');
         this.hideLoading();
@@ -375,7 +372,7 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
         collapsibleState = vscode.TreeItemCollapsibleState.None;
       }
 
-      return new RemoteTreeItem(entry, config, collapsibleState, conn);
+      return new RemoteTreeItem(entry, config, collapsibleState);
     });
   }
 
@@ -412,34 +409,52 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
     return !!this.connection && this.connection.connected;
   }
 
-  async downloadFile(item: RemoteTreeItem): Promise<void> {
-    if (!this.connection) return;
+  async downloadFile(itemParam: RemoteTreeItem | FileEntry, configParam?: FTPConfig): Promise<void> {
+    const item = itemParam instanceof RemoteTreeItem ? itemParam.entry : itemParam;
+    const config = (itemParam instanceof RemoteTreeItem ? itemParam.config : configParam) || this.currentConfig;
+    const conn = connectionManager.getConnection(config!) || this.connection;
 
-    const relativePath = this.currentConfig ?
-      path.relative(this.currentConfig.remotePath, item.entry.path) :
-      path.basename(item.entry.path);
+    if (!conn || !config) return;
+
+    const relativePath = path.relative(config.remotePath || '/', item.path);
     const localPath = path.join(this.workspaceRoot, relativePath);
 
-    await transferManager.downloadFile(this.connection, item.entry.path, localPath, this.currentConfig);
+    await transferManager.downloadFile(conn, item.path, localPath, config);
 
     // Open the file after download
     const doc = await vscode.workspace.openTextDocument(localPath);
     await vscode.window.showTextDocument(doc);
   }
 
-  async openFile(item: RemoteTreeItem): Promise<void> {
-    // Use connection from item or fallback to class property
-    const conn = item.connectionRef || this.connection;
-    const config = item.config || this.currentConfig;
+  async openFile(entryParam?: FileEntry | RemoteTreeItem, configParam?: FTPConfig): Promise<void> {
+    // Handle both direct item pass and individual params (from command arguments)
+    let item: FileEntry | undefined;
+    let config: FTPConfig | undefined;
+
+    if (entryParam instanceof RemoteTreeItem) {
+      item = entryParam.entry;
+      config = entryParam.config;
+    } else {
+      item = entryParam;
+      config = configParam;
+    }
+
+    if (!item || !config) {
+      statusBar.error('File or configuration missing');
+      return;
+    }
+
+    // Get connection and fallback to class property
+    const conn = connectionManager.getConnection(config) || this.connection;
 
     if (!conn || !config) {
       statusBar.error('No active connection');
       return;
     }
 
-    const fileName = item.entry.name || path.basename(item.entry.path);
-    const remotePath = item.entry.path;
-    const fileSize = item.entry.size || 0;
+    const fileName = item.name || path.basename(item.path);
+    const remotePath = item.path;
+    const fileSize = item.size || 0;
 
     // Check for system files
     if (this.isSystemFile(remotePath)) {
@@ -457,7 +472,9 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       );
 
       if (choice === 'Download Instead') {
-        await this.downloadFile(item);
+        // Find RemoteTreeItem from cache if possible, or create a mock one for downloadFile
+        // Actually, let's just make downloadFile accept FileEntry and Config
+        await this.downloadFile(item, config);
         return;
       } else if (choice !== 'Open Anyway') {
         return;
@@ -466,12 +483,12 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
 
     // Check if binary file - these need to be downloaded
     if (RemoteDocumentProvider.isBinaryFile(remotePath)) {
-      await this.openBinaryFile(item, conn, config, fileName);
+      await this.openBinaryFile(item, config, fileName);
       return;
     }
 
     // Check for symlinks to special files
-    if (item.entry.type === 'symlink' && !item.entry.target) {
+    if (item.type === 'symlink' && !item.target) {
       statusBar.warn(`Broken symlink: ${fileName}`);
       return;
     }
@@ -516,14 +533,16 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
 
   // Open binary files by downloading to temp
   private async openBinaryFile(
-    item: RemoteTreeItem,
-    conn: BaseConnection,
+    item: FileEntry,
     config: FTPConfig,
     fileName: string
   ): Promise<void> {
     const progress = statusBar.startProgress('open-binary', `Downloading ${fileName}...`);
 
     try {
+      const conn = connectionManager.getConnection(config) || this.connection;
+      if (!conn) throw new Error('No active connection');
+
       const os = require('os');
       const fs = require('fs');
 
@@ -535,11 +554,11 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       let targetPath: string;
 
       if (downloadToWorkspace) {
-        const relativePath = path.relative(config.remotePath || '/', item.entry.path);
+        const relativePath = path.relative(config.remotePath || '/', item.path);
         targetPath = path.join(this.workspaceRoot, relativePath);
       } else {
         const tempDir = path.join(os.tmpdir(), 'stackerftp', config.host);
-        targetPath = path.join(tempDir, path.basename(item.entry.path));
+        targetPath = path.join(tempDir, path.basename(item.path));
       }
 
       const targetDir = path.dirname(targetPath);
@@ -547,13 +566,13 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
         fs.mkdirSync(targetDir, { recursive: true });
       }
 
-      await conn.download(item.entry.path, targetPath);
+      await conn.download(item.path, targetPath);
 
       const targetUri = vscode.Uri.file(targetPath);
       await vscode.commands.executeCommand('vscode.open', targetUri);
 
       progress.complete();
-      logger.info(`Opened binary file: ${item.entry.path} -> ${targetPath}`);
+      logger.info(`Opened binary file: ${item.path} -> ${targetPath}`);
     } catch (error: any) {
       logger.error('Failed to open binary file', error);
       progress.fail(`Failed to open: ${error.message}`);
@@ -600,47 +619,53 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
     return languageMap[ext] || 'plaintext';
   }
 
-  async deleteFile(item: RemoteTreeItem): Promise<void> {
-    // Use connection from item or fallback to class property
-    const conn = item.connectionRef || this.connection;
+  async deleteFile(itemParam: RemoteTreeItem | FileEntry, configParam?: FTPConfig): Promise<void> {
+    const item = itemParam instanceof RemoteTreeItem ? itemParam.entry : itemParam;
+    const config = (itemParam instanceof RemoteTreeItem ? itemParam.config : configParam) || this.currentConfig;
+    const conn = connectionManager.getConnection(config!) || this.connection;
+
     if (!conn) {
       statusBar.error('No active connection');
       return;
     }
 
     const confirm = await vscode.window.showWarningMessage(
-      `Delete ${item.entry.name}?`,
+      `Delete ${item.name}?`,
       { modal: true },
       'Delete', 'Cancel'
     );
 
     if (confirm !== 'Delete') return;
 
-    const progress = statusBar.startProgress('delete', `Deleting ${item.entry.name}...`);
+    const progress = statusBar.startProgress('delete', `Deleting ${item.name}...`);
 
     try {
-      // Mark item as loading and refresh to show spinner
-      this.loadingItems.add(item.entry.path);
-      this._onDidChangeTreeData.fire(item);
-
-      if (item.entry.type === 'directory') {
-        await conn.rmdir(item.entry.path, true);
-      } else {
-        await conn.delete(item.entry.path);
+      // Mark item as loading if it's a TreeItem
+      if (itemParam instanceof RemoteTreeItem) {
+        this.loadingItems.add(item.path);
+        this._onDidChangeTreeData.fire(itemParam);
       }
 
-      // Remove from loading and refresh parent
-      this.loadingItems.delete(item.entry.path);
+      if (item.type === 'directory') {
+        await conn.rmdir(item.path, true);
+      } else {
+        await conn.delete(item.path);
+      }
+
+      // Remove from loading
+      this.loadingItems.delete(item.path);
 
       // Clear cache for parent directory
-      const parentPath = path.dirname(item.entry.path);
+      const parentPath = path.dirname(item.path);
       this.fileCache.delete(parentPath);
 
       this.refresh();
-      progress.complete(`Deleted: ${item.entry.name}`);
+      progress.complete(`Deleted: ${item.name}`);
     } catch (error: any) {
-      this.loadingItems.delete(item.entry.path);
-      this._onDidChangeTreeData.fire(item);
+      this.loadingItems.delete(item.path);
+      if (itemParam instanceof RemoteTreeItem) {
+        this._onDidChangeTreeData.fire(itemParam);
+      }
       logger.error('Failed to delete', error);
       progress.fail(`Failed to delete: ${error.message}`);
     }

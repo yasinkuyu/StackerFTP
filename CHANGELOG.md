@@ -2,6 +2,13 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.1.4] - 2026-02-11
+
+### Fixed
+- Fixed "Converting circular structure to JSON" error when interacting with files in Remote Explorer.
+- Optimized TreeItem serialization by removing internal connection references.
+- Enhanced logger with safe JSON serialization for circular structures.
+
 ## [1.1.3] - 2026-02-11
 
 ### Fixed

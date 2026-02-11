@@ -3,6 +3,7 @@
  */
 
 import * as vscode from 'vscode';
+import { safeJsonStringify } from './helpers';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -28,17 +29,23 @@ class Logger {
     return `[${time}] [${level}] ${entry.message}`;
   }
 
+
+
   private addLog(entry: LogEntry): void {
     this.logs.push(entry);
     if (this.logs.length > this.maxLogs) {
       this.logs.shift();
     }
-    
+
     const formatted = this.formatMessage(entry);
     this.outputChannel.appendLine(formatted);
-    
+
     if (entry.details) {
-      this.outputChannel.appendLine(JSON.stringify(entry.details, null, 2));
+      try {
+        this.outputChannel.appendLine(safeJsonStringify(entry.details));
+      } catch (e) {
+        this.outputChannel.appendLine(`[Error serializing details: ${e}]`);
+      }
     }
   }
 

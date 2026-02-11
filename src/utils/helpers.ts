@@ -262,8 +262,26 @@ export function debounce<T extends (...args: any[]) => any>(
   };
 }
 
+export function safeJsonStringify(obj: any, indent: number = 2): string {
+  const cache = new Set();
+  return JSON.stringify(obj, (key, value) => {
+    if (typeof value === 'object' && value !== null) {
+      if (cache.has(value)) {
+        return '[Circular]';
+      }
+      cache.add(value);
+    }
+    return value;
+  }, indent);
+}
+
 export function deepClone<T>(obj: T): T {
-  return JSON.parse(JSON.stringify(obj));
+  try {
+    return JSON.parse(JSON.stringify(obj));
+  } catch (e) {
+    // Fallback for circular structures
+    return JSON.parse(safeJsonStringify(obj));
+  }
 }
 
 export function mergeConfig(base: any, override: any): any {
