@@ -1881,7 +1881,7 @@ export function registerCommands(
   });
 
   const uploadFolderCommand = vscode.commands.registerCommand('stackerftp.uploadFolder', async (uri: vscode.Uri) => {
-    const workspaceRoot = getWorkspaceRoot();
+    const workspaceRoot = getWorkspaceRoot(uri);
     if (!workspaceRoot) return;
 
     const config = configManager.getActiveConfig(workspaceRoot);
@@ -1909,7 +1909,7 @@ export function registerCommands(
   });
 
   const downloadFolderCommand = vscode.commands.registerCommand('stackerftp.downloadFolder', async (uri: vscode.Uri) => {
-    const workspaceRoot = getWorkspaceRoot();
+    const workspaceRoot = getWorkspaceRoot(uri);
     if (!workspaceRoot) return;
 
     const config = configManager.getActiveConfig(workspaceRoot);

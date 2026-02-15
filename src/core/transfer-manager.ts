@@ -233,14 +233,16 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
             }
           }
 
-          // Check for remote directory collision (don't download if it's a dir)
-          try {
-            const remoteStat = await connection.stat(item.remotePath);
-            if (remoteStat && remoteStat.type === 'directory') {
-              throw new Error('Cannot download a directory as a file. Please use Download Folder.');
+          // Optimization: Skip remote stat if we already know it's a file from scanning
+          if (item.targetExists === undefined) {
+            try {
+              const remoteStat = await connection.stat(item.remotePath);
+              if (remoteStat && remoteStat.type === 'directory') {
+                throw new Error('Cannot download a directory as a file. Please use Download Folder.');
+              }
+            } catch (e: any) {
+              if (e.message.includes('directory')) throw e;
             }
-          } catch (e: any) {
-            if (e.message.includes('directory')) throw e;
           }
 
           await connection.download(item.remotePath, item.localPath);

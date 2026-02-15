@@ -216,7 +216,8 @@ export class SFTPConnection extends BaseConnection {
   }
 
   async download(remotePath: string, localPath: string): Promise<void> {
-    return this.enqueue(() => this._download(remotePath, localPath));
+    // Bypass enqueue for parallel transfers - ssh2 handles concurrent file transfers internally
+    return this._download(remotePath, localPath);
   }
 
   private async _download(remotePath: string, localPath: string): Promise<void> {
@@ -258,7 +259,8 @@ export class SFTPConnection extends BaseConnection {
   }
 
   async upload(localPath: string, remotePath: string): Promise<void> {
-    return this.enqueue(() => this._upload(localPath, remotePath));
+    // Bypass enqueue for parallel transfers - ssh2 handles concurrent file transfers internally
+    return this._upload(localPath, remotePath);
   }
 
   private async _upload(localPath: string, remotePath: string): Promise<void> {

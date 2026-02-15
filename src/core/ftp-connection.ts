@@ -139,78 +139,76 @@ export class FTPConnection extends BaseConnection {
   }
 
   async download(remotePath: string, localPath: string): Promise<void> {
-    return this.enqueue(async () => {
+    // Bypass enqueue for parallel transfers
+    try {
+      this.emit('transferStart', { direction: 'download', remotePath, localPath });
+
+      // Ensure directory exists
+      const localDir = path.dirname(localPath);
+      await fs.promises.mkdir(localDir, { recursive: true });
+
+      // EISDIR safety: check if local path is already a directory
       try {
-        this.emit('transferStart', { direction: 'download', remotePath, localPath });
-
-        // Ensure directory exists
-        const localDir = path.dirname(localPath);
-        await fs.promises.mkdir(localDir, { recursive: true });
-
-        // EISDIR safety: check if local path is already a directory
-        try {
-          const stats = await fs.promises.stat(localPath);
-          if (stats.isDirectory()) {
-            throw new Error(`Cannot download to ${localPath}: a directory exists at this path.`);
-          }
-        } catch (e: any) {
-          if (e.code !== 'ENOENT') throw e;
+        const stats = await fs.promises.stat(localPath);
+        if (stats.isDirectory()) {
+          throw new Error(`Cannot download to ${localPath}: a directory exists at this path.`);
         }
-
-        await this.client.downloadTo(localPath, remotePath);
-
-        this.emit('transferComplete', { direction: 'download', remotePath, localPath });
-      } catch (error) {
-        logger.error('FTP download error', error);
-        throw error;
+      } catch (e: any) {
+        if (e.code !== 'ENOENT') throw e;
       }
-    });
+
+      await this.client.downloadTo(localPath, remotePath);
+
+      this.emit('transferComplete', { direction: 'download', remotePath, localPath });
+    } catch (error) {
+      logger.error('FTP download error', error);
+      throw error;
+    }
   }
 
   async upload(localPath: string, remotePath: string): Promise<void> {
-    return this.enqueue(async () => {
-      try {
-        this.emit('transferStart', { direction: 'upload', localPath, remotePath });
+    // Bypass enqueue for parallel transfers
+    try {
+      this.emit('transferStart', { direction: 'upload', localPath, remotePath });
 
-        // EISDIR safety: check if remote path is already a directory
-        const remoteStat = await this.stat(remotePath);
-        if (remoteStat && remoteStat.type === 'directory') {
-          throw new Error(`Cannot upload to ${remotePath}: a directory exists at this path.`);
-        }
-
-        // Atomic upload: upload to temp file first, then rename
-        // This ensures files are never partially uploaded
-        const tempRemotePath = `${remotePath}.stackerftp.tmp`;
-
-        try {
-          // Upload to temp file
-          await this.client.uploadFrom(localPath, tempRemotePath);
-
-          // Delete existing target file if it exists (rename might fail otherwise)
-          try {
-            await this.client.remove(remotePath);
-          } catch {
-            // Target file might not exist - that's OK
-          }
-
-          // Rename temp file to target
-          await this.client.rename(tempRemotePath, remotePath);
-        } catch (uploadError) {
-          // Clean up temp file on failure
-          try {
-            await this.client.remove(tempRemotePath);
-          } catch {
-            // Ignore cleanup errors
-          }
-          throw uploadError;
-        }
-
-        this.emit('transferComplete', { direction: 'upload', localPath, remotePath });
-      } catch (error) {
-        logger.error('FTP upload error', error);
-        throw error;
+      // EISDIR safety: check if remote path is already a directory
+      const remoteStat = await this.stat(remotePath);
+      if (remoteStat && remoteStat.type === 'directory') {
+        throw new Error(`Cannot upload to ${remotePath}: a directory exists at this path.`);
       }
-    });
+
+      // Atomic upload: upload to temp file first, then rename
+      // This ensures files are never partially uploaded
+      const tempRemotePath = `${remotePath}.stackerftp.tmp`;
+
+      try {
+        // Upload to temp file
+        await this.client.uploadFrom(localPath, tempRemotePath);
+
+        // Delete existing target file if it exists (rename might fail otherwise)
+        try {
+          await this.client.remove(remotePath);
+        } catch {
+          // Target file might not exist - that's OK
+        }
+
+        // Rename temp file to target
+        await this.client.rename(tempRemotePath, remotePath);
+      } catch (uploadError) {
+        // Clean up temp file on failure
+        try {
+          await this.client.remove(tempRemotePath);
+        } catch {
+          // Ignore cleanup errors
+        }
+        throw uploadError;
+      }
+
+      this.emit('transferComplete', { direction: 'upload', localPath, remotePath });
+    } catch (error) {
+      logger.error('FTP upload error', error);
+      throw error;
+    }
   }
 
   async delete(remotePath: string): Promise<void> {

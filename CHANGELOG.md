@@ -2,6 +2,16 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.1.9] - 2026-02-15
+
+### Added
+- **Lightning-Fast Parallel Transfers**: Removed operation queue bottleneck - files now download/upload in true parallel, utilizing full concurrency settings.
+- **Folder Upload/Download Fix**: Fixed workspace root detection - now correctly identifies selected folder's workspace instead of always using first workspace.
+
+### Fixed
+- **Parallel Transfer Performance**: Both SFTP and FTP connections now bypass sequential enqueue, enabling concurrent file transfers at maximum speed.
+- **Workspace Detection**: Upload Folder and Download Folder commands now correctly resolve the selected folder's workspace.
+
 ## [1.1.8] - 2026-02-15
 ### Added
 - **Interactive Collision Resolution**: Added a modal dialog when a directory/file çakışması (collision) is detected during both single and batch transfers.
