@@ -252,9 +252,28 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
         const localDir = path.dirname(localFilePath);
         await fs.promises.mkdir(localDir, { recursive: true });
 
-        if (file.type === 'directory') {
+        // Check if local path exists and is a directory
+        let localStats: fs.Stats | null = null;
+        try {
+          localStats = await fs.promises.stat(localFilePath);
+        } catch {
+          // Path doesn't exist - that's fine
+        }
+
+        if (file.type === 'directory' || file.isSymlinkToDirectory) {
+          if (localStats && !localStats.isDirectory()) {
+            logger.warn(`Skipping directory creation: ${relativePath} (local file exists)`);
+            result.failed.push({ path: relativePath, error: 'Local file exists at directory path' });
+            continue;
+          }
           await fs.promises.mkdir(localFilePath, { recursive: true });
         } else {
+          if (localStats && localStats.isDirectory()) {
+            logger.warn(`Skipping file download: ${relativePath} (local directory exists)`);
+            result.failed.push({ path: relativePath, error: 'Local directory exists at file path' });
+            continue;
+          }
+
           // Show file name in status bar
           statusBar.streamFileName('download', relativePath);
 

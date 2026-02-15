@@ -56,3 +56,5 @@ Thumbs.db
 DEVELOPMENT.md
 FEATURE_PLAN.md
 FEATURES.md
+publish.sh
+build.sh

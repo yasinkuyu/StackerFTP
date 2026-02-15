@@ -43,3 +43,5 @@ webpack.config.js
 .github/**
 resources/icon-source/**
 .DS_Store
+publish.sh
+build.sh

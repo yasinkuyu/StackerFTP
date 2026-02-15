@@ -226,9 +226,19 @@ export class SFTPConnection extends BaseConnection {
 
     this.emit('transferStart', { direction: 'download', remotePath, localPath });
 
-    // Ensure directory exists
+    // Ensure local directory exists
     const localDir = path.dirname(localPath);
     await fs.promises.mkdir(localDir, { recursive: true });
+
+    // EISDIR safety: check if local path is already a directory
+    try {
+      const stats = await fs.promises.stat(localPath);
+      if (stats.isDirectory()) {
+        throw new Error(`Cannot download to ${localPath}: a directory exists at this path.`);
+      }
+    } catch (e: any) {
+      if (e.code !== 'ENOENT') throw e;
+    }
 
     return new Promise((resolve, reject) => {
       const readStream = this.sftp!.createReadStream(remotePath);

@@ -2,6 +2,12 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.1.7] - 2026-02-15
+### Fixed
+- **Directory Collision**: Resolved `EISDIR: illegal operation on a directory` error when downloading folders where a local directory exists at a remote file's target path.
+- **Symlink Downloads**: Fixed issue where remote symlinks-to-directories were downloaded as files; they are now correctly created as local directories.
+- **Transfer Safety**: Added defensive checks to SFTP and FTP download methods to prevent filesystem errors during concurrent or conflicting transfers.
+
 ## [1.1.6] - 2026-02-12
 ### Optimized
 - **Performance**: Bundled extension with `esbuild`, reducing VSIX size from ~15MB to **1.4MB** and improving activation speed.
