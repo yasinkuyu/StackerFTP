@@ -421,11 +421,21 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
     const relativePath = path.relative(config.remotePath || '/', item.path);
     const localPath = path.join(this.workspaceRoot, relativePath);
 
+    // If it's a directory or symlink to directory, use downloadDirectory
+    if (item.type === 'directory' || (item.type === 'symlink' && item.isSymlinkToDirectory)) {
+      await transferManager.downloadDirectory(conn, item.path, localPath, config);
+      return;
+    }
+
     await transferManager.downloadFile(conn, item.path, localPath, config);
 
-    // Open the file after download
-    const doc = await vscode.workspace.openTextDocument(localPath);
-    await vscode.window.showTextDocument(doc);
+    // Open the file after download (only for files)
+    try {
+      const doc = await vscode.workspace.openTextDocument(localPath);
+      await vscode.window.showTextDocument(doc);
+    } catch {
+      // Might not be a text file or download might have been skipped
+    }
   }
 
   async openFile(entryParam?: FileEntry | RemoteTreeItem, configParam?: FTPConfig): Promise<void> {

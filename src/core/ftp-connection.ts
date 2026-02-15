@@ -172,6 +172,12 @@ export class FTPConnection extends BaseConnection {
       try {
         this.emit('transferStart', { direction: 'upload', localPath, remotePath });
 
+        // EISDIR safety: check if remote path is already a directory
+        const remoteStat = await this.stat(remotePath);
+        if (remoteStat && remoteStat.type === 'directory') {
+          throw new Error(`Cannot upload to ${remotePath}: a directory exists at this path.`);
+        }
+
         // Atomic upload: upload to temp file first, then rename
         // This ensures files are never partially uploaded
         const tempRemotePath = `${remotePath}.stackerftp.tmp`;

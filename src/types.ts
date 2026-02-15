@@ -98,6 +98,9 @@ export interface TransferItem {
   resolve?: () => void;
   /** Internal promise rejection - used for awaiting specific transfers */
   reject?: (error: Error) => void;
+  /** Metadata to avoid redundant stat calls */
+  targetExists?: boolean;
+  targetType?: 'file' | 'directory' | 'symlink';
 }
 
 export interface SyncResult {

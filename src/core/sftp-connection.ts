@@ -241,25 +241,19 @@ export class SFTPConnection extends BaseConnection {
     }
 
     return new Promise((resolve, reject) => {
-      const readStream = this.sftp!.createReadStream(remotePath);
-      const writeStream = fs.createWriteStream(localPath);
-
-      let transferred = 0;
-
-      readStream.on('data', (chunk: string | Buffer) => {
-        transferred += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
-        this.emitProgress(path.basename(remotePath), transferred, 0);
+      this.sftp!.fastGet(remotePath, localPath, {
+        concurrency: 128,
+        chunkSize: 262144, // 256KB
+        step: (transferred) => {
+          this.emitProgress(path.basename(remotePath), transferred, 0);
+        }
+      }, (err) => {
+        if (err) reject(err);
+        else {
+          this.emit('transferComplete', { direction: 'download', remotePath, localPath });
+          resolve();
+        }
       });
-
-      readStream.on('error', reject);
-      writeStream.on('error', reject);
-
-      writeStream.on('close', () => {
-        this.emit('transferComplete', { direction: 'download', remotePath, localPath });
-        resolve();
-      });
-
-      readStream.pipe(writeStream);
     });
   }
 
@@ -272,68 +266,44 @@ export class SFTPConnection extends BaseConnection {
       throw new Error('Not connected');
     }
 
-    this.emit('transferStart', { direction: 'upload', localPath, remotePath });
-
+    // Optimization: Size is already known by TransferManager or can be fetched once
+    // but fastPut needs a file path anyway. We get totalSize only for UI progress.
     const stats = await fs.promises.stat(localPath);
     const totalSize = stats.size;
-    let transferred = 0;
 
     // Atomic upload: upload to temp file first, then rename
-    // This ensures files are never partially uploaded
     const tempRemotePath = `${remotePath}.stackerftp.tmp`;
 
     return new Promise((resolve, reject) => {
-      const readStream = fs.createReadStream(localPath);
-      const writeStream = this.sftp!.createWriteStream(tempRemotePath);
-
-      readStream.on('data', (chunk: string | Buffer) => {
-        transferred += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk);
-        this.emitProgress(path.basename(localPath), transferred, totalSize);
-      });
-
-      const cleanup = () => {
-        // Clean up temp file on failure
-        if (this.sftp) {
-          this.sftp.unlink(tempRemotePath, () => {
-            // Ignore cleanup errors
-          });
+      this.sftp!.fastPut(localPath, tempRemotePath, {
+        concurrency: 128,
+        chunkSize: 262144, // 256KB
+        step: (transferred) => {
+          this.emitProgress(path.basename(localPath), transferred, totalSize);
         }
-      };
-
-      readStream.on('error', (err) => {
-        cleanup();
-        reject(err);
-      });
-
-      writeStream.on('error', (err: Error) => {
-        cleanup();
-        reject(err);
-      });
-
-      writeStream.on('close', () => {
-        if (!this.sftp) {
-          reject(new Error('Connection lost'));
+      }, (err) => {
+        if (err) {
+          // Cleanup temp file on failure
+          this.sftp!.unlink(tempRemotePath, () => {
+            reject(err);
+          });
           return;
         }
 
-        // Delete existing target file if it exists
-        this.sftp.unlink(remotePath, () => {
-          // Ignore error - file might not exist
-
-          // Rename temp file to target
-          this.sftp!.rename(tempRemotePath, remotePath, (err: any) => {
-            if (err) {
-              cleanup();
-              reject(new Error(`Failed to finalize upload: ${err.message}`));
-              return;
+        // Rename temp to target
+        this.sftp!.unlink(remotePath, () => {
+          this.sftp!.rename(tempRemotePath, remotePath, (renameErr) => {
+            if (renameErr) {
+              this.sftp!.unlink(tempRemotePath, () => {
+                reject(renameErr);
+              });
+            } else {
+              this.emit('transferComplete', { direction: 'upload', localPath, remotePath });
+              resolve();
             }
-            this.emit('transferComplete', { direction: 'upload', localPath, remotePath });
-            resolve();
           });
         });
       });
-
-      readStream.pipe(writeStream);
     });
   }
 

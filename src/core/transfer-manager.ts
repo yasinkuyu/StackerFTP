@@ -26,12 +26,70 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
   private isProcessing = false;
   private cancelled = false;
   private currentItem?: TransferItem;
+  private sessionCollisionAction: 'ask' | 'overwrite' | 'skip' = 'ask';
+  private collisionLock: Promise<void> = Promise.resolve();
+  private queueUpdateTimeout: NodeJS.Timeout | undefined;
+
+  private emitQueueUpdate(): void {
+    if (this.queueUpdateTimeout) return;
+    this.queueUpdateTimeout = setTimeout(() => {
+      this.emit('queueUpdate', this.queue);
+      this.queueUpdateTimeout = undefined;
+    }, 150); // 150ms debounce for UI stability
+  }
+
+  private async handleCollision(targetPath: string, type: 'local' | 'remote', isDir = false): Promise<'overwrite' | 'skip'> {
+    // Correctly serialize modal dialogs using a promise chain lock
+    const currentLock = this.collisionLock;
+    let resolveNext: () => void;
+    this.collisionLock = new Promise(resolve => {
+      resolveNext = resolve;
+    });
+
+    await currentLock;
+    logger.debug(`Checking collision for: ${targetPath}`);
+
+    try {
+      // Re-check after acquiring lock in case it was set to 'All' by another thread
+      if (this.sessionCollisionAction === 'overwrite') return 'overwrite';
+      if (this.sessionCollisionAction === 'skip') return 'skip';
+
+      const location = type === 'local' ? 'Local' : 'Remote';
+      const kind = isDir ? 'directory' : 'file';
+      const message = `${location} ${kind} already exists at "${targetPath}". Would you like to overwrite it?`;
+
+      // Show modal dialog - this will block the lock
+      const choice = await vscode.window.showWarningMessage(
+        message,
+        { modal: true },
+        'Overwrite', 'Skip', 'Overwrite All', 'Skip All'
+      );
+
+      logger.debug(`Collision choice for ${targetPath}: ${choice}`);
+
+      if (choice === 'Overwrite All') {
+        this.sessionCollisionAction = 'overwrite';
+        return 'overwrite';
+      } else if (choice === 'Skip All') {
+        this.sessionCollisionAction = 'skip';
+        return 'skip';
+      } else if (choice === 'Overwrite') {
+        return 'overwrite';
+      } else {
+        // Default to skip if canceled (Esc) to avoid accidental data loss
+        return 'skip';
+      }
+    } finally {
+      resolveNext!();
+    }
+  }
 
   async uploadFile(
     connection: BaseConnection,
     localPath: string,
     remotePath: string,
-    config: FTPConfig
+    config: FTPConfig,
+    metadata?: { targetExists?: boolean; targetType?: 'file' | 'directory' | 'symlink' }
   ): Promise<void> {
     const stats = await fs.promises.stat(localPath);
     return new Promise(async (resolve, reject) => {
@@ -46,11 +104,13 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
         transferred: 0,
         config,
         resolve,
-        reject
+        reject,
+        targetExists: metadata?.targetExists,
+        targetType: metadata?.targetType
       };
 
       this.queue.push(item);
-      this.emit('queueUpdate', this.queue);
+      this.emitQueueUpdate();
 
       if (!this.active) {
         this.processQueue();
@@ -62,7 +122,8 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     connection: BaseConnection,
     remotePath: string,
     localPath: string,
-    config?: FTPConfig
+    config?: FTPConfig,
+    metadata?: { size?: number; targetExists?: boolean; targetType?: 'file' | 'directory' | 'symlink' }
   ): Promise<void> {
     return new Promise(async (resolve, reject) => {
       const item: TransferItem = {
@@ -72,15 +133,17 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
         direction: 'download',
         status: 'pending',
         progress: 0,
-        size: 0,
+        size: metadata?.size || 0,
         transferred: 0,
         config: config || connection.getConfig(),
         resolve,
-        reject
+        reject,
+        targetExists: metadata?.targetExists,
+        targetType: metadata?.targetType
       };
 
       this.queue.push(item);
-      this.emit('queueUpdate', this.queue);
+      this.emitQueueUpdate();
 
       if (!this.active) {
         this.processQueue();
@@ -99,61 +162,131 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     this.active = true;
     this.cancelled = false;
 
-    try {
-      while (this.queue.length > 0 && !this.cancelled) {
-        const item = this.queue.find(i => i.status === 'pending');
-        if (!item) break;
+    const concurrency = vscode.workspace.getConfiguration('stackerftp').get<number>('transferConcurrency', 5);
+    let activeTransfers = 0;
 
-        this.currentItem = item;
-        item.status = 'transferring';
-        item.startTime = new Date();
-        this.emit('transferStart', item);
+    const processNext = async () => {
+      if (this.cancelled) return;
 
-        try {
-          // Get the correct connection for THIS specific item
-          // This is the critical fix - each item uses its own server connection
-          if (!item.config) {
-            throw new Error('Transfer item missing config - cannot determine target server');
-          }
+      const item = this.queue.find(i => i.status === 'pending');
+      if (!item) return;
 
-          const connection = connectionManager.getConnection(item.config);
-          if (!connection || !connection.connected) {
-            throw new Error(`No active connection for ${item.config.name || item.config.host}`);
-          }
+      item.status = 'transferring';
+      item.startTime = new Date();
+      activeTransfers++;
+      this.emit('transferStart', item);
 
-          if (item.direction === 'upload') {
-            await connection.upload(item.localPath, item.remotePath);
-          } else {
-            await connection.download(item.remotePath, item.localPath);
-          }
-
-          item.status = 'completed';
-          item.progress = 100;
-          item.endTime = new Date();
-
-          if ((item as any).resolve) {
-            (item as any).resolve();
-          }
-        } catch (error: any) {
-          item.status = 'error';
-          item.error = error.message;
-          item.endTime = new Date();
-          logger.error(`Transfer failed: ${item.remotePath}`, error);
-
-          if ((item as any).reject) {
-            (item as any).reject(error);
-          }
+      try {
+        if (!item.config) {
+          throw new Error('Transfer item missing config - cannot determine target server');
         }
 
+        const connection = connectionManager.getConnection(item.config);
+        if (!connection || !connection.connected) {
+          throw new Error(`No active connection for ${item.config.host}`);
+        }
+
+        if (item.direction === 'upload') {
+          // Optimization: Bypass stat if metadata provided or session already set
+          let exists = item.targetExists;
+          let targetType = item.targetType;
+
+          if (exists === undefined && this.sessionCollisionAction === 'ask') {
+            const remoteStat = await connection.stat(item.remotePath);
+            exists = !!remoteStat;
+            targetType = remoteStat?.type;
+          }
+
+          if (exists && this.sessionCollisionAction === 'ask') {
+            const action = await this.handleCollision(item.remotePath, 'remote', targetType === 'directory');
+            if (action === 'skip') {
+              throw new Error('Skipped: Remote target exists');
+            }
+            if (targetType === 'directory') {
+              await connection.rmdir(item.remotePath, true);
+            }
+          }
+
+          await connection.upload(item.localPath, item.remotePath);
+        } else {
+          // Optimization: Bypass stat if metadata provided or session already set
+          let exists = item.targetExists;
+          let targetType = item.targetType;
+
+          if (exists === undefined && this.sessionCollisionAction === 'ask') {
+            try {
+              const stats = await fs.promises.stat(item.localPath);
+              exists = true;
+              targetType = stats.isDirectory() ? 'directory' : 'file';
+            } catch {
+              exists = false;
+            }
+          }
+
+          if (exists && this.sessionCollisionAction === 'ask') {
+            const action = await this.handleCollision(item.localPath, 'local', targetType === 'directory');
+            if (action === 'skip') {
+              throw new Error('Skipped: Local target exists');
+            }
+            if (targetType === 'directory') {
+              await fs.promises.rm(item.localPath, { recursive: true, force: true });
+            }
+          }
+
+          // Check for remote directory collision (don't download if it's a dir)
+          try {
+            const remoteStat = await connection.stat(item.remotePath);
+            if (remoteStat && remoteStat.type === 'directory') {
+              throw new Error('Cannot download a directory as a file. Please use Download Folder.');
+            }
+          } catch (e: any) {
+            if (e.message.includes('directory')) throw e;
+          }
+
+          await connection.download(item.remotePath, item.localPath);
+        }
+
+        item.status = 'completed';
+        item.progress = 100;
+        if ((item as any).resolve) (item as any).resolve();
+      } catch (error: any) {
+        item.status = 'error';
+        item.error = error.message;
+        logger.error(`Transfer failed: ${item.remotePath}`, error);
+        if ((item as any).reject) (item as any).reject(error);
+      } finally {
+        item.endTime = new Date();
+        activeTransfers--;
         this.emit('transferComplete', item);
-        // Keep completed items in queue for history
-        // this.queue = this.queue.filter(i => i.id !== item.id);
-        this.emit('queueUpdate', this.queue);
+        this.emitQueueUpdate();
+
+        // Pick up next item
+        if (this.queue.some(i => i.status === 'pending')) {
+          await processNext();
+        }
       }
+    };
+
+    try {
+      // Start initial batch
+      const initialPromises = [];
+      const count = Math.min(concurrency, this.queue.filter(i => i.status === 'pending').length);
+
+      for (let i = 0; i < count; i++) {
+        initialPromises.push(processNext());
+      }
+
+      await Promise.all(initialPromises);
+
+      // Recursive processNext will handle the rest
+      while (activeTransfers > 0 || this.queue.some(i => i.status === 'pending')) {
+        if (this.cancelled) break;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
     } finally {
       this.isProcessing = false;
       this.active = false;
-      this.currentItem = undefined;
       this.emit('queueComplete');
     }
   }
@@ -172,50 +305,39 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       skipped: []
     };
 
+    statusBar.info(`Scanning local files: ${path.basename(localPath)}...`);
     const files = await this.getLocalFiles(localPath);
-    const concurrency = vscode.workspace.getConfiguration('stackerftp').get<number>('transferConcurrency', 5);
-
-    // Process files in batches
-    for (let i = 0; i < files.length; i += concurrency) {
-      if (this.cancelled) break;
-
-      const batch = files.slice(i, i + concurrency);
-      const promises = batch.map(async (file) => {
-        const relativePath = path.relative(localPath, file);
-        const remoteFilePath = normalizeRemotePath(path.join(remotePath, relativePath));
-
-        // Check ignore patterns
-        if (config.ignore && matchesPattern(relativePath, config.ignore)) {
-          result.skipped.push(relativePath);
-          return;
-        }
-
-        try {
-          // Ensure remote directory exists
-          const remoteDir = normalizeRemotePath(path.dirname(remoteFilePath));
-          try {
-            await connection.mkdir(remoteDir);
-          } catch {
-            // Directory might already exist
-          }
-
-          // Show file name in status bar
-          statusBar.streamFileName('upload', relativePath);
-
-          await connection.upload(file, remoteFilePath);
-          result.uploaded.push(relativePath);
-        } catch (error: any) {
-          result.failed.push({ path: relativePath, error: error.message });
-        }
-      });
-
-      await Promise.all(promises);
-
-      // Update progress
-      const progress = Math.round(((i + batch.length) / files.length) * 100);
-      this.emit('batchProgress', { completed: i + batch.length, total: files.length, percentage: progress });
+    if (files.length === 0) {
+      statusBar.info('No files found to upload');
+      return result;
     }
 
+    this.sessionCollisionAction = 'ask';
+    statusBar.info(`Adding ${files.length} files to queue...`);
+
+    const filePromises = files.map(async (file) => {
+      if (this.cancelled) return;
+
+      const relativePath = path.relative(localPath, file);
+      const remoteFilePath = normalizeRemotePath(path.join(remotePath, relativePath));
+
+      if (config.ignore && matchesPattern(relativePath, config.ignore)) {
+        result.skipped.push(relativePath);
+        return;
+      }
+
+      try {
+        // For uploads, we don't know remote meta during local scan easily,
+        // but it will be checked in processQueue.
+        await this.uploadFile(connection, file, remoteFilePath, config);
+        result.uploaded.push(relativePath);
+      } catch (error: any) {
+        result.failed.push({ path: relativePath, error: error.message });
+      }
+    });
+
+    // Wait for all queued items to complete
+    await Promise.all(filePromises);
     return result;
   }
 
@@ -233,58 +355,55 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       skipped: []
     };
 
+    statusBar.info(`Scanning remote files: ${path.basename(remotePath)}...`);
     const files = await this.getRemoteFiles(connection, remotePath);
+    if (files.length === 0) {
+      statusBar.info('No files found to download');
+      return result;
+    }
 
+    this.sessionCollisionAction = 'ask';
+
+    // Process directory creation first
+    statusBar.info(`Creating directory structure...`);
     for (const file of files) {
-      if (this.cancelled) break;
+      if (file.type === 'directory' || file.isSymlinkToDirectory) {
+        const relativePath = path.relative(remotePath, file.path);
+        const localFilePath = path.join(localPath, relativePath);
+        try {
+          await fs.promises.mkdir(localFilePath, { recursive: true });
+        } catch (error: any) {
+          result.failed.push({ path: relativePath, error: error.message });
+        }
+      }
+    }
+
+    const dataFiles = files.filter(f => f.type !== 'directory' && !f.isSymlinkToDirectory);
+    statusBar.info(`Adding ${dataFiles.length} files to queue...`);
+
+    const filePromises = dataFiles.map(async (file) => {
+      if (this.cancelled) return;
 
       const relativePath = path.relative(remotePath, file.path);
       const localFilePath = path.join(localPath, relativePath);
 
-      // Check ignore patterns
       if (config.ignore && matchesPattern(relativePath, config.ignore)) {
         result.skipped.push(relativePath);
-        continue;
+        return;
       }
 
       try {
-        // Ensure local directory exists
-        const localDir = path.dirname(localFilePath);
-        await fs.promises.mkdir(localDir, { recursive: true });
-
-        // Check if local path exists and is a directory
-        let localStats: fs.Stats | null = null;
-        try {
-          localStats = await fs.promises.stat(localFilePath);
-        } catch {
-          // Path doesn't exist - that's fine
-        }
-
-        if (file.type === 'directory' || file.isSymlinkToDirectory) {
-          if (localStats && !localStats.isDirectory()) {
-            logger.warn(`Skipping directory creation: ${relativePath} (local file exists)`);
-            result.failed.push({ path: relativePath, error: 'Local file exists at directory path' });
-            continue;
-          }
-          await fs.promises.mkdir(localFilePath, { recursive: true });
-        } else {
-          if (localStats && localStats.isDirectory()) {
-            logger.warn(`Skipping file download: ${relativePath} (local directory exists)`);
-            result.failed.push({ path: relativePath, error: 'Local directory exists at file path' });
-            continue;
-          }
-
-          // Show file name in status bar
-          statusBar.streamFileName('download', relativePath);
-
-          await connection.download(file.path, localFilePath);
-          result.downloaded.push(relativePath);
-        }
+        // Bypass redundant stat calls by passing known remote metadata
+        await this.downloadFile(connection, file.path, localFilePath, config, {
+          size: file.size
+        });
+        result.downloaded.push(relativePath);
       } catch (error: any) {
         result.failed.push({ path: relativePath, error: error.message });
       }
-    }
+    });
 
+    await Promise.all(filePromises);
     return result;
   }
 
@@ -329,43 +448,47 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
 
   private async getLocalFiles(dir: string): Promise<string[]> {
     const files: string[] = [];
-    const MAX_FILES = 100000; // Safety limit
+    const MAX_FILES = 100000;
     const MAX_DEPTH = 50;
 
     const traverse = async (currentDir: string, depth: number) => {
       if (depth > MAX_DEPTH || files.length >= MAX_FILES) return;
 
       const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
+      const subdirs: string[] = [];
 
       for (const entry of entries) {
         if (files.length >= MAX_FILES) break;
         const fullPath = path.join(currentDir, entry.name);
 
         if (entry.isDirectory()) {
-          await traverse(fullPath, depth + 1);
+          subdirs.push(fullPath);
         } else {
           files.push(fullPath);
         }
       }
+
+      // Process subdirectories in parallel batches of 10
+      for (let i = 0; i < subdirs.length; i += 10) {
+        const batch = subdirs.slice(i, i + 10);
+        await Promise.all(batch.map(d => traverse(d, depth + 1)));
+      }
     };
 
     await traverse(dir, 0);
-    if (files.length >= MAX_FILES) {
-      logger.warn(`Directory traversal reached limit of ${MAX_FILES} files. Some files may have been skipped.`);
-      statusBar.warn('Sync limit reached (100k files).');
-    }
     return files;
   }
 
   private async getRemoteFiles(connection: BaseConnection, remotePath: string): Promise<any[]> {
     const files: any[] = [];
-    const MAX_FILES = 100000; // Safety limit
+    const MAX_FILES = 100000;
     const MAX_DEPTH = 50;
 
     const traverse = async (currentPath: string, depth: number) => {
       if (depth > MAX_DEPTH || files.length >= MAX_FILES) return;
 
       const entries = await connection.list(currentPath);
+      const subdirs: string[] = [];
 
       for (const entry of entries) {
         if (files.length >= MAX_FILES) break;
@@ -373,25 +496,27 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
 
         if (entry.type === 'directory') {
           files.push({ ...entry, path: fullPath });
-          await traverse(fullPath, depth + 1);
+          subdirs.push(fullPath);
         } else {
           files.push({ ...entry, path: fullPath });
         }
       }
+
+      // Process remote subdirectories in parallel batches of 10
+      for (let i = 0; i < subdirs.length; i += 10) {
+        const batch = subdirs.slice(i, i + 10);
+        await Promise.all(batch.map(d => traverse(d, depth + 1)));
+      }
     };
 
     await traverse(remotePath, 0);
-    if (files.length >= MAX_FILES) {
-      logger.warn(`Remote directory traversal reached limit of ${MAX_FILES} files. Some files may have been skipped.`);
-      statusBar.warn('Sync limit reached (100k files).');
-    }
     return files;
   }
 
   cancel(): void {
     this.cancelled = true;
     this.queue = [];
-    this.emit('queueUpdate', this.queue);
+    this.emitQueueUpdate();
   }
 
   /**
@@ -403,7 +528,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       this.queue[index].status = 'error';
       this.queue[index].error = 'Cancelled by user';
       this.queue.splice(index, 1);
-      this.emit('queueUpdate', this.queue);
+      this.emitQueueUpdate();
     }
   }
 
@@ -414,7 +539,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     this.queue = this.queue.filter(item =>
       item.status === 'pending' || item.status === 'transferring'
     );
-    this.emit('queueUpdate', this.queue);
+    this.emitQueueUpdate();
   }
 
   getQueue(): TransferItem[] {

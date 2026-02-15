@@ -2,6 +2,25 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.1.8] - 2026-02-15
+### Added
+- **Interactive Collision Resolution**: Added a modal dialog when a directory/file çakışması (collision) is detected during both single and batch transfers.
+- **Unified Transfer Queue**: Folder downloads and uploads are now fully integrated into the global transfer queue.
+- **Concurrent Transfers**: Improved transfer speed by processing queue items in parallel (configurable via `transferConcurrency` setting).
+- **Universal Collision Detection**: Collision prompts now trigger for both files and directories, ensuring nothing is overwritten without permission.
+- **Zero-Latency Metadata**: Transfer queue now reuses scan data to eliminate redundant network checks, providing near-instant starts for bulk transfers.
+- **Parallel Directory Scanning**: Major speed boost in the "Scanning" phase by traversing multiple subdirectories concurrently.
+- **High-Throughput SFTP**: Tuned SFTP `fastPut`/`fastGet` with 256KB chunks and 128-parallel requests for maximum transfer speed.
+- **Scanning Phase Status**: Added real-time scanning feedback to the status bar during directory traversal.
+- **UI Stability**: Debounced queue updates to prevent status bar flickering and provide a professional transfer experience.
+- **Batch Processing**: Optimized directory traversal for large folders to ensure stability and low memory usage.
+
+### Fixed
+- **Queue Deadlock Fix**: Resolved a hang where multiple concurrent transfers hitting collisions would block the entire queue. Serialized collision prompts to ensure a smooth user experience.
+- **Single File Collision Support**: Extended collision resolution to single file downloads and uploads (previously only batch).
+- **Tree View Directory Download**: Fixed "Failure" error when downloading folders from the Remote Explorer tree. The command now correctly identifies directories and uses recursive download logic.
+- **Improved Error Handing**: Added remote-side directory checks to prevent SFTP stream errors when a directory is treated as a file.
+
 ## [1.1.7] - 2026-02-15
 ### Fixed
 - **Directory Collision**: Resolved `EISDIR: illegal operation on a directory` error when downloading folders where a local directory exists at a remote file's target path.
