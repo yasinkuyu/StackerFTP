@@ -374,6 +374,19 @@ export class QuickSearchPanel {
       border-color: var(--vscode-focusBorder);
     }
     .search-icon { margin-right: 8px; font-size: 16px; }
+    .search-btn {
+      margin-left: 8px;
+      padding: 6px 16px;
+      background: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .search-btn:hover {
+      background: var(--vscode-button-hoverBackground);
+    }
     input {
       flex: 1;
       border: none;
@@ -461,7 +474,8 @@ export class QuickSearchPanel {
   <div class="header">
     <div class="search-box">
       <span class="search-icon">🔍</span>
-      <input type="text" id="searchInput" placeholder="Type to search files..." autofocus>
+      <input type="text" id="searchInput" placeholder="Type to search files..." onkeydown="if(event.key==='Enter')doSearch()">
+      <button class="search-btn" onclick="doSearch()">Search</button>
     </div>
     <div class="path-info">
       <span>📁 Searching in: <strong id="searchPath">${searchPath}</strong></span>
@@ -469,7 +483,7 @@ export class QuickSearchPanel {
     </div>
   </div>
   <div class="results" id="results">
-    <div class="empty">Start typing to search...</div>
+    <div class="empty">Enter search term and click Search</div>
   </div>
   <div class="stats" id="stats"></div>
 
@@ -482,20 +496,16 @@ export class QuickSearchPanel {
     // Auto-focus on load
     searchInput.focus();
 
-    // Debounced search
-    let timeout;
-    searchInput.addEventListener('input', (e) => {
-      clearTimeout(timeout);
-      const value = e.target.value;
+    // Search function - only triggered by button or enter
+    function doSearch() {
+      const value = searchInput.value;
       if (value.length < 1) {
-        resultsDiv.innerHTML = '<div class="empty">Start typing to search...</div>';
+        resultsDiv.innerHTML = '<div class="empty">Enter search term and click Search</div>';
         statsDiv.textContent = '';
         return;
       }
-      timeout = setTimeout(() => {
-        vscode.postMessage({ type: 'search', query: value });
-      }, 150); // Very fast 150ms debounce
-    });
+      vscode.postMessage({ type: 'search', query: value });
+    }
 
     // Listen for messages from extension
     window.addEventListener('message', (event) => {
@@ -557,6 +567,17 @@ export class QuickSearchPanel {
     }
     .search-box:focus-within { border-color: var(--vscode-focusBorder); }
     .search-icon { margin-right: 8px; font-size: 16px; }
+    .search-btn {
+      margin-left: 8px;
+      padding: 6px 16px;
+      background: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .search-btn:hover { background: var(--vscode-button-hoverBackground); }
     input {
       flex: 1;
       border: none;
@@ -596,7 +617,8 @@ export class QuickSearchPanel {
   <div class="header">
     <div class="search-box">
       <span class="search-icon">🔍</span>
-      <input type="text" id="searchInput" value="${query}" placeholder="Type to search files...">
+      <input type="text" id="searchInput" value="${query}" placeholder="Type to search files..." onkeydown="if(event.key==='Enter')doSearch()">
+      <button class="search-btn" onclick="doSearch()">Search</button>
     </div>
     <div class="path-info">Searching...</div>
   </div>
@@ -609,6 +631,12 @@ export class QuickSearchPanel {
   <script>
     const searchInput = document.getElementById('searchInput');
     searchInput.focus();
+    function doSearch() {
+      const value = searchInput.value;
+      if (value.length > 0) {
+        vscode.postMessage({ type: 'search', query: value });
+      }
+    }
   </script>
 </body>
 </html>`;
@@ -678,6 +706,17 @@ export class QuickSearchPanel {
     }
     .search-box:focus-within { border-color: var(--vscode-focusBorder); }
     .search-icon { margin-right: 8px; font-size: 16px; }
+    .search-btn {
+      margin-left: 8px;
+      padding: 6px 16px;
+      background: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .search-btn:hover { background: var(--vscode-button-hoverBackground); }
     input {
       flex: 1;
       border: none;
@@ -750,7 +789,8 @@ export class QuickSearchPanel {
   <div class="header">
     <div class="search-box">
       <span class="search-icon">🔍</span>
-      <input type="text" id="searchInput" value="${escapedQuery}" placeholder="Type to search files...">
+      <input type="text" id="searchInput" value="${escapedQuery}" placeholder="Type to search files..." onkeydown="if(event.key==='Enter')doSearch()">
+      <button class="search-btn" onclick="doSearch()">Search</button>
     </div>
     <div class="path-info">
       <span>📁 <span id="searchPath">Remote</span></span>
@@ -769,19 +809,13 @@ export class QuickSearchPanel {
     searchInput.focus();
     searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
 
-    let timeout;
-    searchInput.addEventListener('input', (e) => {
-      clearTimeout(timeout);
-      const value = e.target.value;
-      if (value.length < 1) {
-        document.getElementById('results').innerHTML = '<div class="empty">Start typing to search...</div>';
-        document.getElementById('stats').textContent = '';
-        return;
-      }
-      timeout = setTimeout(() => {
+    // Search function - only triggered by button or enter
+    function doSearch() {
+      const value = searchInput.value;
+      if (value.length > 0) {
         vscode.postMessage({ type: 'search', query: value });
-      }, 150);
-    });
+      }
+    }
 
     // Event delegation for action buttons
     document.getElementById('results').addEventListener('click', (e) => {

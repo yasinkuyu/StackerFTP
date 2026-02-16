@@ -2,6 +2,13 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.2.1] - 2026-02-16
+
+### Fixed
+- **Quick Search**: Search now triggered by button click or Enter key (not real-time)
+- **Quick Search Performance**: Optimized search algorithm for faster results
+- **Search Path Change**: Fixed change path functionality
+
 ## [1.2.0] - 2026-02-16
 
 ### Added
