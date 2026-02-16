@@ -2,7 +2,7 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
-## [1.1.11] - 2026-02-16
+## [1.2.0] - 2026-02-16
 
 ### Added
 - **Compare Folders Panel**: New split-view WebView panel for comparing local and remote folders. Opens in a new tab with tree structure, color-coded differences, and actions.

@@ -159,79 +159,95 @@ export class QuickSearchPanel {
   }
 
   /**
-   * Fast parallel search
+   * Fast parallel search - optimized
    */
   private static async _fastSearch(query: string): Promise<any[]> {
     const results: any[] = [];
     const searchPath = this._searchPath || this._config?.remotePath || '/';
     const pattern = query.toLowerCase();
 
-    // Convert wildcard to regex
-    const regexPattern = query
-      .replace(/\./g, '\\.')
-      .replace(/\*/g, '.*')
-      .replace(/\?/g, '.');
-    const regex = new RegExp(regexPattern, 'i');
-
+    // Simple string matching - much faster than regex
     const matches = (name: string): boolean => {
-      if (regex.test(name)) return true;
-      if (name.toLowerCase().includes(pattern)) return true;
-      return false;
+      return name.toLowerCase().includes(pattern);
     };
 
-    const maxResults = 100;
-    const maxDepth = 8;
+    const maxResults = 50; // Reduced for speed
+    const maxDepth = 5; // Reduced depth
+    const maxConcurrency = 10; // Limit concurrent requests
 
-    // Recursive search with depth limit and parallel processing
-    const searchDir = async (dirPath: string, depth: number): Promise<void> => {
-      if (results.length >= maxResults || depth > maxDepth) return;
+    // Queue for breadth-first search
+    const queue: { path: string; depth: number }[] = [{ path: searchPath, depth: 0 }];
+    let activeRequests = 0;
 
-      try {
-        const entries = await this._connection.list(dirPath) as any[];
+    // Process queue with concurrency limit
+    const processQueue = async (): Promise<void> => {
+      while (queue.length > 0 && results.length < maxResults) {
+        if (activeRequests >= maxConcurrency) {
+          // Wait for a slot to free up
+          await new Promise(resolve => setTimeout(resolve, 50));
+          continue;
+        }
 
-        const files = entries.filter((e: any) => e.type === 'file');
-        const dirs = entries.filter((e: any) => e.type === 'directory');
+        const item = queue.shift();
+        if (!item || item.depth > maxDepth) continue;
 
-        // Check files for match
-        for (const entry of files) {
-          if (results.length >= maxResults) return;
+        activeRequests++;
 
-          if (matches(entry.name)) {
-            results.push({
-              name: entry.name,
-              path: entry.path,
-              size: entry.size,
-              type: 'file',
-              sizeFormatted: formatFileSize(entry.size)
-            });
+        try {
+          const entries = await this._connection.list(item.path) as any[];
+
+          const files = entries.filter((e: any) => e.type === 'file');
+          const dirs = entries.filter((e: any) => e.type === 'directory');
+
+          // Check files for match
+          for (const entry of files) {
+            if (results.length >= maxResults) {
+              activeRequests--;
+              return;
+            }
+            if (matches(entry.name)) {
+              results.push({
+                name: entry.name,
+                path: entry.path,
+                size: entry.size,
+                type: 'file',
+                sizeFormatted: formatFileSize(entry.size)
+              });
+            }
           }
-        }
 
-        // Check directories for match
-        for (const entry of dirs) {
-          if (results.length >= maxResults) return;
-
-          if (matches(entry.name)) {
-            results.push({
-              name: entry.name,
-              path: entry.path,
-              size: 0,
-              type: 'directory',
-              sizeFormatted: 'Folder'
-            });
+          // Check directories for match
+          for (const entry of dirs) {
+            if (results.length >= maxResults) {
+              activeRequests--;
+              return;
+            }
+            if (matches(entry.name)) {
+              results.push({
+                name: entry.name,
+                path: entry.path,
+                size: 0,
+                type: 'directory',
+                sizeFormatted: 'Folder'
+              });
+            }
           }
+
+          // Add subdirectories to queue
+          if (item.depth < maxDepth) {
+            for (const dir of dirs) {
+              queue.push({ path: dir.path, depth: item.depth + 1 });
+            }
+          }
+        } catch {
+          // Skip inaccessible directories
         }
 
-        // Parallel search in subdirectories
-        if (depth < maxDepth) {
-          await Promise.all(dirs.map((d: any) => searchDir(d.path, depth + 1)));
-        }
-      } catch {
-        // Skip inaccessible directories
+        activeRequests--;
       }
     };
 
-    await searchDir(searchPath, 0);
+    await processQueue();
 
     // Sort: directories first, then by name
     results.sort((a, b) => {
