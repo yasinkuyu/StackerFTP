@@ -74,10 +74,10 @@
         },
         "stackerftp.transferConcurrency": {
           "type": "number",
-          "default": 10,
+          "default": 4,
           "minimum": 1,
-          "maximum": 20,
-          "description": "Number of concurrent file transfers"
+          "maximum": 10,
+          "description": "Number of concurrent file transfers (max connections = this + 1 primary)"
         },
         "stackerftp.showWebMasterTools": {
           "type": "boolean",

@@ -167,7 +167,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     this.active = true;
     this.cancelled = false;
 
-    const concurrency = vscode.workspace.getConfiguration('stackerftp').get<number>('transferConcurrency', 10);
+    const concurrency = vscode.workspace.getConfiguration('stackerftp').get<number>('transferConcurrency', 4);
     let activeTransfers = 0;
 
     const processNext = async () => {

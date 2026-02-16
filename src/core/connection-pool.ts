@@ -20,10 +20,11 @@ interface PoolEntry {
 interface ServerPool {
   entries: PoolEntry[];
   config: FTPConfig;
+  connecting: number;
 }
 
 const IDLE_TIMEOUT_MS = 60_000;
-const MAX_POOL_SIZE = 5;
+const MAX_POOL_SIZE = 4;
 
 export class ConnectionPool {
   private pools: Map<string, ServerPool> = new Map();
@@ -60,7 +61,7 @@ export class ConnectionPool {
 
     let pool = this.pools.get(key);
     if (!pool) {
-      pool = { entries: [], config };
+      pool = { entries: [], config, connecting: 0 };
       this.pools.set(key, pool);
     }
 
@@ -77,8 +78,9 @@ export class ConnectionPool {
     // Remove disconnected entries
     pool.entries = pool.entries.filter(e => e.connection.connected || e.inUse);
 
-    // Create new connection if under limit
-    if (pool.entries.length < maxSize) {
+    // Create new connection if under limit (include in-flight connects to prevent race condition)
+    if (pool.entries.length + pool.connecting < maxSize) {
+      pool.connecting++;
       const connection = this.createConnection(config);
       try {
         await connection.connect();
@@ -93,6 +95,8 @@ export class ConnectionPool {
       } catch (error) {
         logger.error(`Pool: failed to create connection for ${config.host}`, error);
         throw error;
+      } finally {
+        pool.connecting--;
       }
     }
 

@@ -394,12 +394,7 @@ export class ConnectionManager {
       throw new Error(`No active connection for ${config.host}`);
     }
 
-    try {
-      return await connectionPool.acquire(config);
-    } catch (error) {
-      logger.debug(`Pool acquire failed, falling back to primary connection: ${error}`);
-      return primary;
-    }
+    return await connectionPool.acquire(config);
   }
 
   /**
