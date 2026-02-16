@@ -9,6 +9,7 @@ import { FTPConnection } from './ftp-connection';
 import { FTPConfig, ConnectionStatus } from '../types';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
+import { connectionPool } from './connection-pool';
 
 export class ConnectionManager {
   private static instance: ConnectionManager;
@@ -281,6 +282,7 @@ export class ConnectionManager {
       if (connection) {
         this.manualDisconnects.add(key);
         this.clearReconnectState(key);
+        await connectionPool.drain(config);
         await connection.disconnect();
         this.connections.delete(key);
         if (this.activeConnectionKey === key) {
@@ -292,6 +294,7 @@ export class ConnectionManager {
       }
     } else {
       // Disconnect all
+      await connectionPool.drainAll();
       for (const [key, connection] of this.connections) {
         this.manualDisconnects.add(key);
         this.clearReconnectState(key);
@@ -380,7 +383,34 @@ export class ConnectionManager {
     this.reconnectAttempts.delete(key);
   }
 
+  /**
+   * Acquire a pooled connection for parallel transfers.
+   * Falls back to the primary connection if pool creation fails.
+   */
+  async getPooledConnection(config: FTPConfig): Promise<BaseConnection> {
+    // Ensure primary connection exists first
+    const primary = this.getConnection(config);
+    if (!primary || !primary.connected) {
+      throw new Error(`No active connection for ${config.host}`);
+    }
+
+    try {
+      return await connectionPool.acquire(config);
+    } catch (error) {
+      logger.debug(`Pool acquire failed, falling back to primary connection: ${error}`);
+      return primary;
+    }
+  }
+
+  /**
+   * Release a pooled connection back to the pool.
+   */
+  releasePooledConnection(config: FTPConfig, connection: BaseConnection): void {
+    connectionPool.release(config, connection);
+  }
+
   dispose(): void {
+    connectionPool.dispose();
     this.disconnect().catch(err => logger.error('Error disconnecting', err));
     this.statusBarItem.dispose();
   }

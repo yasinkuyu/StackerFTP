@@ -177,13 +177,20 @@ export function activate(context: vscode.ExtensionContext): void {
   const transferQueueProvider = new TransferQueueTreeProvider();
   context.subscriptions.push(transferQueueProvider);
 
-  transferManager.on('queueUpdate', (queue: any[]) => {
-    const activeCount = queue.filter((q: any) => q.status === 'pending' || q.status === 'transferring').length;
+  transferManager.on('queueUpdate', () => {
+    const activeCount = transferManager.getActiveCount();
     statusBar.updateTransferCount(activeCount);
+    // UI Update: Badge on Activity Bar
+    if (transferQueueProvider) {
+      transferQueueProvider.updateBadge(activeCount);
+    }
   });
 
   transferManager.on('queueComplete', () => {
     statusBar.updateTransferCount(0);
+    if (transferQueueProvider) {
+      transferQueueProvider.updateBadge(0);
+    }
   });
 
   // 9. Startup Tasks

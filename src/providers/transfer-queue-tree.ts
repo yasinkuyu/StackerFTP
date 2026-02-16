@@ -143,6 +143,13 @@ export class TransferQueueTreeProvider implements vscode.TreeDataProvider<Transf
     }
 
     /**
+     * Update the Activity Bar badge for the transfer queue
+     */
+    updateBadge(count: number): void {
+        this.treeView.badge = count > 0 ? { value: count, tooltip: `${count} active transfer${count > 1 ? 's' : ''}` } : undefined;
+    }
+
+    /**
      * Show/reveal the transfer queue panel
      */
     reveal(): void {
@@ -153,8 +160,7 @@ export class TransferQueueTreeProvider implements vscode.TreeDataProvider<Transf
      * Get number of active transfers
      */
     getActiveCount(): number {
-        const queue = transferManager.getQueue();
-        return queue.filter(q => q.status === 'pending' || q.status === 'transferring').length;
+        return transferManager.getActiveCount();
     }
 
     dispose(): void {

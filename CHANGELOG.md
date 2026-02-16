@@ -2,6 +2,25 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.1.10] - 2026-02-16
+
+### Added
+- **Activity Bar Transfer Badge**: Added a numeric badge to the sidebar icon to show the active transfer count at a glance.
+- **Connection Pool**: Introduced a per-server connection pool (up to 5 connections) enabling true parallel FTP/SFTP transfers. Lazy creation, automatic idle cleanup after 60s, and graceful drain on disconnect.
+
+### Optimized
+- **Transfer Tracking Performance**: Refactored `TransferManager` to track active counts incrementally, ensuring high performance even with large queues.
+- **Promise-based Queue Completion**: Replaced 100ms polling loop with event-driven promise resolution, eliminating unnecessary CPU wake-ups during transfers.
+- **Stat Bypass for Bulk Transfers**: Directory uploads/downloads now pre-scan targets and pass metadata, skipping redundant per-file stat calls for significantly faster bulk operations.
+- **Increased Default Concurrency**: Default `transferConcurrency` raised from 5 to 10 for better out-of-the-box performance.
+- **Faster Directory Scanning**: Scan batch size increased from 10 to 25, reducing traversal time for large directory trees.
+- **Log Noise Reduction**: Cache invalidation messages downgraded from `info` to `debug` level, reducing output panel clutter.
+
+### Fixed
+- **Pool Timer Leak**: Fixed `waitForAvailable` timeout not being cleared when a connection becomes available, preventing a 30s timer leak.
+- **Dead Connection Cleanup**: Pool now immediately removes disconnected connections on release instead of waiting for the next acquire cycle.
+- **Negative Active Count on Cancel**: Fixed `_activeCount` going negative when in-flight transfers complete after a cancel operation.
+
 ## [1.1.9] - 2026-02-15
 
 ### Added

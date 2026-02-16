@@ -30,8 +30,11 @@ export class RemoteDocumentProvider implements vscode.TextDocumentContentProvide
     transferManager.on('transferComplete', (item) => {
       if (item.direction === 'upload' && item.status === 'completed') {
         const uri = RemoteDocumentProvider.createUri(item.remotePath);
-        this.refresh(uri);
-        logger.info(`Remote cache invalidated: ${item.remotePath}`);
+        const cacheKey = uri.toString();
+        if (this._cache.has(cacheKey)) {
+          this.refresh(uri);
+          logger.debug(`Remote cache invalidated: ${item.remotePath}`);
+        }
       }
     });
   }
