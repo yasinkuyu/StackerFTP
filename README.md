@@ -38,7 +38,8 @@ A professional-grade FTP/SFTP client extension for Visual Studio Code and all it
 - **File Information**: Detailed file metadata display
 - **Remote Search**: Search content within remote files
 - **Backup Creation**: Create backups of remote files/directories
-- **Folder Comparison**: Compare local and remote folders
+- **Folder Comparison**: Compare local and remote folders (split-view panel)
+- **Quick Search**: Ultra-fast file search by name in new tab (parallel traversal, wildcard patterns)
 - **Search & Replace**: Find and replace text across remote files
 - **Cache Purge**: Clear common cache directories on remote server
 
