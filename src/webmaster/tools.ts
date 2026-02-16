@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { BaseConnection } from '../core/connection';
-import { FileEntry, ChecksumResult, SearchResult, FileInfo, FTPConfig } from '../types';
+import { FileEntry, ChecksumResult, SearchResult, FileInfo, FTPConfig, CompareItem, CompareTreeNode, CompareResult } from '../types';
 import { formatFileSize, formatDate, formatPermissions, calculateChecksum } from '../utils/helpers';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
@@ -208,6 +208,172 @@ export class WebMasterTools {
     `;
   }
 
+  // ==================== Quick Search Tools ====================
+
+  /**
+   * Fast file search by name pattern - searches in parallel
+   */
+  async quickSearchFiles(
+    connection: BaseConnection,
+    remotePath: string,
+    pattern: string,
+    options?: {
+      maxResults?: number;
+      searchPath?: string;
+      onProgress?: (message: string) => void;
+    }
+  ): Promise<{ name: string; path: string; size: number; type: 'file' | 'directory' }[]> {
+    const maxResults = options?.maxResults || 100;
+    const searchPath = options?.searchPath || remotePath;
+    const onProgress = options?.onProgress;
+
+    const results: { name: string; path: string; size: number; type: 'file' | 'directory' }[] = [];
+    const patternLower = pattern.toLowerCase();
+
+    // Convert glob pattern to regex
+    const regexPattern = pattern
+      .replace(/\./g, '\\.')
+      .replace(/\*/g, '.*')
+      .replace(/\?/g, '.');
+    const regex = new RegExp(regexPattern, 'i');
+
+    // Check if pattern matches
+    const matches = (name: string): boolean => {
+      if (regex.test(name)) return true;
+      if (patternLower.includes(name.toLowerCase())) return true;
+      return false;
+    };
+
+    // Recursive search with parallel processing
+    const searchDir = async (dirPath: string, depth: number = 0): Promise<void> => {
+      if (results.length >= maxResults) return;
+
+      try {
+        const entries = await connection.list(dirPath);
+
+        // Process entries in parallel
+        const files = entries.filter(e => e.type === 'file');
+        const dirs = entries.filter(e => e.type === 'directory');
+
+        // Check files
+        for (const entry of files) {
+          if (results.length >= maxResults) return;
+
+          if (matches(entry.name)) {
+            results.push({
+              name: entry.name,
+              path: entry.path,
+              size: entry.size,
+              type: 'file'
+            });
+          }
+        }
+
+        // Check directories for partial matches (for showing in results)
+        for (const entry of dirs) {
+          if (matches(entry.name)) {
+            results.push({
+              name: entry.name,
+              path: entry.path,
+              size: 0,
+              type: 'directory'
+            });
+          }
+        }
+
+        // Recurse into subdirectories in parallel (limited depth to prevent too deep recursion)
+        if (depth < 10) {
+          await Promise.all(dirs.map(d => searchDir(d.path, depth + 1)));
+        }
+      } catch (error) {
+        // Skip directories we can't access
+      }
+    };
+
+    onProgress?.(`Searching in ${searchPath}...`);
+    await searchDir(searchPath);
+
+    // Sort: directories first, then by name
+    results.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    return results.slice(0, maxResults);
+  }
+
+  /**
+   * Show quick search results in a picker
+   */
+  async showQuickSearchResults(
+    results: { name: string; path: string; size: number; type: 'file' | 'directory' }[],
+    config: FTPConfig,
+    connection: BaseConnection,
+    workspaceRoot: string
+  ): Promise<void> {
+    if (results.length === 0) {
+      statusBar.success('No files found');
+      return;
+    }
+
+    const items = results.map(r => ({
+      label: r.type === 'directory' ? `$(file-directory) ${r.name}` : `$(file) ${r.name}`,
+      description: r.type === 'file' ? formatFileSize(r.size) : 'Folder',
+      detail: r.path,
+      path: r.path,
+      type: r.type,
+      isDirectory: r.type === 'directory'
+    }));
+
+    const selected = await vscode.window.showQuickPick(items, {
+      title: `Search Results (${results.length} found)`,
+      placeHolder: 'Select a file to open or download',
+      matchOnDetail: true
+    });
+
+    if (!selected) return;
+
+    if (selected.isDirectory) {
+      // Navigate to folder in remote explorer
+      await vscode.commands.executeCommand('stackerftp.tree.refresh');
+      statusBar.success(`Folder: ${selected.path}`);
+    } else {
+      // Get filename from path
+      const fileName = path.basename(selected.path);
+
+      // Offer to open or download
+      const choice = await vscode.window.showQuickPick([
+        { label: '$(eye) Open', description: 'Open file in editor', value: 'open' },
+        { label: '$(arrow-down) Download', description: 'Download to local', value: 'download' }
+      ], {
+        title: fileName,
+        placeHolder: 'What would you like to do?'
+      });
+
+      if (!choice) return;
+
+      const localPath = path.join(workspaceRoot, path.relative(config.remotePath, selected.path));
+      const localDir = path.dirname(localPath);
+
+      if (choice.value === 'download' || choice.value === 'open') {
+        // Ensure local directory exists
+        if (!fs.existsSync(localDir)) {
+          fs.mkdirSync(localDir, { recursive: true });
+        }
+
+        // Download file
+        await connection.download(selected.path, localPath);
+
+        if (choice.value === 'open') {
+          const doc = await vscode.workspace.openTextDocument(localPath);
+          await vscode.window.showTextDocument(doc);
+        } else {
+          statusBar.success(`Downloaded: ${fileName}`);
+        }
+      }
+    }
+  }
+
   // ==================== Search Tools ====================
 
   async searchInRemoteFiles(
@@ -310,75 +476,302 @@ export class WebMasterTools {
 
   // ==================== Folder Comparison ====================
 
+  // Default ignore patterns for folder comparison
+  private static readonly DEFAULT_IGNORE_PATTERNS = [
+    '.git',
+    'node_modules',
+    '.DS_Store',
+    'Thumbs.db',
+    '.vscode',
+    '.idea',
+    '__pycache__',
+    '*.pyc',
+    '.env',
+    '.env.local'
+  ];
+
+  /**
+   * Check if a path should be ignored based on patterns
+   */
+  private shouldIgnore(filePath: string, ignorePatterns: string[]): boolean {
+    const fileName = path.basename(filePath);
+    for (const pattern of ignorePatterns) {
+      if (pattern.startsWith('*.')) {
+        // Extension match
+        const ext = pattern.slice(1);
+        if (fileName.endsWith(ext)) return true;
+      } else if (filePath.includes(pattern) || fileName === pattern) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Compare folders with performance optimizations
+   */
   async compareFolders(
     connection: BaseConnection,
     localPath: string,
-    remotePath: string
-  ): Promise<{ onlyLocal: string[]; onlyRemote: string[]; different: string[] }> {
+    remotePath: string,
+    options?: {
+      ignorePatterns?: string[];
+      useMtime?: boolean;
+      onProgress?: (message: string, increment?: number) => void;
+    }
+  ): Promise<{
+    onlyLocal: CompareItem[];
+    onlyRemote: CompareItem[];
+    different: CompareItem[];
+    tree: CompareTreeNode;
+  }> {
+    const ignorePatterns = options?.ignorePatterns || WebMasterTools.DEFAULT_IGNORE_PATTERNS;
+    const useMtime = options?.useMtime !== false; // Default to true
+    const onProgress = options?.onProgress;
+
     const result = {
-      onlyLocal: [] as string[],
-      onlyRemote: [] as string[],
-      different: [] as string[]
+      onlyLocal: [] as CompareItem[],
+      onlyRemote: [] as CompareItem[],
+      different: [] as CompareItem[],
+      tree: { name: path.basename(localPath) || '/', children: [], path: '', isDirectory: true } as CompareTreeNode
     };
+
+    onProgress?.('Scanning local files...', 0);
 
     // Get local files
     const localFiles = new Map<string, { size: number; mtime: number }>();
+    const localFolders = new Set<string>();
+
     const traverseLocal = (dir: string, baseDir: string) => {
-      const entries = fs.readdirSync(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name);
-        const relativePath = path.relative(baseDir, fullPath);
-        
-        if (entry.isDirectory()) {
-          traverseLocal(fullPath, baseDir);
-        } else {
-          const stats = fs.statSync(fullPath);
-          localFiles.set(relativePath.replace(/\\/g, '/'), {
-            size: stats.size,
-            mtime: stats.mtime.getTime()
-          });
+      try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+          const relativePath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
+
+          if (this.shouldIgnore(relativePath, ignorePatterns)) {
+            continue;
+          }
+
+          if (entry.isDirectory()) {
+            localFolders.add(relativePath);
+            traverseLocal(fullPath, baseDir);
+          } else {
+            try {
+              const stats = fs.statSync(fullPath);
+              localFiles.set(relativePath, {
+                size: stats.size,
+                mtime: stats.mtime.getTime()
+              });
+            } catch (err) {
+              // Skip files that can't be stat'd
+            }
+          }
         }
+      } catch (err) {
+        // Skip directories that can't be read
       }
     };
     traverseLocal(localPath, localPath);
 
-    // Get remote files
+    onProgress?.('Scanning remote files...', 30);
+
+    // Get remote files with parallel traversal
     const remoteFiles = new Map<string, { size: number; mtime: number }>();
-    const traverseRemote = async (dir: string, baseDir: string) => {
-      const entries = await connection.list(dir);
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name).replace(/\\/g, '/');
-        const relativePath = fullPath.substring(baseDir.length).replace(/^\//, '');
-        
-        if (entry.type === 'directory') {
-          await traverseRemote(fullPath, baseDir);
-        } else {
+    const remoteFolders = new Set<string>();
+
+    const traverseRemote = async (dir: string, baseDir: string): Promise<void> => {
+      try {
+        const entries = await connection.list(dir);
+
+        // Process directories in parallel
+        const directories = entries.filter(e => e.type === 'directory');
+        const files = entries.filter(e => e.type === 'file');
+
+        // Recursively process subdirectories in parallel
+        if (directories.length > 0) {
+          await Promise.all(
+            directories.map(async (entry) => {
+              const fullPath = path.join(dir, entry.name).replace(/\\/g, '/');
+              const relativePath = fullPath.substring(baseDir.length).replace(/^\//, '');
+
+              if (this.shouldIgnore(relativePath, ignorePatterns)) {
+                return;
+              }
+
+              remoteFolders.add(relativePath);
+              await traverseRemote(fullPath, baseDir);
+            })
+          );
+        }
+
+        // Process files
+        for (const entry of files) {
+          const fullPath = path.join(dir, entry.name).replace(/\\/g, '/');
+          const relativePath = fullPath.substring(baseDir.length).replace(/^\//, '');
+
+          if (this.shouldIgnore(relativePath, ignorePatterns)) {
+            continue;
+          }
+
           remoteFiles.set(relativePath, {
             size: entry.size,
-            mtime: entry.modifyTime.getTime()
+            mtime: entry.modifyTime?.getTime() || 0
+          });
+        }
+      } catch (err) {
+        // Skip directories that can't be read
+      }
+    };
+
+    await traverseRemote(remotePath, remotePath);
+
+    onProgress?.('Comparing files...', 70);
+
+    // Compare with size and optional mtime
+    for (const [file, localInfo] of localFiles) {
+      const remoteInfo = remoteFiles.get(file);
+      if (!remoteInfo) {
+        result.onlyLocal.push({
+          path: file,
+          size: localInfo.size,
+          mtime: localInfo.mtime,
+          side: 'local'
+        });
+      } else if (useMtime) {
+        // Compare both size AND mtime for more accurate comparison
+        const sizeDifferent = remoteInfo.size !== localInfo.size;
+        // Consider different if size differs OR if mtime differs by more than 2 seconds
+        const mtimeDifferent = Math.abs(remoteInfo.mtime - localInfo.mtime) > 2000;
+
+        if (sizeDifferent || mtimeDifferent) {
+          result.different.push({
+            path: file,
+            localSize: localInfo.size,
+            remoteSize: remoteInfo.size,
+            localMtime: localInfo.mtime,
+            remoteMtime: remoteInfo.mtime,
+            side: 'different'
+          });
+        }
+      } else {
+        // Legacy: size-only comparison
+        if (remoteInfo.size !== localInfo.size) {
+          result.different.push({
+            path: file,
+            localSize: localInfo.size,
+            remoteSize: remoteInfo.size,
+            localMtime: localInfo.mtime,
+            remoteMtime: remoteInfo.mtime,
+            side: 'different'
           });
         }
       }
-    };
-    await traverseRemote(remotePath, remotePath);
-
-    // Compare
-    for (const [file, info] of localFiles) {
-      const remoteInfo = remoteFiles.get(file);
-      if (!remoteInfo) {
-        result.onlyLocal.push(file);
-      } else if (remoteInfo.size !== info.size) {
-        result.different.push(file);
-      }
     }
 
-    for (const [file] of remoteFiles) {
+    for (const [file, remoteInfo] of remoteFiles) {
       if (!localFiles.has(file)) {
-        result.onlyRemote.push(file);
+        result.onlyRemote.push({
+          path: file,
+          size: remoteInfo.size,
+          mtime: remoteInfo.mtime,
+          side: 'remote'
+        });
       }
     }
+
+    // Build tree structure
+    onProgress?.('Building tree...', 90);
+
+    const allPaths = new Set<string>();
+    for (const item of result.onlyLocal) {
+      const parts = item.path.split('/');
+      let current = '';
+      for (const part of parts) {
+        current = current ? `${current}/${part}` : part;
+        allPaths.add(current);
+      }
+    }
+    for (const item of result.onlyRemote) {
+      const parts = item.path.split('/');
+      let current = '';
+      for (const part of parts) {
+        current = current ? `${current}/${part}` : part;
+        allPaths.add(current);
+      }
+    }
+    for (const item of result.different) {
+      const parts = item.path.split('/');
+      let current = '';
+      for (const part of parts) {
+        current = current ? `${current}/${part}` : part;
+        allPaths.add(current);
+      }
+    }
+
+    // Build tree from all paths
+    const treeMap = new Map<string, CompareTreeNode>();
+    treeMap.set('', result.tree);
+
+    // Sort paths to ensure parents are processed first
+    const sortedPaths = Array.from(allPaths).sort((a, b) => a.localeCompare(b));
+
+    for (const filePath of sortedPaths) {
+      const parentPath = filePath.includes('/') ? filePath.substring(0, filePath.lastIndexOf('/')) : '';
+      const name = filePath.includes('/') ? filePath.substring(filePath.lastIndexOf('/') + 1) : filePath;
+      const isDir = allPaths.has(`${filePath}/`) || localFolders.has(filePath) || remoteFolders.has(filePath);
+
+      const node: CompareTreeNode = {
+        name,
+        path: filePath,
+        isDirectory: isDir,
+        children: [],
+        localItem: result.onlyLocal.find(i => i.path === filePath) ||
+                   result.different.find(i => i.path === filePath),
+        remoteItem: result.onlyRemote.find(i => i.path === filePath) ||
+                    result.different.find(i => i.path === filePath)
+      };
+
+      treeMap.set(filePath, node);
+
+      const parent = treeMap.get(parentPath);
+      if (parent) {
+        parent.children.push(node);
+      }
+    }
+
+    // Sort children: directories first, then files, alphabetically
+    const sortChildren = (node: CompareTreeNode) => {
+      node.children.sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) {
+          return a.isDirectory ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name);
+      });
+      node.children.forEach(sortChildren);
+    };
+    sortChildren(result.tree);
+
+    onProgress?.('Done', 100);
 
     return result;
+  }
+
+  /**
+   * Legacy compareFolders for backward compatibility
+   */
+  async compareFoldersLegacy(
+    connection: BaseConnection,
+    localPath: string,
+    remotePath: string
+  ): Promise<{ onlyLocal: string[]; onlyRemote: string[]; different: string[] }> {
+    const result = await this.compareFolders(connection, localPath, remotePath);
+
+    return {
+      onlyLocal: result.onlyLocal.map(i => i.path),
+      onlyRemote: result.onlyRemote.map(i => i.path),
+      different: result.different.map(i => i.path)
+    };
   }
 
   // ==================== Find and Replace ====================

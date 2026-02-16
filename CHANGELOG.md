@@ -2,6 +2,32 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.1.11] - 2026-02-16
+
+### Added
+- **Compare Folders Panel**: New split-view WebView panel for comparing local and remote folders. Opens in a new tab with tree structure, color-coded differences, and actions.
+- **Quick Search**: Ultra-fast file search in a new panel. Parallel directory traversal with 150ms debounce, wildcard pattern support (`*`, `?`), and instant results.
+- **Folder Selection**: Compare Folders now allows selecting specific folders or entire workspace.
+- **Search Path Change**: Quick Search allows changing the search location (entire remote or custom path).
+
+### Features
+- **Compare Panel**: Split view showing local (left) and remote (right) with tree structure
+- **Filters**: All / Only Local / Only Remote / Different filtering
+- **Actions**: Show Diff, Upload, Download, Reveal buttons for each file
+- **Export**: Save comparison results as JSON or CSV
+- **Search**: Real-time file search with debounce in Compare Panel
+- **Quick Search**: Open file, Download, Reveal actions directly from results
+
+### Performance Improvements
+- **Parallel Remote Traversal**: Sibling folders now scanned concurrently using Promise.all
+- **mtime Comparison**: More accurate comparison using both size AND modification time
+- **Progress Streaming**: Real-time progress updates during folder comparison
+- **Ignore Patterns**: Configurable patterns to exclude files/folders (.git, node_modules, etc.)
+
+### Fixed
+- **Search Input Focus**: Fixed search input losing focus on each keystroke in Compare Panel
+- **Context Menu Integration**: Quick Search available in Explorer and Remote Explorer context menus
+
 ## [1.1.10] - 2026-02-16
 
 ### Added

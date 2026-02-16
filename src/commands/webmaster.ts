@@ -1,9 +1,11 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { configManager } from '../core/config';
 import { connectionManager } from '../core/connection-manager';
 import { webMasterTools } from '../webmaster/tools';
 import { statusBar } from '../utils/status-bar';
 import { getWorkspaceRoot } from './utils';
+import { CompareViewProvider } from '../providers/compare-view';
 
 export function registerWebMasterCommands(): vscode.Disposable[] {
   const disposables: vscode.Disposable[] = [];
@@ -115,6 +117,22 @@ export function registerWebMasterCommands(): vscode.Disposable[] {
     }
   });
 
+  // Quick Search - Opens in new panel
+  const quickSearchCommand = vscode.commands.registerCommand('stackerftp.webmaster.quickSearch', async (item?: any) => {
+    // Import the panel here to avoid circular dependencies
+    const { QuickSearchPanel } = await import('../providers/quick-search-panel');
+
+    // Pass the item if it's from remote explorer
+    const uri = item?.entry?.path ? vscode.Uri.file(item.entry.path) : undefined;
+    await QuickSearchPanel.show(uri);
+  });
+
+  // Quick Search Change Path - called from webview
+  const quickSearchChangePathCommand = vscode.commands.registerCommand('stackerftp.webmaster.quickSearchChangePath', async () => {
+    const { QuickSearchPanel } = await import('../providers/quick-search-panel');
+    await QuickSearchPanel.changePathFromCommand();
+  });
+
   const backupCommand = vscode.commands.registerCommand('stackerftp.webmaster.backup', async (item: any) => {
     if (!item?.entry) {
       statusBar.error('No file or folder selected');
@@ -153,56 +171,54 @@ export function registerWebMasterCommands(): vscode.Disposable[] {
     }
   });
 
-  const compareFoldersCommand = vscode.commands.registerCommand('stackerftp.webmaster.compareFolders', async () => {
-    const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) return;
+  // Singleton instance for CompareViewProvider
+  let compareViewProvider: CompareViewProvider | undefined;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) return;
+  const compareFoldersCommand = vscode.commands.registerCommand('stackerftp.webmaster.compareFolders', async (uri?: vscode.Uri) => {
+    // Create provider if not exists
+    if (!compareViewProvider) {
+      const extensionUri = vscode.Uri.parse('');
+      compareViewProvider = new CompareViewProvider(extensionUri);
+    }
 
     try {
-      const connection = await connectionManager.ensureConnection(config);
+      // Check if called from context menu with a specific folder
+      let localPath: string | undefined;
 
-      vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
-        title: 'Comparing folders...',
-        cancellable: false
-      }, async (progress) => {
-        progress.report({ message: 'Scanning local files...' });
-        const result = await webMasterTools.compareFolders(connection, workspaceRoot, config.remotePath);
+      if (uri && uri.fsPath) {
+        // Context menu - check if it's a folder
+        const stat = await vscode.workspace.fs.stat(uri);
+        if (stat.type === vscode.FileType.Directory) {
+          localPath = uri.fsPath;
+        }
+      }
 
-        progress.report({ message: 'Done' });
+      // If we have a folder path, ask user what to compare
+      if (localPath) {
+        const workspaceRoot = getWorkspaceRoot();
+        if (workspaceRoot && localPath.startsWith(workspaceRoot)) {
+          const relativePath = path.relative(workspaceRoot, localPath);
 
-        // Show results
-        const items = [
-          `$(file-add) Only in local: ${result.onlyLocal.length}`,
-          `$(file-subtract) Only in remote: ${result.onlyRemote.length}`,
-          `$(git-compare) Different: ${result.different.length}`
-        ];
-
-        const selected = await vscode.window.showQuickPick(items, {
-          title: 'Folder Comparison Results',
-          canPickMany: false
-        });
-
-        if (selected) {
-          let detailList: string[] = [];
-          if (selected.includes('Only in local')) {
-            detailList = result.onlyLocal.slice(0, 50);
-          } else if (selected.includes('Only in remote')) {
-            detailList = result.onlyRemote.slice(0, 50);
-          } else if (selected.includes('Different')) {
-            detailList = result.different.slice(0, 50);
-          }
-
-          if (detailList.length > 0) {
-            await vscode.window.showQuickPick(detailList, {
-              title: selected,
-              placeHolder: `Showing ${Math.min(detailList.length, 50)} of ${detailList.length} files`
+          if (relativePath) {
+            const choice = await vscode.window.showQuickPick([
+              { label: `$(file-directory) Selected: ${path.basename(localPath)}`, description: 'Compare only this folder', value: 'selected' },
+              { label: '$(files) Entire Workspace', description: 'Compare entire workspace', value: 'workspace' }
+            ], {
+              title: 'Compare Folders',
+              placeHolder: 'What would you like to compare?'
             });
+
+            if (!choice) return;
+
+            if (choice.value === 'workspace') {
+              localPath = undefined; // Will use workspace root
+            }
+            // If 'selected', use the localPath
           }
         }
-      });
+      }
+
+      await compareViewProvider.show(localPath);
     } catch (error: any) {
       statusBar.error(`Folder comparison failed: ${error.message}`);
     }

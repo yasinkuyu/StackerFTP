@@ -170,3 +170,33 @@ export interface WebMasterSettings {
   enableFilePermissionsCheck: boolean;
   showHiddenFiles: boolean;
 }
+
+// ==================== Folder Comparison Types ====================
+
+export interface CompareItem {
+  path: string;
+  size?: number;
+  mtime?: number;
+  side: 'local' | 'remote' | 'different';
+  // For different items
+  localSize?: number;
+  remoteSize?: number;
+  localMtime?: number;
+  remoteMtime?: number;
+}
+
+export interface CompareTreeNode {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  children: CompareTreeNode[];
+  localItem?: CompareItem;
+  remoteItem?: CompareItem;
+}
+
+export interface CompareResult {
+  onlyLocal: CompareItem[];
+  onlyRemote: CompareItem[];
+  different: CompareItem[];
+  tree: CompareTreeNode;
+}

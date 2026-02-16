@@ -1,7 +1,7 @@
 {
   "name": "stackerftp",
   "displayName": "StackerFTP - Professional SFTP/FTP Client",
-  "version": "1.1.10",
+  "version": "1.1.11",
   "publisher": "yasinkuyu",
   "author": "Insya, Yasin Kuyu",
   "license": "MIT",
@@ -181,24 +181,24 @@
     "submenus": [
       {
         "id": "stackerftp.submenu",
-        "label": "SFTP/FTP",
+        "label": "StackerFTP",
         "icon": "$(cloud)"
       },
       {
         "id": "stackerftp.editor.submenu",
-        "label": "SFTP/FTP",
+        "label": "StackerFTP",
         "icon": "$(cloud)"
       }
     ],
     "commands": [
       {
         "command": "stackerftp.config",
-        "title": "SFTP: Config",
+        "title": "StackerFTP: Config",
         "category": "StackerFTP"
       },
       {
         "command": "stackerftp.showOutput",
-        "title": "SFTP: Show Output",
+        "title": "StackerFTP: Show Output",
         "category": "StackerFTP"
       },
       {
@@ -409,6 +409,12 @@
       {
         "command": "stackerftp.webmaster.search",
         "title": "Search in Remote Files",
+        "category": "StackerFTP - WebMaster",
+        "icon": "$(search)"
+      },
+      {
+        "command": "stackerftp.webmaster.quickSearch",
+        "title": "Quick Search (by name)",
         "category": "StackerFTP - WebMaster",
         "icon": "$(search)"
       },
@@ -679,33 +685,13 @@
       ],
       "stackerftp.submenu": [
         {
-          "command": "stackerftp.upload",
+          "command": "stackerftp.uploadToAllProfiles",
           "group": "1_transfer@1",
           "when": "explorerResourceIsFile"
         },
         {
-          "command": "stackerftp.uploadToAllProfiles",
-          "group": "1_transfer@2",
-          "when": "explorerResourceIsFile"
-        },
-        {
-          "command": "stackerftp.download",
-          "group": "1_transfer@3",
-          "when": "explorerResourceIsFile"
-        },
-        {
-          "command": "stackerftp.uploadFolder",
-          "group": "1_transfer@4",
-          "when": "explorerResourceIsFolder"
-        },
-        {
-          "command": "stackerftp.downloadFolder",
-          "group": "1_transfer@5",
-          "when": "explorerResourceIsFolder"
-        },
-        {
           "command": "stackerftp.revealInRemoteExplorer",
-          "group": "1_transfer@6"
+          "group": "1_transfer@2"
         },
         {
           "command": "stackerftp.diff",
@@ -715,6 +701,11 @@
         {
           "command": "stackerftp.webmaster.compareFolders",
           "group": "2_compare@2",
+          "when": "explorerResourceIsFolder"
+        },
+        {
+          "command": "stackerftp.webmaster.quickSearch",
+          "group": "2_compare@3",
           "when": "explorerResourceIsFolder"
         },
         {
@@ -790,6 +781,11 @@
           "command": "stackerftp.refresh",
           "when": "view == stackerftp.remoteExplorerTree",
           "group": "navigation@1"
+        },
+        {
+          "command": "stackerftp.webmaster.quickSearch",
+          "when": "view == stackerftp.remoteExplorerTree",
+          "group": "navigation@2"
         },
         {
           "command": "stackerftp.expandAll",
@@ -977,6 +973,11 @@
           "command": "stackerftp.newFolder",
           "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /directory$/",
           "group": "1_files@2"
+        },
+        {
+          "command": "stackerftp.webmaster.quickSearch",
+          "when": "view == stackerftp.remoteExplorerTree",
+          "group": "1_files@3"
         },
         {
           "command": "stackerftp.connect",
