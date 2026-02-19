@@ -23,7 +23,12 @@ class StatusBarNotifier {
   private defaultText = ''; // No persistent text for notification bar
   private currentTimeout: NodeJS.Timeout | undefined;
   private progressItems: Map<string, vscode.StatusBarItem> = new Map();
+  private progressTimeouts: Map<string, NodeJS.Timeout> = new Map();
   private activeTransferCount = 0;
+
+  private hasBulkTransferProgress(): boolean {
+    return this.progressItems.has('upload-folder') || this.progressItems.has('download-folder');
+  }
 
   private constructor() {
     this.statusBarItem = vscode.window.createStatusBarItem(
@@ -192,6 +197,7 @@ class StatusBarNotifier {
     progressItem.show();
 
     this.progressItems.set(id, progressItem);
+    this.scheduleProgressAutoStop(id, message);
     logger.info(`[Progress] ${message}`);
 
     return {
@@ -200,6 +206,7 @@ class StatusBarNotifier {
         if (item) {
           item.text = `$(sync~spin) ${msg}`;
           item.tooltip = msg;
+          this.scheduleProgressAutoStop(id, msg);
           logger.info(`[Progress] ${msg}`);
         }
       },
@@ -217,6 +224,12 @@ class StatusBarNotifier {
   }
 
   private stopProgress(id: string): void {
+    const timeout = this.progressTimeouts.get(id);
+    if (timeout) {
+      clearTimeout(timeout);
+      this.progressTimeouts.delete(id);
+    }
+
     const item = this.progressItems.get(id);
     if (item) {
       item.dispose();
@@ -224,10 +237,40 @@ class StatusBarNotifier {
     }
   }
 
+  private scheduleProgressAutoStop(id: string, message: string): void {
+    const timeoutMs = this.getProgressAutoStopMs(id);
+    if (timeoutMs <= 0) return;
+
+    const existing = this.progressTimeouts.get(id);
+    if (existing) {
+      clearTimeout(existing);
+    }
+
+    const timer = setTimeout(() => {
+      const item = this.progressItems.get(id);
+      if (!item) return;
+
+      this.stopProgress(id);
+      this.warn(`Auto-cleared stale progress: ${message}`, 2500);
+      logger.warn(`Auto-cleared stale progress item "${id}" after ${timeoutMs}ms`);
+    }, timeoutMs);
+
+    this.progressTimeouts.set(id, timer);
+  }
+
+  private getProgressAutoStopMs(id: string): number {
+    if (id === 'refresh') return 10000; // Refresh should never stay visible indefinitely
+    return 0;
+  }
+
   /**
    * Show file transfer progress in status bar
    */
   showFileProgress(fileName: string, current: number, total: number): void {
+    if (this.hasBulkTransferProgress()) {
+      return;
+    }
+
     const progress = total > 0 ? Math.round((current / total) * 100) : 0;
     const shortName = fileName.length > 30
       ? '...' + fileName.slice(-27)
@@ -242,6 +285,12 @@ class StatusBarNotifier {
    * Stream file names during folder upload/download
    */
   streamFileName(operation: 'upload' | 'download', fileName: string): void {
+    if (this.hasBulkTransferProgress()) {
+      // During folder transfers, keep a single high-level progress message visible.
+      logger.info(`[${operation.toUpperCase()}] ${fileName}`);
+      return;
+    }
+
     const icon = operation === 'upload' ? '$(cloud-upload)' : '$(cloud-download)';
     const shortName = fileName.length > 40
       ? '...' + fileName.slice(-37)
@@ -261,6 +310,12 @@ class StatusBarNotifier {
    */
   updateTransferCount(count: number): void {
     this.activeTransferCount = count;
+    if (this.hasBulkTransferProgress()) {
+      // Avoid duplicate status bar noise while a dedicated folder progress item is visible.
+      this.transferStatusBarItem.hide();
+      return;
+    }
+
     if (count === 0) {
       this.transferStatusBarItem.hide();
     } else {

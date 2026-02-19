@@ -1897,12 +1897,23 @@ export function registerCommands(
     }
 
     try {
-      const connection = await connectionManager.ensureConnection(config);
-      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
-      const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
+      const folderName = path.basename(localPath);
+      const progress = statusBar.startProgress('upload-folder', `Uploading folder: ${folderName} (connecting...)`);
 
-      const result = await transferManager.uploadDirectory(connection, localPath, remotePath, config);
-      showSyncResult(result, 'upload');
+      try {
+        const connection = await connectionManager.ensureConnection(config);
+
+        const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+        const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
+
+        progress.update(`Uploading folder: ${folderName} (scanning and queueing files...)`);
+        const result = await transferManager.uploadDirectory(connection, localPath, remotePath, config);
+        progress.complete();
+        showSyncResult(result, 'upload');
+      } catch (error: any) {
+        progress.fail(`Upload folder failed: ${error.message}`);
+        throw error;
+      }
     } catch (error: any) {
       statusBar.error(`Upload folder failed: ${error.message}`);
     }
@@ -1925,12 +1936,23 @@ export function registerCommands(
     }
 
     try {
-      const connection = await connectionManager.ensureConnection(config);
-      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
-      const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
+      const folderName = path.basename(localPath);
+      const progress = statusBar.startProgress('download-folder', `Downloading folder: ${folderName} (connecting...)`);
 
-      const result = await transferManager.downloadDirectory(connection, remotePath, localPath, config);
-      showSyncResult(result, 'download');
+      try {
+        const connection = await connectionManager.ensureConnection(config);
+
+        const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+        const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
+
+        progress.update(`Downloading folder: ${folderName} (scanning and queueing files...)`);
+        const result = await transferManager.downloadDirectory(connection, remotePath, localPath, config);
+        progress.complete();
+        showSyncResult(result, 'download');
+      } catch (error: any) {
+        progress.fail(`Download folder failed: ${error.message}`);
+        throw error;
+      }
     } catch (error: any) {
       statusBar.error(`Download folder failed: ${error.message}`);
     }

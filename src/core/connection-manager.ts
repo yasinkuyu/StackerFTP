@@ -394,13 +394,31 @@ export class ConnectionManager {
       throw new Error(`No active connection for ${config.host}`);
     }
 
-    return await connectionPool.acquire(config);
+    const primaryConfig = primary.getConfig();
+
+    // SFTP is more stable with a single authenticated session.
+    // Pooled SFTP sessions can stall when runtime credentials are prompt-based.
+    if (primaryConfig.protocol === 'sftp') {
+      return primary;
+    }
+
+    try {
+      return await connectionPool.acquire(primaryConfig);
+    } catch (error) {
+      logger.warn(`Pool acquire failed for ${config.host}, falling back to primary connection`, error);
+      return primary;
+    }
   }
 
   /**
    * Release a pooled connection back to the pool.
    */
   releasePooledConnection(config: FTPConfig, connection: BaseConnection): void {
+    const primary = this.getConnection(config);
+    if (primary && primary === connection) {
+      // Primary connection is not owned by pool.
+      return;
+    }
     connectionPool.release(config, connection);
   }
 

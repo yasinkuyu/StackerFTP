@@ -2,6 +2,24 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.2.4] - 2026-02-19
+
+### Fixed
+- **Folder Transfer UX**: Added immediate feedback when `Upload Folder` or `Download Folder` starts, so users see that the command is running during initial scan/queue preparation.
+- **Progress Visibility**: Added notification progress states (`Connecting...`, `Scanning and queueing files...`) for folder upload/download operations.
+
+## [1.2.3] - 2026-02-19
+
+### Fixed
+- **Download Stall Protection**: Added transfer timeout safeguard so stalled downloads no longer block the queue indefinitely.
+- **Queue Recovery**: Timed-out transfer connections are now safely dropped from pool reuse to prevent repeated stuck `Pending` items.
+
+## [1.2.2] - 2026-02-19
+
+### Fixed
+- **Upload Queue Stall**: Fixed uploads getting stuck at `0%` with remaining items in `Pending`.
+- **SFTP Transfer Stability**: Disabled pooled transfer connections for SFTP and forced primary-connection fallback when pool acquisition fails.
+
 ## [1.2.1] - 2026-02-16
 
 ### Fixed

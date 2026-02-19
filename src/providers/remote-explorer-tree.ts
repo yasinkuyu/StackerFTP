@@ -166,6 +166,7 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
   private loadingPaths: Set<string> = new Set();
   private loadingItems: Set<string> = new Set(); // Track items with inline loading
   private statusBarItem: vscode.StatusBarItem;
+  private loadingTimeout: NodeJS.Timeout | undefined;
 
   constructor(private workspaceRoot: string) {
     // Register as file decoration provider for custom icons
@@ -184,13 +185,31 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
   private showLoading(message: string): void {
     this.statusBarItem.text = `$(sync~spin) ${message}`;
     this.statusBarItem.show();
+
+    // Safety: never leave loading indicator visible indefinitely.
+    if (this.loadingTimeout) {
+      clearTimeout(this.loadingTimeout);
+    }
+    this.loadingTimeout = setTimeout(() => {
+      this.statusBarItem.hide();
+      this.loadingTimeout = undefined;
+      logger.warn(`Auto-cleared stale tree loading indicator: ${message}`);
+    }, 12000);
   }
 
   private hideLoading(): void {
+    if (this.loadingTimeout) {
+      clearTimeout(this.loadingTimeout);
+      this.loadingTimeout = undefined;
+    }
     this.statusBarItem.hide();
   }
 
   dispose(): void {
+    if (this.loadingTimeout) {
+      clearTimeout(this.loadingTimeout);
+      this.loadingTimeout = undefined;
+    }
     this.statusBarItem.dispose();
   }
 
@@ -201,8 +220,9 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
 
   refresh(): void {
     logger.info('RemoteExplorerTreeProvider.refresh() called');
-    // Show loading in status bar during refresh
-    this.showLoading('Refreshing...');
+    // Do not start an indefinite spinner here.
+    // Actual loading indicators are shown in getChildren() where they are always finalized.
+    this.hideLoading();
     // Clear file cache to force fresh data
     this.fileCache.clear();
     this._onDidChangeTreeData.fire();

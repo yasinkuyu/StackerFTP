@@ -31,6 +31,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
   private queueUpdateTimeout: NodeJS.Timeout | undefined;
   private _activeCount = 0;
   private completionResolve: (() => void) | null = null;
+  private static readonly TRANSFER_TIMEOUT_MS = 180000; // 3 minutes safeguard against stalled transfers
 
 
   private emitQueueUpdate(): void {
@@ -39,6 +40,27 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       this.emit('queueUpdate', this.queue);
       this.queueUpdateTimeout = undefined;
     }, 150); // 150ms debounce for UI stability
+  }
+
+  private withTransferTimeout<T>(promise: Promise<T>, ms: number, context: string): Promise<T> {
+    let timeoutId: NodeJS.Timeout | undefined;
+
+    return new Promise<T>((resolve, reject) => {
+      timeoutId = setTimeout(() => {
+        const err = new Error(`Transfer timeout after ${Math.round(ms / 1000)}s (${context})`);
+        (err as any).code = 'TRANSFER_TIMEOUT';
+        reject(err);
+      }, ms);
+
+      promise.then(
+        value => resolve(value),
+        error => reject(error)
+      ).finally(() => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+      });
+    });
   }
 
   private async handleCollision(targetPath: string, type: 'local' | 'remote', isDir = false): Promise<'overwrite' | 'skip'> {
@@ -92,10 +114,9 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     localPath: string,
     remotePath: string,
     config: FTPConfig,
-    metadata?: { targetExists?: boolean; targetType?: 'file' | 'directory' | 'symlink' }
+    metadata?: { size?: number; targetExists?: boolean; targetType?: 'file' | 'directory' | 'symlink' }
   ): Promise<void> {
-    const stats = await fs.promises.stat(localPath);
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const item: TransferItem = {
         id: generateId(),
         localPath,
@@ -103,7 +124,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
         direction: 'upload',
         status: 'pending',
         progress: 0,
-        size: stats.size,
+        size: metadata?.size || 0,
         transferred: 0,
         config,
         resolve,
@@ -129,7 +150,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     config?: FTPConfig,
     metadata?: { size?: number; targetExists?: boolean; targetType?: 'file' | 'directory' | 'symlink' }
   ): Promise<void> {
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       const item: TransferItem = {
         id: generateId(),
         localPath,
@@ -182,6 +203,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       this.emit('transferStart', item);
 
       let pooledConnection: BaseConnection | undefined;
+      let timedOut = false;
       try {
         if (!item.config) {
           throw new Error('Transfer item missing config - cannot determine target server');
@@ -192,6 +214,16 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
         const connection = pooledConnection;
 
         if (item.direction === 'upload') {
+          // Fill missing local size lazily to keep queueing fast for large folders.
+          if (!item.size || item.size <= 0) {
+            try {
+              const localStat = await fs.promises.stat(item.localPath);
+              item.size = localStat.size;
+            } catch {
+              // Size is optional for queue display; transfer can continue.
+            }
+          }
+
           // Optimization: Bypass stat if metadata provided or session already set
           let exists = item.targetExists;
           let targetType = item.targetType;
@@ -212,7 +244,11 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
             }
           }
 
-          await connection.upload(item.localPath, item.remotePath);
+          await this.withTransferTimeout(
+            connection.upload(item.localPath, item.remotePath),
+            TransferManager.TRANSFER_TIMEOUT_MS,
+            `upload ${path.basename(item.localPath)}`
+          );
         } else {
           // Optimization: Bypass stat if metadata provided or session already set
           let exists = item.targetExists;
@@ -250,18 +286,36 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
             }
           }
 
-          await connection.download(item.remotePath, item.localPath);
+          await this.withTransferTimeout(
+            connection.download(item.remotePath, item.localPath),
+            TransferManager.TRANSFER_TIMEOUT_MS,
+            `download ${path.basename(item.remotePath)}`
+          );
         }
 
         item.status = 'completed';
         item.progress = 100;
         if ((item as any).resolve) (item as any).resolve();
       } catch (error: any) {
+        if (error?.code === 'TRANSFER_TIMEOUT' || String(error?.message || '').includes('Transfer timeout')) {
+          timedOut = true;
+        }
         item.status = 'error';
         item.error = error.message;
         logger.error(`Transfer failed: ${item.remotePath}`, error);
         if ((item as any).reject) (item as any).reject(error);
       } finally {
+        if (timedOut && pooledConnection && item.config) {
+          const primary = connectionManager.getConnection(item.config);
+          const isPrimary = primary === pooledConnection;
+          if (!isPrimary) {
+            try {
+              await pooledConnection.disconnect();
+            } catch (disconnectError) {
+              logger.warn(`Failed to disconnect timed-out pooled connection for ${item.config.host}`, disconnectError);
+            }
+          }
+        }
         // Release pooled connection back to pool
         if (pooledConnection && item.config) {
           connectionManager.releasePooledConnection(item.config, pooledConnection);
@@ -337,14 +391,6 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       return result;
     }
 
-    // Pre-scan remote directory to build existence map for stat bypass
-    statusBar.info(`Scanning remote files for collision check...`);
-    const remoteFiles = await this.getRemoteFiles(connection, remotePath);
-    const remoteFileMap = new Map<string, { type: string }>();
-    for (const rf of remoteFiles) {
-      remoteFileMap.set(rf.path, { type: rf.type });
-    }
-
     this.sessionCollisionAction = 'ask';
     statusBar.info(`Adding ${files.length} files to queue...`);
 
@@ -360,12 +406,8 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       }
 
       try {
-        // Pass remote existence metadata to bypass stat in processQueue
-        const remoteMeta = remoteFileMap.get(remoteFilePath);
-        await this.uploadFile(connection, file, remoteFilePath, config, {
-          targetExists: !!remoteMeta,
-          targetType: remoteMeta?.type as 'file' | 'directory' | 'symlink' | undefined
-        });
+        // Existence/collision checks are done lazily in processQueue.
+        await this.uploadFile(connection, file, remoteFilePath, config);
         result.uploaded.push(relativePath);
       } catch (error: any) {
         result.failed.push({ path: relativePath, error: error.message });
@@ -417,17 +459,6 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     const dataFiles = files.filter(f => f.type !== 'directory' && !f.isSymlinkToDirectory);
     statusBar.info(`Adding ${dataFiles.length} files to queue...`);
 
-    // Pre-scan local directory to build existence map for stat bypass
-    const localExisting = new Set<string>();
-    try {
-      const localFiles = await this.getLocalFiles(localPath);
-      for (const lf of localFiles) {
-        localExisting.add(lf);
-      }
-    } catch {
-      // Local dir may not exist yet, that's fine
-    }
-
     const filePromises = dataFiles.map(async (file) => {
       if (this.cancelled) return;
 
@@ -443,7 +474,6 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
         // Bypass redundant stat calls by passing known remote and local metadata
         await this.downloadFile(connection, file.path, localFilePath, config, {
           size: file.size,
-          targetExists: localExisting.has(localFilePath),
           targetType: 'file'
         });
         result.downloaded.push(relativePath);
