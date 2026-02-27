@@ -237,6 +237,21 @@ class StatusBarNotifier {
     }
   }
 
+  /**
+   * Clear one or all progress indicators
+   * Useful as a safety hatch for stale UI state.
+   */
+  clearProgress(id?: string): void {
+    if (id) {
+      this.stopProgress(id);
+      return;
+    }
+
+    for (const progressId of Array.from(this.progressItems.keys())) {
+      this.stopProgress(progressId);
+    }
+  }
+
   private scheduleProgressAutoStop(id: string, message: string): void {
     const timeoutMs = this.getProgressAutoStopMs(id);
     if (timeoutMs <= 0) return;
@@ -345,10 +360,7 @@ class StatusBarNotifier {
     }
     this.statusBarItem.dispose();
     this.transferStatusBarItem.dispose();
-    for (const item of this.progressItems.values()) {
-      item.dispose();
-    }
-    this.progressItems.clear();
+    this.clearProgress();
   }
 }
 

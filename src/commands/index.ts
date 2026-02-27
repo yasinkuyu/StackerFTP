@@ -244,24 +244,31 @@ export function registerCommands(
 
   // ==================== Transfer Commands ====================
 
-  const uploadCommand = vscode.commands.registerCommand('stackerftp.upload', async (uriOrResource: vscode.Uri | { resourceUri: vscode.Uri }) => {
+  const uploadCommand = vscode.commands.registerCommand('stackerftp.upload', async (uriOrResource: vscode.Uri | { resourceUri: vscode.Uri } | (vscode.Uri | { resourceUri: vscode.Uri })[]) => {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    // Handle both Uri (from explorer) and SourceControlResourceState (from SCM)
-    let localPath: string | undefined;
-    if (uriOrResource) {
-      if ('resourceUri' in uriOrResource) {
-        // SCM resource state
-        localPath = uriOrResource.resourceUri.fsPath;
-      } else if ('fsPath' in uriOrResource) {
-        // Direct Uri
-        localPath = uriOrResource.fsPath;
+    // Handle both single item and array of items
+    const items = Array.isArray(uriOrResource) ? uriOrResource : [uriOrResource];
+
+    if (!items || items.length === 0) {
+      statusBar.error('No file selected');
+      return;
+    }
+
+    // Extract local paths from items
+    const localPaths: string[] = [];
+    for (const item of items) {
+      if (!item) continue;
+      if ('resourceUri' in item) {
+        localPaths.push(item.resourceUri.fsPath);
+      } else if ('fsPath' in item) {
+        localPaths.push(item.fsPath);
       }
     }
 
-    if (!localPath) {
-      statusBar.error('No file selected');
+    if (localPaths.length === 0) {
+      statusBar.error('No valid file selected');
       return;
     }
 
@@ -292,24 +299,39 @@ export function registerCommands(
     }
 
     try {
-      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
-      const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
+      let uploadedCount = 0;
+      let failedCount = 0;
 
-      if (fs.statSync(localPath).isDirectory()) {
-        const result = await transferManager.uploadDirectory(connection, localPath, remotePath, config);
-        showSyncResult(result, 'upload');
-      } else {
-        // Ensure remote directory exists
-        const remoteDir = normalizeRemotePath(path.dirname(remotePath));
+      for (const localPath of localPaths) {
         try {
-          await connection.mkdir(remoteDir);
-        } catch {
-          // Directory might already exist
+          const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+          const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
+
+          if (fs.statSync(localPath).isDirectory()) {
+            const result = await transferManager.uploadDirectory(connection, localPath, remotePath, config);
+            uploadedCount += result.uploaded.length;
+            failedCount += result.failed.length;
+          } else {
+            // Ensure remote directory exists
+            const remoteDir = normalizeRemotePath(path.dirname(remotePath));
+            try {
+              await connection.mkdir(remoteDir);
+            } catch {
+              // Directory might already exist
+            }
+            await transferManager.uploadFile(connection, localPath, remotePath, config);
+            uploadedCount++;
+          }
+        } catch (err) {
+          failedCount++;
         }
-        await transferManager.uploadFile(connection, localPath, remotePath, config);
       }
 
-      statusBar.success(`Uploaded: ${path.basename(localPath)}`);
+      if (failedCount === 0) {
+        statusBar.success(`Uploaded: ${uploadedCount} item(s)`);
+      } else {
+        statusBar.info(`Uploaded: ${uploadedCount}, Failed: ${failedCount}`);
+      }
 
     } catch (error: any) {
       statusBar.error(`Upload failed: ${error.message}`, true);
@@ -377,7 +399,7 @@ export function registerCommands(
     }
   });
 
-  const downloadCommand = vscode.commands.registerCommand('stackerftp.download', async (itemOrResource?: any) => {
+  const downloadCommand = vscode.commands.registerCommand('stackerftp.download', async (itemOrItems?: any | any[]) => {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
@@ -387,52 +409,83 @@ export function registerCommands(
       return;
     }
 
+    // Handle both single item and array of items
+    const items = Array.isArray(itemOrItems) ? itemOrItems : (itemOrItems ? [itemOrItems] : []);
+
+    // If no valid items, ask to download entire project
+    if (items.length === 0 || items.every(item => !item || (!item.entry && !item.resourceUri))) {
+      const choice = await vscode.window.showWarningMessage(
+        'Download entire project?',
+        'Yes', 'No'
+      );
+      if (choice !== 'Yes') return;
+
+      try {
+        const connection = await connectionManager.ensureConnection(config);
+        const result = await transferManager.downloadDirectory(connection, config.remotePath, workspaceRoot, config);
+        showSyncResult(result, 'download');
+        return;
+      } catch (error: any) {
+        statusBar.error(`Download failed: ${error.message}`, true);
+        return;
+      }
+    }
+
     try {
       const connection = await connectionManager.ensureConnection(config);
 
-      let remotePath: string;
-      let localPath: string;
+      let downloadedCount = 0;
+      let failedCount = 0;
 
-      // Check if it's a SCM resource state (has resourceUri property)
-      if (itemOrResource && 'resourceUri' in itemOrResource) {
-        // SCM resource - download from remote to this local file
-        localPath = itemOrResource.resourceUri.fsPath;
-        const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
-        remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
-      } else if (itemOrResource?.entry) {
-        // Remote explorer item
-        remotePath = itemOrResource.entry.path;
-        const relativePath = path.relative(config.remotePath, remotePath);
-        localPath = path.join(workspaceRoot, relativePath);
-      } else {
-        // Download entire project
-        const choice = await vscode.window.showWarningMessage(
-          'Download entire project?',
-          'Yes', 'No'
-        );
-        if (choice !== 'Yes') return;
+      for (const itemOrResource of items) {
+        if (!itemOrResource) continue;
 
-        remotePath = config.remotePath;
-        localPath = workspaceRoot;
-      }
+        let remotePath: string;
+        let localPath: string;
 
-      // Determine if it's a directory based on source
-      const isDirectory = itemOrResource?.entry?.type === 'directory' || !itemOrResource ||
-        (itemOrResource && !('resourceUri' in itemOrResource) && !itemOrResource.entry);
-
-      if (isDirectory) {
-        const result = await transferManager.downloadDirectory(connection, remotePath, localPath, config);
-        showSyncResult(result, 'download');
-      } else {
-        // Ensure local directory exists
-        const localDir = path.dirname(localPath);
-        if (!fs.existsSync(localDir)) {
-          fs.mkdirSync(localDir, { recursive: true });
+        // Check if it's a SCM resource state (has resourceUri property)
+        if (itemOrResource && 'resourceUri' in itemOrResource) {
+          // SCM resource - download from remote to this local file
+          localPath = itemOrResource.resourceUri.fsPath;
+          const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+          remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
+        } else if (itemOrResource?.entry) {
+          // Remote explorer item
+          remotePath = itemOrResource.entry.path;
+          const relativePath = path.relative(config.remotePath, remotePath);
+          localPath = path.join(workspaceRoot, relativePath);
+        } else {
+          // Skip invalid items
+          continue;
         }
-        await transferManager.downloadFile(connection, remotePath, localPath);
+
+        // Determine if it's a directory based on entry type
+        const isDirectory = itemOrResource?.entry?.type === 'directory';
+
+        try {
+          if (isDirectory) {
+            const result = await transferManager.downloadDirectory(connection, remotePath, localPath, config);
+            downloadedCount += result.downloaded.length;
+            failedCount += result.failed.length;
+          } else {
+            // Ensure local directory exists
+            const localDir = path.dirname(localPath);
+            if (!fs.existsSync(localDir)) {
+              fs.mkdirSync(localDir, { recursive: true });
+            }
+            await transferManager.downloadFile(connection, remotePath, localPath);
+            downloadedCount++;
+          }
+        } catch (err) {
+          failedCount++;
+        }
       }
 
-      statusBar.success(`Downloaded: ${path.basename(remotePath)}`);
+      if (failedCount === 0) {
+        statusBar.success(`Downloaded: ${downloadedCount} item(s)`);
+      } else {
+        statusBar.info(`Downloaded: ${downloadedCount}, Failed: ${failedCount}`);
+      }
     } catch (error: any) {
       statusBar.error(`Download failed: ${error.message}`, true);
     }
@@ -581,12 +634,25 @@ export function registerCommands(
     }
   });
 
-  const deleteRemoteCommand = vscode.commands.registerCommand('stackerftp.deleteRemote', async (item: any) => {
+  const deleteRemoteCommand = vscode.commands.registerCommand('stackerftp.deleteRemote', async (itemOrItems: any | any[]) => {
+    // Handle both single item and array of items, filter out invalid items
+    const rawItems = Array.isArray(itemOrItems) ? itemOrItems : (itemOrItems ? [itemOrItems] : []);
+    const items = rawItems.filter(item => item && item.entry);
+
+    if (items.length === 0) {
+      statusBar.error('No item selected');
+      return;
+    }
+
+    const names = items.map(i => i.entry.name).join(', ');
     const confirmDelete = vscode.workspace.getConfiguration('stackerftp').get<boolean>('confirmDelete', true);
 
     if (confirmDelete) {
+      const message = items.length === 1
+        ? `Delete "${items[0].entry.name}"?`
+        : `Delete ${items.length} items (${names})?`;
       const choice = await vscode.window.showWarningMessage(
-        `Delete ${item.entry.name}?`,
+        message,
         { modal: true },
         'Delete', 'Cancel'
       );
@@ -602,13 +668,15 @@ export function registerCommands(
     try {
       const connection = await connectionManager.ensureConnection(config);
 
-      if (item.entry.type === 'directory') {
-        await connection.rmdir(item.entry.path, true);
-      } else {
-        await connection.delete(item.entry.path);
+      for (const item of items) {
+        if (item.entry.type === 'directory') {
+          await connection.rmdir(item.entry.path, true);
+        } else {
+          await connection.delete(item.entry.path);
+        }
       }
 
-      statusBar.success(`Deleted: ${item.entry.name}`);
+      statusBar.success(`Deleted: ${items.length === 1 ? items[0].entry.name : `${items.length} items`}`);
 
     } catch (error: any) {
       statusBar.error(`Delete failed: ${error.message}`, true);
@@ -1880,83 +1948,89 @@ export function registerCommands(
     }
   });
 
-  const uploadFolderCommand = vscode.commands.registerCommand('stackerftp.uploadFolder', async (uri: vscode.Uri) => {
-    const workspaceRoot = getWorkspaceRoot(uri);
-    if (!workspaceRoot) return;
+  // Note: uploadFolder and downloadFolder commands are disabled.
+  // The main upload and download commands now automatically detect file/folder type.
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      statusBar.error('No SFTP configuration found', true);
-      return;
-    }
+  // const uploadFolderCommand = vscode.commands.registerCommand('stackerftp.uploadFolder', async (uri: vscode.Uri) => {
+  //   const workspaceRoot = getWorkspaceRoot(uri);
+  //   if (!workspaceRoot) return;
 
-    const localPath = uri?.fsPath;
-    if (!localPath) {
-      statusBar.error('No folder selected');
-      return;
-    }
+  //   const config = configManager.getActiveConfig(workspaceRoot);
+  //   if (!config) {
+  //     statusBar.error('No SFTP configuration found', true);
+  //     return;
+  //   }
 
-    try {
-      const folderName = path.basename(localPath);
-      const progress = statusBar.startProgress('upload-folder', `Uploading folder: ${folderName} (connecting...)`);
+  //   const localPath = uri?.fsPath;
+  //   if (!localPath) {
+  //     statusBar.error('No folder selected');
+  //     return;
+  //   }
 
-      try {
-        const connection = await connectionManager.ensureConnection(config);
+  //   try {
+  //     const folderName = path.basename(localPath);
+  //     const progress = statusBar.startProgress('upload-folder', `Uploading folder: ${folderName} (connecting...)`);
 
-        const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
-        const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
+  //     try {
+  //       const connection = await connectionManager.ensureConnection(config);
 
-        progress.update(`Uploading folder: ${folderName} (scanning and queueing files...)`);
-        const result = await transferManager.uploadDirectory(connection, localPath, remotePath, config);
-        progress.complete();
-        showSyncResult(result, 'upload');
-      } catch (error: any) {
-        progress.fail(`Upload folder failed: ${error.message}`);
-        throw error;
-      }
-    } catch (error: any) {
-      statusBar.error(`Upload folder failed: ${error.message}`);
-    }
-  });
+  //       const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+  //       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
-  const downloadFolderCommand = vscode.commands.registerCommand('stackerftp.downloadFolder', async (uri: vscode.Uri) => {
-    const workspaceRoot = getWorkspaceRoot(uri);
-    if (!workspaceRoot) return;
+  //       progress.update(`Uploading folder: ${folderName} (scanning and queueing files...)`);
+  //       const result = await transferManager.uploadDirectory(connection, localPath, remotePath, config);
+  //       progress.complete();
+  //       showSyncResult(result, 'upload');
+  //     } catch (error: any) {
+  //       progress.fail(`Upload folder failed: ${error.message}`);
+  //       throw error;
+  //     }
+  //   } catch (error: any) {
+  //     statusBar.error(`Upload folder failed: ${error.message}`);
+  //   }
+  // });
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      statusBar.error('No SFTP configuration found', true);
-      return;
-    }
+  // Note: uploadFolder and downloadFolder commands are disabled.
+  // The main upload and download commands now automatically detect file/folder type.
 
-    const localPath = uri?.fsPath;
-    if (!localPath) {
-      statusBar.error('No folder selected');
-      return;
-    }
+  // const downloadFolderCommand = vscode.commands.registerCommand('stackerftp.downloadFolder', async (uri: vscode.Uri) => {
+  //   const workspaceRoot = getWorkspaceRoot(uri);
+  //   if (!workspaceRoot) return;
 
-    try {
-      const folderName = path.basename(localPath);
-      const progress = statusBar.startProgress('download-folder', `Downloading folder: ${folderName} (connecting...)`);
+  //   const config = configManager.getActiveConfig(workspaceRoot);
+  //   if (!config) {
+  //     statusBar.error('No SFTP configuration found', true);
+  //     return;
+  //   }
 
-      try {
-        const connection = await connectionManager.ensureConnection(config);
+  //   const localPath = uri?.fsPath;
+  //   if (!localPath) {
+  //     statusBar.error('No folder selected');
+  //     return;
+  //   }
 
-        const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
-        const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
+  //   try {
+  //     const folderName = path.basename(localPath);
+  //     const progress = statusBar.startProgress('download-folder', `Downloading folder: ${folderName} (connecting...)`);
 
-        progress.update(`Downloading folder: ${folderName} (scanning and queueing files...)`);
-        const result = await transferManager.downloadDirectory(connection, remotePath, localPath, config);
-        progress.complete();
-        showSyncResult(result, 'download');
-      } catch (error: any) {
-        progress.fail(`Download folder failed: ${error.message}`);
-        throw error;
-      }
-    } catch (error: any) {
-      statusBar.error(`Download folder failed: ${error.message}`);
-    }
-  });
+  //     try {
+  //       const connection = await connectionManager.ensureConnection(config);
+
+  //       const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+  //       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
+
+  //       progress.update(`Downloading folder: ${folderName} (scanning and queueing files...)`);
+  //       const result = await transferManager.downloadDirectory(connection, remotePath, localPath, config);
+  //       progress.complete();
+  //       showSyncResult(result, 'download');
+  //     } catch (error: any) {
+  //       progress.fail(`Download folder failed: ${error.message}`);
+  //       throw error;
+  //     }
+  //   } catch (error: any) {
+  //     statusBar.error(`Download folder failed: ${error.message}`);
+  //   }
+  // });
 
   const editInLocalCommand = vscode.commands.registerCommand('stackerftp.editInLocal', async (item?: any) => {
     const workspaceRoot = getWorkspaceRoot();
@@ -2219,15 +2293,53 @@ export function registerCommands(
     }
   });
 
-  const treeDownloadCommand = vscode.commands.registerCommand('stackerftp.tree.download', async (item: any, config: any) => {
+  const treeDownloadCommand = vscode.commands.registerCommand('stackerftp.tree.download', async (itemOrItems: any, config: any) => {
+    // Handle both single item and array of items (multi-select in tree view)
+    const items = Array.isArray(itemOrItems) ? itemOrItems : [itemOrItems];
+
+    if (!items || items.length === 0) {
+      statusBar.error('No item selected');
+      return;
+    }
+
     if (container.remoteExplorer) {
-      await container.remoteExplorer.downloadFile(item, config);
+      let downloadedCount = 0;
+      for (const item of items) {
+        await container.remoteExplorer.downloadFile(item, config);
+        downloadedCount++;
+      }
+      if (downloadedCount > 1) {
+        statusBar.success(`Downloaded: ${downloadedCount} items`);
+      }
     }
   });
 
-  const treeDeleteCommand = vscode.commands.registerCommand('stackerftp.tree.delete', async (item: any, config: any) => {
+  const treeDeleteCommand = vscode.commands.registerCommand('stackerftp.tree.delete', async (itemOrItems: any, config: any) => {
+    // Handle both single item and array of items (multi-select in tree view)
+    const items = Array.isArray(itemOrItems) ? itemOrItems : [itemOrItems];
+
+    if (!items || items.length === 0) {
+      statusBar.error('No item selected');
+      return;
+    }
+
+    const names = items.map((i: any) => i.entry?.name || i.name).join(', ');
+    const confirm = await vscode.window.showWarningMessage(
+      items.length === 1
+        ? `Delete "${names}"?`
+        : `Delete ${items.length} items (${names})?`,
+      { modal: true },
+      'Delete', 'Cancel'
+    );
+
+    if (confirm !== 'Delete') return;
+
     if (container.remoteExplorer) {
-      await container.remoteExplorer.deleteFile(item, config);
+      // Multi-select: skip individual confirm dialogs
+      const skipConfirm = items.length > 1;
+      for (const item of items) {
+        await container.remoteExplorer.deleteFile(item, config, skipConfirm);
+      }
     }
   });
 
@@ -2271,8 +2383,6 @@ export function registerCommands(
     switchProtocolCommand,
     quickConnectCommand,
     uploadToAllProfilesCommand,
-    uploadFolderCommand,
-    downloadFolderCommand,
     editInLocalCommand,
     revealInExplorerCommand,
     forceUploadCommand,

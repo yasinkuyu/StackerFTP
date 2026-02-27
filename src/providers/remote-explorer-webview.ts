@@ -70,7 +70,7 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
           await this._handlePreview(data.path, data.name);
           break;
         case 'download':
-          await this._handleDownload(data.path);
+          await this._handleDownload(data.path, data.isDirectory);
           break;
         case 'delete':
           await this._handleDelete(data.path, data.isDirectory);
@@ -403,20 +403,26 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
     return mimeTypes[ext] || 'application/octet-stream';
   }
 
-  private async _handleDownload(remotePath: string) {
-    if (!this._connection) return;
+  private async _handleDownload(remotePath: string, isDirectory?: boolean) {
+    if (!this._connection || !this._currentConfig) return;
 
     const workspaceRoot = this._getWorkspaceRoot();
     if (!workspaceRoot) return;
 
     try {
-      const relativePath = this._currentConfig ?
-        path.relative(this._currentConfig.remotePath, remotePath) :
-        path.basename(remotePath);
+      const relativePath = path.relative(this._currentConfig.remotePath, remotePath);
       const localPath = path.join(workspaceRoot, relativePath);
 
-      await transferManager.downloadFile(this._connection, remotePath, localPath, this._currentConfig);
-      this._view?.webview.postMessage({ type: 'downloadComplete', localPath });
+      if (isDirectory) {
+        const result = await transferManager.downloadDirectory(this._connection, remotePath, localPath, this._currentConfig);
+        this._view?.webview.postMessage({
+          type: 'downloadComplete',
+          message: `Downloaded: ${result.downloaded.length} files`
+        });
+      } else {
+        await transferManager.downloadFile(this._connection, remotePath, localPath, this._currentConfig);
+        this._view?.webview.postMessage({ type: 'downloadComplete', localPath });
+      }
     } catch (error: any) {
       this._view?.webview.postMessage({ type: 'error', message: `Download failed: ${error.message}` });
     }
@@ -1586,7 +1592,7 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
           }
           break;
         case 'download':
-          vscode.postMessage({ type: 'download', path: target.path });
+          vscode.postMessage({ type: 'download', path: target.path, isDirectory: target.type === 'directory' });
           break;
         case 'rename':
           showDialog('Rename', 'Enter new name:', (newName) => {
@@ -1605,8 +1611,9 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
             if (mode) vscode.postMessage({ type: 'chmod', path: target.path, mode });
           });
           break;
+        case 'download':
         case 'delete':
-          vscode.postMessage({ type: 'delete', path: target.path, isDirectory: target.type === 'directory' });
+          vscode.postMessage({ type: action, path: target.path, isDirectory: target.type === 'directory' });
           break;
       }
     }

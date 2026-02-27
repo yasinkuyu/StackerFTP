@@ -410,12 +410,15 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
         await this.uploadFile(connection, file, remoteFilePath, config);
         result.uploaded.push(relativePath);
       } catch (error: any) {
+        logger.error(`Upload failed for ${relativePath}:`, error);
         result.failed.push({ path: relativePath, error: error.message });
       }
     });
 
     // Wait for all queued items to complete
     await Promise.all(filePromises);
+
+    logger.info(`Upload directory complete: ${result.uploaded.length} uploaded, ${result.failed.length} failed, ${result.skipped.length} skipped`);
     return result;
   }
 

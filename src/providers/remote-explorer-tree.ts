@@ -202,6 +202,8 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       clearTimeout(this.loadingTimeout);
       this.loadingTimeout = undefined;
     }
+    // Safety: if any old refresh progress item exists, clear it.
+    statusBar.clearProgress('refresh');
     this.statusBarItem.hide();
   }
 
@@ -230,15 +232,9 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
 
   // Refresh with loading indicator
   async refreshWithProgress(): Promise<void> {
-    const progress = statusBar.startProgress('refresh', 'Refreshing...');
-    try {
-      this.fileCache.clear();
-      this._onDidChangeTreeData.fire();
-      await new Promise(resolve => setTimeout(resolve, 300));
-      progress.complete();
-    } catch (error) {
-      progress.fail('Refresh failed');
-    }
+    // Keep legacy API surface, but avoid creating a separate status-bar spinner
+    // that may become stale when callers forget lifecycle handling.
+    this.refresh();
   }
 
   getTreeItem(element: RemoteTreeItem | RemoteConfigTreeItem): vscode.TreeItem {
@@ -643,7 +639,7 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
     return languageMap[ext] || 'plaintext';
   }
 
-  async deleteFile(itemParam: RemoteTreeItem | FileEntry, configParam?: FTPConfig): Promise<void> {
+  async deleteFile(itemParam: RemoteTreeItem | FileEntry, configParam?: FTPConfig, skipConfirm?: boolean): Promise<void> {
     const item = itemParam instanceof RemoteTreeItem ? itemParam.entry : itemParam;
     const config = (itemParam instanceof RemoteTreeItem ? itemParam.config : configParam) || this.currentConfig;
     const conn = connectionManager.getConnection(config!) || this.connection;
@@ -653,13 +649,15 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       return;
     }
 
-    const confirm = await vscode.window.showWarningMessage(
-      `Delete ${item.name}?`,
-      { modal: true },
-      'Delete', 'Cancel'
-    );
-
-    if (confirm !== 'Delete') return;
+    // Skip confirm if already confirmed (for multi-select)
+    if (!skipConfirm) {
+      const confirm = await vscode.window.showWarningMessage(
+        `Delete ${item.name}?`,
+        { modal: true },
+        'Delete', 'Cancel'
+      );
+      if (confirm !== 'Delete') return;
+    }
 
     const progress = statusBar.startProgress('delete', `Deleting ${item.name}...`);
 

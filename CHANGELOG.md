@@ -2,6 +2,20 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.2.5] - 2026-02-25
+
+### Fixed
+- **Download Single File**: Fixed issue where downloading a single file was downloading the entire project instead of just the selected file.
+- **Multiple Selection**: Added support for selecting multiple files/folders for upload, download, and delete operations across all panels.
+- **Upload Folders**: Fixed issue where folders weren't being uploaded in multiple selection mode.
+- **Source Control Upload**: Fixed upload from Source Control sidebar to handle multiple selected files correctly.
+- **Remote Explorer Tree**: Added multi-select support for delete and download operations.
+- **VS Code Explorer**: Added download button for folders (was only available for files).
+
+### Fixed
+- **WebView Download**: Fixed folder download - now correctly uses downloadDirectory instead of treating folders as files.
+- **Delete Confirmation**: Fixed delete dialog showing only one item name when multiple items are selected.
+
 ## [1.2.4] - 2026-02-19
 
 ### Fixed
