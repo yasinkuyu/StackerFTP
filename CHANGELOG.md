@@ -2,6 +2,14 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.2.7] - 2026-03-18
+
+### Fixed
+- **Recursive Remote Directory Creation**: Fixed SFTP uploads failing with `No such file` when intermediate remote folders do not exist. Upload, create file, duplicate/write, rename, and direct `mkdir` flows now create missing parent directories consistently.
+- **FTP Remote Path Safety**: Fixed FTP remote directory creation and path checks so they no longer change the active working directory unexpectedly during upload/stat operations.
+- **FTP Transfer Stability**: Serialized FTP upload/download operations on a single connection to prevent client state races during directory creation and path checks.
+- **Watcher Remote Delete Handling**: Fixed file watcher auto-delete logic to detect remote files vs folders correctly and use recursive directory removal when needed.
+
 ## [1.2.6] - 2026-03-17
 
 ### Fixed

@@ -195,8 +195,19 @@ export class FileWatcher implements vscode.Disposable {
               return;
             }
             try {
-              await deleteConnection.delete(remotePath);
-              logger.info(`Auto-deleted: ${relativePath}`);
+              const remoteEntry = await deleteConnection.stat(remotePath);
+              if (!remoteEntry) {
+                logger.debug(`Remote path already missing, skipping auto-delete: ${relativePath}`);
+                return;
+              }
+
+              if (remoteEntry.type === 'directory' || remoteEntry.isSymlinkToDirectory) {
+                await deleteConnection.rmdir(remotePath, true);
+                logger.info(`Auto-deleted directory: ${relativePath}`);
+              } else {
+                await deleteConnection.delete(remotePath);
+                logger.info(`Auto-deleted: ${relativePath}`);
+              }
             } catch (error) {
               logger.warn(`Failed to auto-delete ${relativePath}`, error);
             }

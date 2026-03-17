@@ -139,7 +139,10 @@ export class FTPConnection extends BaseConnection {
   }
 
   async download(remotePath: string, localPath: string): Promise<void> {
-    // Bypass enqueue for parallel transfers
+    return this.enqueue(() => this._download(remotePath, localPath));
+  }
+
+  private async _download(remotePath: string, localPath: string): Promise<void> {
     try {
       this.emit('transferStart', { direction: 'download', remotePath, localPath });
 
@@ -181,7 +184,10 @@ export class FTPConnection extends BaseConnection {
   }
 
   async upload(localPath: string, remotePath: string): Promise<void> {
-    // Bypass enqueue for parallel transfers
+    return this.enqueue(() => this._upload(localPath, remotePath));
+  }
+
+  private async _upload(localPath: string, remotePath: string): Promise<void> {
     try {
       this.emit('transferStart', { direction: 'upload', localPath, remotePath });
 
@@ -194,7 +200,7 @@ export class FTPConnection extends BaseConnection {
       // EISDIR safety: check if remote path is already a directory
       let remoteStat = null;
       try {
-        remoteStat = await this.stat(remotePath);
+        remoteStat = await this._stat(remotePath);
       } catch {
         // File doesn't exist yet - that's fine
       }
@@ -297,51 +303,44 @@ export class FTPConnection extends BaseConnection {
   }
 
   async exists(remotePath: string): Promise<boolean> {
-    return this.enqueue(async () => {
-      try {
-        await this.client.size(remotePath);
-        return true;
-      } catch {
-        try {
-          await this.client.cd(remotePath);
-          return true;
-        } catch {
-          return false;
-        }
-      }
-    });
+    return this.enqueue(async () => (await this._stat(remotePath)) !== null);
   }
 
   async stat(remotePath: string): Promise<FileEntry | null> {
-    return this.enqueue(async () => {
-      try {
-        const size = await this.client.size(remotePath);
-        const fileName = path.basename(remotePath);
+    return this.enqueue(() => this._stat(remotePath));
+  }
 
+  private async _stat(remotePath: string): Promise<FileEntry | null> {
+    try {
+      const size = await this.client.size(remotePath);
+      const fileName = path.basename(remotePath);
+
+      return {
+        name: fileName,
+        type: 'file',
+        size,
+        modifyTime: new Date(),
+        rights: { user: '', group: '', other: '' },
+        path: remotePath
+      };
+    } catch {
+      const originalDir = await this.client.pwd();
+      try {
+        await this.client.cd(remotePath);
         return {
-          name: fileName,
-          type: 'file',
-          size,
+          name: path.basename(remotePath),
+          type: 'directory',
+          size: 0,
           modifyTime: new Date(),
           rights: { user: '', group: '', other: '' },
           path: remotePath
         };
       } catch {
-        try {
-          await this.client.cd(remotePath);
-          return {
-            name: path.basename(remotePath),
-            type: 'directory',
-            size: 0,
-            modifyTime: new Date(),
-            rights: { user: '', group: '', other: '' },
-            path: remotePath
-          };
-        } catch {
-          return null;
-        }
+        return null;
+      } finally {
+        await this.client.cd(originalDir);
       }
-    });
+    }
   }
 
   async chmod(remotePath: string, mode: number | string): Promise<void> {
