@@ -229,9 +229,14 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
           let targetType = item.targetType;
 
           if (exists === undefined && this.sessionCollisionAction === 'ask') {
-            const remoteStat = await connection.stat(item.remotePath);
-            exists = !!remoteStat;
-            targetType = remoteStat?.type;
+            try {
+              const remoteStat = await connection.stat(item.remotePath);
+              exists = !!remoteStat;
+              targetType = remoteStat?.type;
+            } catch {
+              // File doesn't exist yet (parent directory may not exist)
+              exists = false;
+            }
           }
 
           if (exists && this.sessionCollisionAction === 'ask') {

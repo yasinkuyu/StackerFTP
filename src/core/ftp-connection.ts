@@ -166,13 +166,38 @@ export class FTPConnection extends BaseConnection {
     }
   }
 
+  private async ensureRemoteDir(remotePath: string): Promise<void> {
+    const normalizedPath = normalizeRemotePath(remotePath);
+    if (!normalizedPath || normalizedPath === '/' || normalizedPath === '.') {
+      return;
+    }
+
+    const originalDir = await this.client.pwd();
+    try {
+      await this.client.ensureDir(normalizedPath);
+    } finally {
+      await this.client.cd(originalDir);
+    }
+  }
+
   async upload(localPath: string, remotePath: string): Promise<void> {
     // Bypass enqueue for parallel transfers
     try {
       this.emit('transferStart', { direction: 'upload', localPath, remotePath });
 
+      // Ensure parent directory exists before uploading
+      const parentDir = path.dirname(remotePath);
+      if (parentDir && parentDir !== '.' && parentDir !== '/') {
+        await this.ensureRemoteDir(parentDir);
+      }
+
       // EISDIR safety: check if remote path is already a directory
-      const remoteStat = await this.stat(remotePath);
+      let remoteStat = null;
+      try {
+        remoteStat = await this.stat(remotePath);
+      } catch {
+        // File doesn't exist yet - that's fine
+      }
       if (remoteStat && remoteStat.type === 'directory') {
         throw new Error(`Cannot upload to ${remotePath}: a directory exists at this path.`);
       }
@@ -225,7 +250,7 @@ export class FTPConnection extends BaseConnection {
   async mkdir(remotePath: string): Promise<void> {
     return this.enqueue(async () => {
       try {
-        await this.client.ensureDir(remotePath);
+        await this.ensureRemoteDir(remotePath);
       } catch (error) {
         logger.error('FTP mkdir error', error);
         throw error;
@@ -259,6 +284,10 @@ export class FTPConnection extends BaseConnection {
   async rename(oldPath: string, newPath: string): Promise<void> {
     return this.enqueue(async () => {
       try {
+        const parentDir = path.dirname(newPath);
+        if (parentDir && parentDir !== '.' && parentDir !== '/') {
+          await this.ensureRemoteDir(parentDir);
+        }
         await this.client.rename(oldPath, newPath);
       } catch (error) {
         logger.error('FTP rename error', error);
@@ -350,6 +379,12 @@ export class FTPConnection extends BaseConnection {
       const uniqueId = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
       const tempPath = path.join(os.tmpdir(), `stackerftp-${uniqueId}.tmp`);
       try {
+        // Ensure parent directory exists
+        const parentDir = path.dirname(remotePath);
+        if (parentDir && parentDir !== '.' && parentDir !== '/') {
+          await this.ensureRemoteDir(parentDir);
+        }
+
         const buffer = Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf-8');
         await fs.promises.writeFile(tempPath, buffer);
         await this.client.uploadFrom(tempPath, remotePath);

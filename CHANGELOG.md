@@ -2,6 +2,16 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.2.6] - 2026-03-17
+
+### Fixed
+- **Upload to Non-Existing Folders**: Fixed upload failures when parent directory doesn't exist on the server. Now all upload methods automatically create the parent directory structure before uploading files.
+  - `ftpConnection.upload()` - file upload now creates parent directories
+  - `sftpConnection.upload()` - file upload now creates parent directories
+  - `ftpConnection.writeFile()` - file creation now creates parent directories
+  - `sftpConnection.writeFile()` - file creation now creates parent directories
+- **Affected Operations**: Single file upload, folder upload, sync to remote, copy to other remote, sync between remotes, git changed files upload, project upload, webview file create, new file, duplicate file
+
 ## [1.2.5] - 2026-02-25
 
 ### Fixed

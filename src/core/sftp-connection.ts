@@ -268,6 +268,12 @@ export class SFTPConnection extends BaseConnection {
       throw new Error('Not connected');
     }
 
+    // Ensure parent directory exists before uploading
+    const parentDir = path.dirname(remotePath);
+    if (parentDir && parentDir !== '.' && parentDir !== '/') {
+      await this._ensureDir(parentDir);
+    }
+
     // Optimization: Size is already known by TransferManager or can be fetched once
     // but fastPut needs a file path anyway. We get totalSize only for UI progress.
     const stats = await fs.promises.stat(localPath);
@@ -328,10 +334,66 @@ export class SFTPConnection extends BaseConnection {
   }
 
   async mkdir(remotePath: string): Promise<void> {
-    return this.enqueue(() => this._mkdir(remotePath));
+    return this.enqueue(() => this._ensureDir(remotePath));
   }
 
-  private _mkdir(remotePath: string): Promise<void> {
+  private async _ensureDir(remotePath: string): Promise<void> {
+    const normalizedPath = normalizeRemotePath(remotePath);
+    const isAbsolute = normalizedPath.startsWith('/');
+    const parts = normalizedPath.split('/').filter(Boolean);
+    let currentPath = isAbsolute ? '/' : '';
+
+    for (const part of parts) {
+      currentPath = currentPath === '/'
+        ? `/${part}`
+        : currentPath
+          ? `${currentPath}/${part}`
+          : part;
+
+      const existing = await this._statDirect(currentPath);
+      if (existing?.isDirectory()) {
+        continue;
+      }
+
+      if (existing) {
+        throw new Error(`Cannot create remote directory "${currentPath}": a file exists at this path.`);
+      }
+
+      try {
+        await this._mkdirDirect(currentPath);
+      } catch (err: any) {
+        // Some SFTP servers return generic failure for "already exists".
+        const createdAfterError = await this._statDirect(currentPath);
+        if (!createdAfterError?.isDirectory()) {
+          throw err;
+        }
+      }
+    }
+  }
+
+  private _statDirect(remotePath: string): Promise<{ isDirectory: () => boolean } | null> {
+    return new Promise((resolve, reject) => {
+      if (!this.sftp) {
+        reject(new Error('Not connected'));
+        return;
+      }
+
+      this.sftp.stat(remotePath, (err: any, stats: any) => {
+        if (err) {
+          if (err.code === 2) {
+            resolve(null);
+          } else {
+            reject(err);
+          }
+          return;
+        }
+
+        resolve(stats);
+      });
+    });
+  }
+
+  private _mkdirDirect(remotePath: string): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!this.sftp) {
         reject(new Error('Not connected'));
@@ -339,8 +401,11 @@ export class SFTPConnection extends BaseConnection {
       }
 
       this.sftp.mkdir(remotePath, (err: any) => {
-        if (err) reject(err);
-        else resolve();
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
       });
     });
   }
@@ -471,10 +536,20 @@ export class SFTPConnection extends BaseConnection {
   }
 
   private _rename(oldPath: string, newPath: string): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       if (!this.sftp) {
         reject(new Error('Not connected'));
         return;
+      }
+
+      const parentDir = path.dirname(newPath);
+      if (parentDir && parentDir !== '.' && parentDir !== '/') {
+        try {
+          await this._ensureDir(parentDir);
+        } catch (dirErr) {
+          reject(dirErr);
+          return;
+        }
       }
 
       this.sftp.rename(oldPath, newPath, (err: any) => {
@@ -577,10 +652,21 @@ export class SFTPConnection extends BaseConnection {
   }
 
   private _writeFile(remotePath: string, content: Buffer | string): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       if (!this.sftp) {
         reject(new Error('Not connected'));
         return;
+      }
+
+      // Ensure parent directory exists
+      const parentDir = path.dirname(remotePath);
+      if (parentDir && parentDir !== '.' && parentDir !== '/') {
+        try {
+          await this._ensureDir(parentDir);
+        } catch (dirErr) {
+          reject(dirErr);
+          return;
+        }
       }
 
       const buffer = Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf-8');
