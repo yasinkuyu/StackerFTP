@@ -427,6 +427,87 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
     return !!this.connection && this.connection.connected;
   }
 
+  private isSameConfig(a: FTPConfig, b: FTPConfig): boolean {
+    return (a.name || '') === (b.name || '') &&
+      a.host === b.host &&
+      (a.port || (a.protocol === 'sftp' ? 22 : 21)) === (b.port || (b.protocol === 'sftp' ? 22 : 21)) &&
+      a.username === b.username &&
+      a.protocol === b.protocol;
+  }
+
+  async navigateToPath(
+    remotePath: string,
+    configParam?: FTPConfig,
+    treeView?: vscode.TreeView<RemoteTreeItem | RemoteConfigTreeItem>
+  ): Promise<boolean> {
+    const config = configParam || this.currentConfig;
+    if (!config) {
+      return false;
+    }
+
+    const normalizedRemotePath = normalizeRemotePath(remotePath);
+    const remoteRoot = normalizeRemotePath(config.remotePath || '/');
+
+    const conn = connectionManager.getConnection(config) || await connectionManager.ensureConnection(config);
+    if (!conn || !conn.connected) {
+      return false;
+    }
+
+    this.connection = conn;
+    this.currentConfig = config;
+
+    const rootItems = await this.getChildren();
+    const configItem = rootItems.find((item): item is RemoteConfigTreeItem =>
+      item instanceof RemoteConfigTreeItem && this.isSameConfig(item.config, config)
+    );
+
+    if (!configItem) {
+      return false;
+    }
+
+    if (treeView) {
+      await treeView.reveal(configItem, { expand: true, select: false, focus: false });
+    }
+
+    if (normalizedRemotePath === remoteRoot) {
+      if (treeView) {
+        await treeView.reveal(configItem, { expand: true, select: true, focus: false });
+      }
+      return true;
+    }
+
+    const relativePath = path.posix.relative(remoteRoot, normalizedRemotePath);
+    const segments = relativePath.split('/').filter(Boolean);
+    let currentChildren = await this.getChildren(configItem);
+    let targetItem: RemoteTreeItem | undefined;
+
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      targetItem = currentChildren.find((item): item is RemoteTreeItem =>
+        item instanceof RemoteTreeItem && item.entry.name === segment
+      );
+
+      if (!targetItem) {
+        return false;
+      }
+
+      const isLast = i === segments.length - 1;
+      if (treeView) {
+        await treeView.reveal(targetItem, {
+          expand: !isLast,
+          select: isLast,
+          focus: false
+        });
+      }
+
+      if (!isLast) {
+        currentChildren = await this.getChildren(targetItem);
+      }
+    }
+
+    return !!targetItem;
+  }
+
   async downloadFile(itemParam: RemoteTreeItem | FileEntry, configParam?: FTPConfig): Promise<void> {
     const item = itemParam instanceof RemoteTreeItem ? itemParam.entry : itemParam;
     const config = (itemParam instanceof RemoteTreeItem ? itemParam.config : configParam) || this.currentConfig;

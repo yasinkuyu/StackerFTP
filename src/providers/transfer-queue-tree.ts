@@ -82,7 +82,8 @@ export class TransferQueueTreeProvider implements vscode.TreeDataProvider<Transf
         // Create tree view
         this.treeView = vscode.window.createTreeView('stackerftp.transferQueue', {
             treeDataProvider: this,
-            showCollapseAll: false
+            showCollapseAll: false,
+            canSelectMany: true
         });
 
         // Listen to transfer manager events

@@ -624,6 +624,42 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
   }
 
   /**
+   * Retry failed transfers by resetting them back to pending state.
+   * Returns the number of transfers that were re-queued.
+   */
+  retryItems(ids: string[]): number {
+    let retriedCount = 0;
+
+    for (const id of ids) {
+      const item = this.queue.find(queueItem => queueItem.id === id);
+      if (!item || item.status !== 'error') {
+        continue;
+      }
+
+      item.status = 'pending';
+      item.progress = 0;
+      item.transferred = 0;
+      item.error = undefined;
+      item.startTime = undefined;
+      item.endTime = undefined;
+      item.resolve = undefined;
+      item.reject = undefined;
+      retriedCount++;
+      this._activeCount++;
+    }
+
+    if (retriedCount > 0) {
+      this.emitQueueUpdate();
+
+      if (!this.active) {
+        this.processQueue().catch(() => {});
+      }
+    }
+
+    return retriedCount;
+  }
+
+  /**
    * Clear completed and error items from queue
    */
   clearCompleted(): void {

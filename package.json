@@ -1,7 +1,7 @@
 {
   "name": "stackerftp",
   "displayName": "StackerFTP - Professional SFTP/FTP Client",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "publisher": "yasinkuyu",
   "author": "Insya, Yasin Kuyu",
   "license": "MIT",
@@ -459,6 +459,12 @@
         "title": "Cancel Transfer",
         "category": "StackerFTP",
         "icon": "$(close)"
+      },
+      {
+        "command": "stackerftp.retryTransferItem",
+        "title": "Try Again",
+        "category": "StackerFTP",
+        "icon": "$(refresh)"
       },
       {
         "command": "stackerftp.clearTransferQueue",
@@ -979,6 +985,16 @@
           "command": "stackerftp.cancelTransferItem",
           "when": "view == stackerftp.transferQueue && viewItem =~ /transfer-(pending|transferring)/",
           "group": "inline"
+        },
+        {
+          "command": "stackerftp.retryTransferItem",
+          "when": "view == stackerftp.transferQueue && viewItem =~ /^transfer-error$/",
+          "group": "inline"
+        },
+        {
+          "command": "stackerftp.retryTransferItem",
+          "when": "view == stackerftp.transferQueue && viewItem =~ /^transfer-error$/",
+          "group": "navigation@1"
         }
       ],
       "scm/title": [

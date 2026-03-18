@@ -2,6 +2,15 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.2.8] - 2026-03-18
+
+### Changed
+- **Release Audit**: Reviewed command and menu coverage to verify contributed actions are registered and wired correctly before the next implementation round.
+
+### Fixed
+- **Profile Management**: Implemented the `Edit Profiles` flow in the config command so profiles can now be created, edited, deleted, and assigned as the default profile without hand-editing JSON.
+- **Select All Command**: Wired `stackerftp.selectAllFiles` to the native tree selection flow so it now selects all visible items in the Remote Explorer tree.
+
 ## [1.2.7] - 2026-03-18
 
 ### Fixed

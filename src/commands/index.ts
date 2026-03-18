@@ -9,6 +9,7 @@ import * as os from 'os';
 import { configManager } from '../core/config';
 import { connectionManager } from '../core/connection-manager';
 import { transferManager } from '../core/transfer-manager';
+import { FTPConfig, Protocol } from '../types';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
 import { normalizeRemotePath, formatFileSize, sanitizeRelativePath } from '../utils/helpers';
@@ -24,6 +25,340 @@ export interface ProviderContainer {
   remoteExplorer?: any;
   connectionFormProvider?: ConnectionFormProvider;
   treeView?: vscode.TreeView<any>;
+}
+
+type ProfileAction = 'create' | 'edit' | 'delete' | 'setDefault' | 'clearDefault' | 'openJson';
+
+function getConnectionLabel(config: FTPConfig): string {
+  return config.name || config.host;
+}
+
+function getConnectionDescription(config: FTPConfig): string {
+  return `${config.protocol.toUpperCase()} • ${config.username}@${config.host}`;
+}
+
+function setOptionalProfileField<K extends keyof FTPConfig>(
+  profile: Partial<FTPConfig>,
+  key: K,
+  value: FTPConfig[K] | undefined
+): void {
+  if (value === undefined || value === '') {
+    delete profile[key];
+    return;
+  }
+
+  profile[key] = value;
+}
+
+async function promptOptionalInput(
+  prompt: string,
+  value: string,
+  placeHolder: string
+): Promise<string | undefined> {
+  return vscode.window.showInputBox({
+    prompt,
+    value,
+    placeHolder,
+    ignoreFocusOut: true
+  });
+}
+
+async function promptOptionalPort(existing?: number): Promise<number | undefined | null> {
+  while (true) {
+    const rawValue = await promptOptionalInput(
+      'Profile port override',
+      typeof existing === 'number' ? String(existing) : '',
+      'Leave empty to inherit the base connection port'
+    );
+
+    if (rawValue === undefined) {
+      return undefined;
+    }
+
+    const trimmed = rawValue.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const port = Number(trimmed);
+    if (Number.isInteger(port) && port > 0) {
+      return port;
+    }
+
+    statusBar.error('Port must be a positive integer');
+  }
+}
+
+async function promptProfileProtocol(existing?: Protocol): Promise<Protocol | null | undefined> {
+  const selected = await vscode.window.showQuickPick(
+    [
+      { label: 'Inherit Base Connection', value: null as Protocol | null, description: 'Do not override protocol' },
+      { label: 'SFTP', value: 'sftp' as Protocol },
+      { label: 'FTP', value: 'ftp' as Protocol },
+      { label: 'FTPS', value: 'ftps' as Protocol }
+    ],
+    {
+      placeHolder: `Protocol override${existing ? ` (current: ${existing.toUpperCase()})` : ''}`,
+      ignoreFocusOut: true
+    }
+  );
+
+  return selected?.value;
+}
+
+async function promptProfileSecure(
+  existing?: FTPConfig['secure']
+): Promise<FTPConfig['secure'] | null | undefined> {
+  const describeCurrent = existing === undefined ? 'inherit' : String(existing);
+  const selected = await vscode.window.showQuickPick(
+    [
+      { label: 'Inherit Base Connection', value: null as FTPConfig['secure'] | null, description: 'Do not override secure mode' },
+      { label: 'Disabled', value: false as FTPConfig['secure'] },
+      { label: 'Enabled', value: true as FTPConfig['secure'] },
+      { label: 'Control', value: 'control' as FTPConfig['secure'] },
+      { label: 'Implicit', value: 'implicit' as FTPConfig['secure'] }
+    ],
+    {
+      placeHolder: `Secure mode override (current: ${describeCurrent})`,
+      ignoreFocusOut: true
+    }
+  );
+
+  return selected?.value;
+}
+
+async function promptForProfileOverrides(
+  profileName: string,
+  existing: Partial<FTPConfig> = {}
+): Promise<Partial<FTPConfig> | undefined> {
+  const profile: Partial<FTPConfig> = { ...existing };
+
+  const protocol = await promptProfileProtocol(existing.protocol);
+  if (protocol === undefined) return undefined;
+  setOptionalProfileField(profile, 'protocol', protocol ?? undefined);
+
+  const host = await promptOptionalInput(
+    `Host override for profile "${profileName}"`,
+    existing.host || '',
+    'Leave empty to inherit the base connection host'
+  );
+  if (host === undefined) return undefined;
+  setOptionalProfileField(profile, 'host', host.trim() || undefined);
+
+  const port = await promptOptionalPort(existing.port);
+  if (port === undefined) return undefined;
+  setOptionalProfileField(profile, 'port', port === null ? undefined : port);
+
+  const username = await promptOptionalInput(
+    `Username override for profile "${profileName}"`,
+    existing.username || '',
+    'Leave empty to inherit the base connection username'
+  );
+  if (username === undefined) return undefined;
+  setOptionalProfileField(profile, 'username', username.trim() || undefined);
+
+  const remotePath = await promptOptionalInput(
+    `Remote path override for profile "${profileName}"`,
+    existing.remotePath || '',
+    'Leave empty to inherit the base connection remote path'
+  );
+  if (remotePath === undefined) return undefined;
+  setOptionalProfileField(profile, 'remotePath', remotePath.trim() || undefined);
+
+  const password = await promptOptionalInput(
+    `Password override for profile "${profileName}"`,
+    existing.password || '',
+    'Leave empty to inherit the base connection password'
+  );
+  if (password === undefined) return undefined;
+  setOptionalProfileField(profile, 'password', password || undefined);
+
+  const privateKeyPath = await promptOptionalInput(
+    `Private key override for profile "${profileName}"`,
+    existing.privateKeyPath || '',
+    'Leave empty to inherit the base connection private key path'
+  );
+  if (privateKeyPath === undefined) return undefined;
+  setOptionalProfileField(profile, 'privateKeyPath', privateKeyPath.trim() || undefined);
+
+  const passphrase = await promptOptionalInput(
+    `Passphrase override for profile "${profileName}"`,
+    existing.passphrase || '',
+    'Leave empty to inherit the base connection passphrase'
+  );
+  if (passphrase === undefined) return undefined;
+  setOptionalProfileField(profile, 'passphrase', passphrase || undefined);
+
+  const secure = await promptProfileSecure(existing.secure);
+  if (secure === undefined) return undefined;
+  setOptionalProfileField(profile, 'secure', secure ?? undefined);
+
+  return profile;
+}
+
+async function manageProfiles(workspaceRoot: string): Promise<void> {
+  await configManager.loadConfig(workspaceRoot);
+  const configs = configManager.getConfigs(workspaceRoot);
+
+  if (configs.length === 0) {
+    statusBar.info('No connections configured');
+    return;
+  }
+
+  const selectedConfigItem = await vscode.window.showQuickPick(
+    configs.map((config, index) => ({
+      label: getConnectionLabel(config),
+      description: getConnectionDescription(config),
+      detail: `${Object.keys(config.profiles || {}).length} profile(s)${config.defaultProfile ? ` • default: ${config.defaultProfile}` : ''}`,
+      index
+    })),
+    {
+      placeHolder: 'Select a connection to manage profiles',
+      ignoreFocusOut: true
+    }
+  );
+
+  if (!selectedConfigItem) return;
+
+  const config = configs[selectedConfigItem.index];
+  const profileNames = Object.keys(config.profiles || {});
+  const actionItems: { label: string; description: string; value: ProfileAction }[] = [
+    { label: 'Create Profile', description: 'Add a new profile override for this connection', value: 'create' },
+    { label: 'Open sftp.json', description: 'Edit profiles directly in JSON', value: 'openJson' }
+  ];
+
+  if (profileNames.length > 0) {
+    actionItems.splice(1, 0,
+      { label: 'Edit Profile', description: 'Update an existing profile override', value: 'edit' },
+      { label: 'Delete Profile', description: 'Remove an existing profile', value: 'delete' },
+      { label: 'Set Default Profile', description: 'Choose which profile should be active by default', value: 'setDefault' }
+    );
+
+    if (config.defaultProfile) {
+      actionItems.push({
+        label: 'Clear Default Profile',
+        description: `Stop using "${config.defaultProfile}" as the default`,
+        value: 'clearDefault'
+      });
+    }
+  }
+
+  const selectedAction = await vscode.window.showQuickPick(actionItems, {
+    placeHolder: `Manage profiles for ${getConnectionLabel(config)}`,
+    ignoreFocusOut: true
+  });
+
+  if (!selectedAction) return;
+
+  if (selectedAction.value === 'openJson') {
+    const configPath = configManager.getConfigPath(workspaceRoot);
+    const doc = await vscode.workspace.openTextDocument(configPath);
+    await vscode.window.showTextDocument(doc);
+    return;
+  }
+
+  config.profiles = config.profiles || {};
+
+  switch (selectedAction.value) {
+    case 'create': {
+      const profileName = await vscode.window.showInputBox({
+        prompt: 'Profile name',
+        placeHolder: 'Example: production, staging, preview',
+        ignoreFocusOut: true,
+        validateInput: (value) => {
+          const trimmed = value.trim();
+          if (!trimmed) return 'Profile name is required';
+          if (config.profiles?.[trimmed]) return 'A profile with this name already exists';
+          return null;
+        }
+      });
+
+      if (!profileName) return;
+
+      const overrides = await promptForProfileOverrides(profileName.trim());
+      if (!overrides) return;
+
+      config.profiles[profileName.trim()] = overrides;
+
+      if (!config.defaultProfile) {
+        const makeDefault = await vscode.window.showQuickPick(
+          ['Yes', 'No'],
+          {
+            placeHolder: `Use "${profileName.trim()}" as the default profile?`,
+            ignoreFocusOut: true
+          }
+        );
+        if (makeDefault === 'Yes') {
+          config.defaultProfile = profileName.trim();
+        }
+      }
+
+      break;
+    }
+
+    case 'edit': {
+      const selectedProfile = await vscode.window.showQuickPick(profileNames, {
+        placeHolder: 'Select a profile to edit',
+        ignoreFocusOut: true
+      });
+
+      if (!selectedProfile) return;
+
+      const overrides = await promptForProfileOverrides(selectedProfile, config.profiles[selectedProfile]);
+      if (!overrides) return;
+
+      config.profiles[selectedProfile] = overrides;
+      break;
+    }
+
+    case 'delete': {
+      const selectedProfile = await vscode.window.showQuickPick(profileNames, {
+        placeHolder: 'Select a profile to delete',
+        ignoreFocusOut: true
+      });
+
+      if (!selectedProfile) return;
+
+      const confirm = await vscode.window.showWarningMessage(
+        `Delete profile "${selectedProfile}" from ${getConnectionLabel(config)}?`,
+        { modal: true },
+        'Delete',
+        'Cancel'
+      );
+
+      if (confirm !== 'Delete') return;
+
+      delete config.profiles[selectedProfile];
+      if (config.defaultProfile === selectedProfile) {
+        delete config.defaultProfile;
+      }
+      break;
+    }
+
+    case 'setDefault': {
+      const selectedProfile = await vscode.window.showQuickPick(profileNames, {
+        placeHolder: 'Select the default profile',
+        ignoreFocusOut: true
+      });
+
+      if (!selectedProfile) return;
+      config.defaultProfile = selectedProfile;
+      break;
+    }
+
+    case 'clearDefault':
+      delete config.defaultProfile;
+      break;
+  }
+
+  if (Object.keys(config.profiles).length === 0) {
+    delete config.profiles;
+  }
+
+  await configManager.saveConfig(workspaceRoot, configs);
+  await configManager.loadConfig(workspaceRoot);
+  await vscode.commands.executeCommand('stackerftp.tree.refresh');
+  statusBar.success(`Profiles updated for ${getConnectionLabel(config)}`);
 }
 
 export function registerCommands(
@@ -64,7 +399,7 @@ export function registerCommands(
           await configManager.createDefaultConfig(workspaceRoot);
           break;
         case 'profiles':
-          statusBar.success('Profile management coming soon!');
+          await manageProfiles(workspaceRoot);
           break;
       }
     } else {
@@ -244,12 +579,19 @@ export function registerCommands(
 
   // ==================== Transfer Commands ====================
 
-  const uploadCommand = vscode.commands.registerCommand('stackerftp.upload', async (uriOrResource: vscode.Uri | { resourceUri: vscode.Uri } | (vscode.Uri | { resourceUri: vscode.Uri })[]) => {
+  const uploadCommand = vscode.commands.registerCommand(
+    'stackerftp.upload',
+    async (
+      uriOrResource: vscode.Uri | { resourceUri: vscode.Uri } | (vscode.Uri | { resourceUri: vscode.Uri })[],
+      selectedItems?: (vscode.Uri | { resourceUri: vscode.Uri })[]
+    ) => {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    // Handle both single item and array of items
-    const items = Array.isArray(uriOrResource) ? uriOrResource : [uriOrResource];
+    // VS Code context menus pass multi-selection as the second argument.
+    const items = selectedItems && selectedItems.length > 0
+      ? selectedItems
+      : (Array.isArray(uriOrResource) ? uriOrResource : [uriOrResource]);
 
     if (!items || items.length === 0) {
       statusBar.error('No file selected');
@@ -399,7 +741,7 @@ export function registerCommands(
     }
   });
 
-  const downloadCommand = vscode.commands.registerCommand('stackerftp.download', async (itemOrItems?: any | any[]) => {
+  const downloadCommand = vscode.commands.registerCommand('stackerftp.download', async (itemOrItems?: any | any[], selectedItems?: any[]) => {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
@@ -409,26 +751,14 @@ export function registerCommands(
       return;
     }
 
-    // Handle both single item and array of items
-    const items = Array.isArray(itemOrItems) ? itemOrItems : (itemOrItems ? [itemOrItems] : []);
+    // VS Code context menus pass multi-selection as the second argument.
+    const items = selectedItems && selectedItems.length > 0
+      ? selectedItems
+      : (Array.isArray(itemOrItems) ? itemOrItems : (itemOrItems ? [itemOrItems] : []));
 
-    // If no valid items, ask to download entire project
-    if (items.length === 0 || items.every(item => !item || (!item.entry && !item.resourceUri))) {
-      const choice = await vscode.window.showWarningMessage(
-        'Download entire project?',
-        'Yes', 'No'
-      );
-      if (choice !== 'Yes') return;
-
-      try {
-        const connection = await connectionManager.ensureConnection(config);
-        const result = await transferManager.downloadDirectory(connection, config.remotePath, workspaceRoot, config);
-        showSyncResult(result, 'download');
-        return;
-      } catch (error: any) {
-        statusBar.error(`Download failed: ${error.message}`, true);
-        return;
-      }
+    if (items.length === 0) {
+      statusBar.error('No item selected. Use "Download Project" for full project download.');
+      return;
     }
 
     try {
@@ -436,12 +766,14 @@ export function registerCommands(
 
       let downloadedCount = 0;
       let failedCount = 0;
+      let handledCount = 0;
 
       for (const itemOrResource of items) {
         if (!itemOrResource) continue;
 
         let remotePath: string;
         let localPath: string;
+        let isDirectory = false;
 
         // Check if it's a SCM resource state (has resourceUri property)
         if (itemOrResource && 'resourceUri' in itemOrResource) {
@@ -449,18 +781,30 @@ export function registerCommands(
           localPath = itemOrResource.resourceUri.fsPath;
           const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
           remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
+        } else if (itemOrResource && 'fsPath' in itemOrResource) {
+          // Local Explorer / editor resource - download matching remote path to selected local target
+          localPath = itemOrResource.fsPath;
+          const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+          remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
+
+          try {
+            isDirectory = fs.statSync(localPath).isDirectory();
+          } catch {
+            isDirectory = false;
+          }
         } else if (itemOrResource?.entry) {
           // Remote explorer item
           remotePath = itemOrResource.entry.path;
           const relativePath = path.relative(config.remotePath, remotePath);
           localPath = path.join(workspaceRoot, relativePath);
+          isDirectory = itemOrResource.entry.type === 'directory' ||
+            (itemOrResource.entry.type === 'symlink' && itemOrResource.entry.isSymlinkToDirectory);
         } else {
           // Skip invalid items
           continue;
         }
 
-        // Determine if it's a directory based on entry type
-        const isDirectory = itemOrResource?.entry?.type === 'directory';
+        handledCount++;
 
         try {
           if (isDirectory) {
@@ -479,6 +823,11 @@ export function registerCommands(
         } catch (err) {
           failedCount++;
         }
+      }
+
+      if (handledCount === 0) {
+        statusBar.error('No valid selection. Use "Download Project" for full project download.');
+        return;
       }
 
       if (failedCount === 0) {
@@ -1178,6 +1527,30 @@ export function registerCommands(
     }
   });
 
+  // Retry failed transfer items
+  const retryTransferItemCommand = vscode.commands.registerCommand('stackerftp.retryTransferItem', (item: any, selectedItems?: any[]) => {
+    const items = selectedItems && selectedItems.length > 0
+      ? selectedItems
+      : (item ? [item] : []);
+
+    const retryableIds = items
+      .filter(queueItem => queueItem?.transferItem?.status === 'error')
+      .map(queueItem => queueItem.transferItem.id);
+
+    if (retryableIds.length === 0) {
+      statusBar.warn('No failed transfers selected');
+      return;
+    }
+
+    const retriedCount = transferManager.retryItems(retryableIds);
+    if (retriedCount === 0) {
+      statusBar.warn('No failed transfers were re-queued');
+      return;
+    }
+
+    statusBar.success(`Retried: ${retriedCount} transfer${retriedCount > 1 ? 's' : ''}`);
+  });
+
   // Clear completed/error transfers
   const clearTransferQueueCommand = vscode.commands.registerCommand('stackerftp.clearTransferQueue', () => {
     transferManager.clearCompleted();
@@ -1812,14 +2185,20 @@ export function registerCommands(
       const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
+      await connectionManager.ensureConnection(config);
+
       // Focus on Remote Explorer tree view (VS Code auto-generates .focus for views)
       await vscode.commands.executeCommand('stackerftp.remoteExplorerTree.focus');
 
-      statusBar.success(`Remote path: ${remotePath}`);
-
-      // If using tree view, try to reveal the item
+      let revealed = false;
       if (remoteExplorer && typeof remoteExplorer.navigateToPath === 'function') {
-        await remoteExplorer.navigateToPath(remotePath);
+        revealed = await remoteExplorer.navigateToPath(remotePath, config, treeView);
+      }
+
+      if (revealed) {
+        statusBar.success(`Revealed: ${path.basename(remotePath)}`);
+      } else {
+        statusBar.warn(`Remote path found but could not be revealed: ${remotePath}`);
       }
     } catch (error: any) {
       statusBar.error(`Reveal failed: ${error.message}`);
@@ -1889,7 +2268,7 @@ export function registerCommands(
 
   // ==================== Upload/Download Extended Commands ====================
 
-  const uploadToAllProfilesCommand = vscode.commands.registerCommand('stackerftp.uploadToAllProfiles', async (uri: vscode.Uri) => {
+  const uploadToAllProfilesCommand = vscode.commands.registerCommand('stackerftp.uploadToAllProfiles', async (uri: vscode.Uri, selectedItems?: vscode.Uri[]) => {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
@@ -1899,41 +2278,52 @@ export function registerCommands(
       return;
     }
 
-    const localPath = uri?.fsPath || vscode.window.activeTextEditor?.document.fileName;
-    if (!localPath) {
+    const localPaths = selectedItems && selectedItems.length > 0
+      ? selectedItems.map(item => item.fsPath).filter(Boolean)
+      : (uri?.fsPath ? [uri.fsPath] : (vscode.window.activeTextEditor?.document.fileName ? [vscode.window.activeTextEditor.document.fileName] : []));
+
+    if (localPaths.length === 0) {
       statusBar.error('No file selected');
       return;
     }
 
     const results: { name: string; success: boolean; error?: string }[] = [];
+    const totalOperations = configs.length * localPaths.length;
+    let completedOperations = 0;
 
     await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
       title: 'Uploading to all profiles...',
       cancellable: false
     }, async (progress) => {
-      for (let i = 0; i < configs.length; i++) {
-        const config = configs[i];
-        const profileName = config.name || config.host;
-        progress.report({ message: `${profileName} (${i + 1}/${configs.length})`, increment: (100 / configs.length) });
+      for (const localPath of localPaths) {
+        for (let i = 0; i < configs.length; i++) {
+          const config = configs[i];
+          const profileName = config.name || config.host;
+          completedOperations++;
+          progress.report({
+            message: `${path.basename(localPath)} -> ${profileName} (${completedOperations}/${totalOperations})`,
+            increment: totalOperations > 0 ? (100 / totalOperations) : 100
+          });
 
-        try {
-          const connection = await connectionManager.ensureConnection(config);
-          const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
-          const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
-
-          // Ensure remote directory exists
-          const remoteDir = normalizeRemotePath(path.dirname(remotePath));
           try {
-            await connection.mkdir(remoteDir);
-          } catch {
-            // Directory might already exist
-          }
+            const connection = await connectionManager.ensureConnection(config);
+            const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+            const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
-          await transferManager.uploadFile(connection, localPath, remotePath, config);
-          results.push({ name: profileName, success: true });
-        } catch (error: any) {
-          results.push({ name: profileName, success: false, error: error.message });
+            // Ensure remote directory exists
+            const remoteDir = normalizeRemotePath(path.dirname(remotePath));
+            try {
+              await connection.mkdir(remoteDir);
+            } catch {
+              // Directory might already exist
+            }
+
+            await transferManager.uploadFile(connection, localPath, remotePath, config);
+            results.push({ name: `${profileName}:${path.basename(localPath)}`, success: true });
+          } catch (error: any) {
+            results.push({ name: `${profileName}:${path.basename(localPath)}`, success: false, error: error.message });
+          }
         }
       }
     });
@@ -2139,7 +2529,7 @@ export function registerCommands(
     }
   });
 
-  const forceUploadCommand = vscode.commands.registerCommand('stackerftp.forceUpload', async (uri: vscode.Uri) => {
+  const forceUploadCommand = vscode.commands.registerCommand('stackerftp.forceUpload', async (uri: vscode.Uri, selectedItems?: vscode.Uri[]) => {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
@@ -2149,14 +2539,19 @@ export function registerCommands(
       return;
     }
 
-    const localPath = uri?.fsPath || vscode.window.activeTextEditor?.document.fileName;
-    if (!localPath) {
+    const localPaths = selectedItems && selectedItems.length > 0
+      ? selectedItems.map(item => item.fsPath).filter(Boolean)
+      : (uri?.fsPath ? [uri.fsPath] : (vscode.window.activeTextEditor?.document.fileName ? [vscode.window.activeTextEditor.document.fileName] : []));
+
+    if (localPaths.length === 0) {
       statusBar.error('No file selected');
       return;
     }
 
     const choice = await vscode.window.showWarningMessage(
-      `Force upload will overwrite the remote file. Continue?`,
+      localPaths.length === 1
+        ? 'Force upload will overwrite the remote file. Continue?'
+        : `Force upload will overwrite ${localPaths.length} remote files. Continue?`,
       { modal: true },
       'Yes', 'No'
     );
@@ -2164,25 +2559,40 @@ export function registerCommands(
 
     try {
       const connection = await connectionManager.ensureConnection(config);
-      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
-      const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
+      let uploadedCount = 0;
+      let failedCount = 0;
 
-      // Ensure remote directory exists
-      const remoteDir = normalizeRemotePath(path.dirname(remotePath));
-      try {
-        await connection.mkdir(remoteDir);
-      } catch {
-        // Directory might already exist
+      for (const localPath of localPaths) {
+        try {
+          const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+          const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
+
+          // Ensure remote directory exists
+          const remoteDir = normalizeRemotePath(path.dirname(remotePath));
+          try {
+            await connection.mkdir(remoteDir);
+          } catch {
+            // Directory might already exist
+          }
+
+          await transferManager.uploadFile(connection, localPath, remotePath, config);
+          uploadedCount++;
+        } catch {
+          failedCount++;
+        }
       }
 
-      await transferManager.uploadFile(connection, localPath, remotePath, config);
-      statusBar.success(`Force uploaded: ${path.basename(localPath)}`);
+      if (failedCount === 0) {
+        statusBar.success(`Force uploaded: ${uploadedCount} item(s)`);
+      } else {
+        statusBar.info(`Force uploaded: ${uploadedCount}, Failed: ${failedCount}`);
+      }
     } catch (error: any) {
       statusBar.error(`Force upload failed: ${error.message}`, true);
     }
   });
 
-  const forceDownloadCommand = vscode.commands.registerCommand('stackerftp.forceDownload', async (uri: vscode.Uri) => {
+  const forceDownloadCommand = vscode.commands.registerCommand('stackerftp.forceDownload', async (uri: vscode.Uri, selectedItems?: vscode.Uri[]) => {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
@@ -2192,14 +2602,19 @@ export function registerCommands(
       return;
     }
 
-    const localPath = uri?.fsPath || vscode.window.activeTextEditor?.document.fileName;
-    if (!localPath) {
+    const localPaths = selectedItems && selectedItems.length > 0
+      ? selectedItems.map(item => item.fsPath).filter(Boolean)
+      : (uri?.fsPath ? [uri.fsPath] : (vscode.window.activeTextEditor?.document.fileName ? [vscode.window.activeTextEditor.document.fileName] : []));
+
+    if (localPaths.length === 0) {
       statusBar.error('No file selected');
       return;
     }
 
     const choice = await vscode.window.showWarningMessage(
-      `Force download will overwrite the local file. Continue?`,
+      localPaths.length === 1
+        ? 'Force download will overwrite the local file. Continue?'
+        : `Force download will overwrite ${localPaths.length} local files. Continue?`,
       { modal: true },
       'Yes', 'No'
     );
@@ -2207,16 +2622,31 @@ export function registerCommands(
 
     try {
       const connection = await connectionManager.ensureConnection(config);
-      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
-      const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
+      let downloadedCount = 0;
+      let failedCount = 0;
 
-      await transferManager.downloadFile(connection, remotePath, localPath);
-      statusBar.success(`Force downloaded: ${path.basename(localPath)}`);
+      for (const localPath of localPaths) {
+        try {
+          const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+          const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
-      // Refresh the editor if file is open
-      const openDoc = vscode.workspace.textDocuments.find(d => d.fileName === localPath);
-      if (openDoc) {
-        vscode.commands.executeCommand('workbench.action.files.revert');
+          await transferManager.downloadFile(connection, remotePath, localPath);
+          downloadedCount++;
+
+          // Refresh the editor if file is open
+          const openDoc = vscode.workspace.textDocuments.find(d => d.fileName === localPath);
+          if (openDoc) {
+            vscode.commands.executeCommand('workbench.action.files.revert');
+          }
+        } catch {
+          failedCount++;
+        }
+      }
+
+      if (failedCount === 0) {
+        statusBar.success(`Force downloaded: ${downloadedCount} item(s)`);
+      } else {
+        statusBar.info(`Force downloaded: ${downloadedCount}, Failed: ${failedCount}`);
       }
     } catch (error: any) {
       statusBar.error(`Force download failed: ${error.message}`, true);
@@ -2293,9 +2723,11 @@ export function registerCommands(
     }
   });
 
-  const treeDownloadCommand = vscode.commands.registerCommand('stackerftp.tree.download', async (itemOrItems: any, config: any) => {
-    // Handle both single item and array of items (multi-select in tree view)
-    const items = Array.isArray(itemOrItems) ? itemOrItems : [itemOrItems];
+  const treeDownloadCommand = vscode.commands.registerCommand('stackerftp.tree.download', async (itemOrItems: any, selectedItems?: any[]) => {
+    // TreeView multi-select is passed as the second argument by VS Code.
+    const items = selectedItems && selectedItems.length > 0
+      ? selectedItems
+      : (Array.isArray(itemOrItems) ? itemOrItems : [itemOrItems]);
 
     if (!items || items.length === 0) {
       statusBar.error('No item selected');
@@ -2305,7 +2737,7 @@ export function registerCommands(
     if (container.remoteExplorer) {
       let downloadedCount = 0;
       for (const item of items) {
-        await container.remoteExplorer.downloadFile(item, config);
+        await container.remoteExplorer.downloadFile(item);
         downloadedCount++;
       }
       if (downloadedCount > 1) {
@@ -2314,9 +2746,11 @@ export function registerCommands(
     }
   });
 
-  const treeDeleteCommand = vscode.commands.registerCommand('stackerftp.tree.delete', async (itemOrItems: any, config: any) => {
-    // Handle both single item and array of items (multi-select in tree view)
-    const items = Array.isArray(itemOrItems) ? itemOrItems : [itemOrItems];
+  const treeDeleteCommand = vscode.commands.registerCommand('stackerftp.tree.delete', async (itemOrItems: any, selectedItems?: any[]) => {
+    // TreeView multi-select is passed as the second argument by VS Code.
+    const items = selectedItems && selectedItems.length > 0
+      ? selectedItems
+      : (Array.isArray(itemOrItems) ? itemOrItems : [itemOrItems]);
 
     if (!items || items.length === 0) {
       statusBar.error('No item selected');
@@ -2338,7 +2772,7 @@ export function registerCommands(
       // Multi-select: skip individual confirm dialogs
       const skipConfirm = items.length > 1;
       for (const item of items) {
-        await container.remoteExplorer.deleteFile(item, config, skipConfirm);
+        await container.remoteExplorer.deleteFile(item, undefined, skipConfirm);
       }
     }
   });
@@ -2403,6 +2837,7 @@ export function registerCommands(
     syncBetweenRemotesCommand,
     showTransferQueueCommand,
     cancelTransferItemCommand,
+    retryTransferItemCommand,
     clearTransferQueueCommand
   );
 

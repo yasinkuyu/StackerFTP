@@ -144,7 +144,13 @@ export function registerViewCommands(container: ProviderContainer): vscode.Dispo
   });
 
   const selectAllFilesCommand = vscode.commands.registerCommand('stackerftp.selectAllFiles', async () => {
-    statusBar.info('Select All: Use Ctrl+A in the file list');
+    try {
+      await vscode.commands.executeCommand('stackerftp.remoteExplorerTree.focus');
+      await vscode.commands.executeCommand('list.selectAll');
+      statusBar.success('Selected all visible remote items');
+    } catch (error: any) {
+      statusBar.error(`Select All failed: ${error.message || error}`);
+    }
   });
 
   disposables.push(
