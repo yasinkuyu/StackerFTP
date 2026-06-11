@@ -123,6 +123,37 @@ export function normalizeRemotePath(remotePath: string): string {
   return remotePath.replace(/\\/g, '/').replace(/\/+/g, '/');
 }
 
+/**
+ * Resolves config.localPath to an absolute local path.
+ *
+ * Relative paths are resolved from the workspace root. Root-prefixed paths like
+ * "/.vitepress/dist" are kept as absolute paths only when they exist on disk;
+ * otherwise they are treated as workspace-relative paths for compatibility with
+ * common SFTP config conventions.
+ */
+export function resolveConfiguredLocalPath(workspaceRoot: string, localPath?: string): string {
+  if (!localPath) {
+    return workspaceRoot;
+  }
+
+  const expandedPath = localPath.startsWith('~')
+    ? path.join(process.env.HOME || '', localPath.slice(1))
+    : localPath;
+
+  if (!path.isAbsolute(expandedPath)) {
+    return path.resolve(workspaceRoot, expandedPath);
+  }
+
+  if (fs.existsSync(expandedPath)) {
+    return expandedPath;
+  }
+
+  const workspaceRelativePath = expandedPath.replace(/^[/\\]+/, '');
+  return workspaceRelativePath
+    ? path.resolve(workspaceRoot, workspaceRelativePath)
+    : expandedPath;
+}
+
 export function sanitizeRelativePath(relativePath: string): string {
   // Path traversal kontrolü
   const normalized = path.normalize(relativePath);

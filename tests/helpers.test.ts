@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeRemotePath, sanitizeRelativePath, matchesPattern, formatFileSize } from '../src/utils/helpers';
+import * as path from 'path';
+import { normalizeRemotePath, sanitizeRelativePath, matchesPattern, formatFileSize, resolveConfiguredLocalPath } from '../src/utils/helpers';
 
 describe('helpers', () => {
   it('normalizeRemotePath collapses slashes and backslashes', () => {
@@ -23,5 +24,13 @@ describe('helpers', () => {
   it('formatFileSize formats bytes', () => {
     expect(formatFileSize(0)).toBe('0 B');
     expect(formatFileSize(1024)).toBe('1 KB');
+  });
+
+  it('resolveConfiguredLocalPath resolves relative local paths against workspace root', () => {
+    expect(resolveConfiguredLocalPath('/workspace/site', '.vitepress/dist')).toBe(path.resolve('/workspace/site/.vitepress/dist'));
+  });
+
+  it('resolveConfiguredLocalPath treats missing root-prefixed paths as workspace-relative', () => {
+    expect(resolveConfiguredLocalPath('/workspace/site', '/.vitepress/dist')).toBe(path.resolve('/workspace/site/.vitepress/dist'));
   });
 });

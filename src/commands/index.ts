@@ -12,7 +12,7 @@ import { transferManager } from '../core/transfer-manager';
 import { FTPConfig, Protocol } from '../types';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
-import { normalizeRemotePath, formatFileSize, sanitizeRelativePath } from '../utils/helpers';
+import { normalizeRemotePath, formatFileSize, sanitizeRelativePath, resolveConfiguredLocalPath } from '../utils/helpers';
 import { ConnectionWizard } from '../core/connection-wizard';
 import { createGitIntegration } from '../core/git-integration';
 import { getWorkspaceRoot } from './utils';
@@ -907,12 +907,14 @@ export function registerCommands(
       let localPath: string;
       let remotePath: string;
 
+      const localRoot = resolveConfiguredLocalPath(workspaceRoot, config.localPath);
+
       if (uri) {
         localPath = uri.fsPath;
-        const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+        const relativePath = sanitizeRelativePath(path.relative(localRoot, localPath));
         remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
       } else {
-        localPath = workspaceRoot;
+        localPath = localRoot;
         remotePath = config.remotePath;
       }
 
@@ -1346,20 +1348,21 @@ export function registerCommands(
       let remotePath: string;
       let fileName: string;
       let activeConfig: any;
+      const remoteItem = item?.entry ? item : (uri as any)?.entry ? uri as any : undefined;
 
-      if (item && item.entry) {
+      if (remoteItem) {
         // Called from remote explorer - use item's config
-        activeConfig = item.config;
+        activeConfig = remoteItem.config;
         if (!activeConfig) {
           statusBar.error('No configuration found for this connection');
           return;
         }
-        remotePath = item.entry.path;
+        remotePath = remoteItem.entry.path;
         if (!remotePath) {
           statusBar.error('Remote path is undefined');
           return;
         }
-        fileName = item.entry.name || path.basename(remotePath);
+        fileName = remoteItem.entry.name || path.basename(remotePath);
 
         // Calculate relative path from remote root
         const remoteRoot = activeConfig.remotePath || '/';
@@ -1371,7 +1374,8 @@ export function registerCommands(
         if (relativePath.startsWith('/')) {
           relativePath = relativePath.substring(1);
         }
-        localPath = path.join(workspaceRoot, relativePath);
+        const localRoot = resolveConfiguredLocalPath(workspaceRoot, activeConfig.localPath);
+        localPath = path.join(localRoot, relativePath);
       } else if (uri) {
         // Called from local file
         activeConfig = configManager.getActiveConfig(workspaceRoot);
@@ -1379,8 +1383,13 @@ export function registerCommands(
           statusBar.error('No SFTP configuration found', true);
           return;
         }
+        if (!uri.fsPath) {
+          statusBar.error('No local file selected');
+          return;
+        }
         localPath = uri.fsPath;
-        const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+        const localRoot = resolveConfiguredLocalPath(workspaceRoot, activeConfig.localPath);
+        const relativePath = sanitizeRelativePath(path.relative(localRoot, localPath));
         remotePath = normalizeRemotePath(path.posix.join(activeConfig.remotePath, relativePath.replace(/\\/g, '/')));
         fileName = path.basename(localPath);
       } else {
