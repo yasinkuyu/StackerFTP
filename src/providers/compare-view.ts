@@ -14,7 +14,7 @@ import { transferManager } from '../core/transfer-manager';
 import { webMasterTools } from '../webmaster/tools';
 import { getWorkspaceRoot } from '../commands/utils';
 import { CompareResult, CompareTreeNode, CompareItem } from '../types';
-import { formatFileSize, formatDate, normalizeRemotePath, sanitizeRelativePath } from '../utils/helpers';
+import { formatFileSize, formatDate, normalizeRemotePath, sanitizeRelativePath, resolveConfiguredLocalPath } from '../utils/helpers';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
 
@@ -54,11 +54,12 @@ export class CompareViewProvider {
     }
 
     // Allow user to select a local folder if not provided
+    const localRoot = resolveConfiguredLocalPath(workspaceRoot, config.localPath);
     let selectedLocalPath = localPath;
     if (!selectedLocalPath) {
       const selected = await vscode.window.showOpenDialog({
         title: 'Select Local Folder to Compare',
-        defaultUri: vscode.Uri.file(workspaceRoot),
+        defaultUri: vscode.Uri.file(localRoot),
         canSelectFolders: true,
         canSelectFiles: false,
         canSelectMany: false
@@ -112,10 +113,9 @@ export class CompareViewProvider {
     this._panel.webview.html = this._getLoadingHtml('Connecting to server...');
 
     // Calculate the remote path based on selected local folder
-    const originalWorkspace = this._originalWorkspaceRoot || workspaceRoot;
     let remotePath = config.remotePath;
-    if (this._workspaceRoot && this._workspaceRoot !== originalWorkspace && this._workspaceRoot.startsWith(originalWorkspace)) {
-      const relativePath = path.relative(originalWorkspace, this._workspaceRoot);
+    if (this._workspaceRoot && this._workspaceRoot !== localRoot && this._workspaceRoot.startsWith(localRoot)) {
+      const relativePath = path.relative(localRoot, this._workspaceRoot);
       remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
     }
 
