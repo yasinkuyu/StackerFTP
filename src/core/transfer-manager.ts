@@ -500,7 +500,32 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     remotePath: string,
     config: FTPConfig
   ): Promise<SyncResult> {
-    return this.uploadDirectory(connection, localPath, remotePath, config);
+    const localStat = await fs.promises.stat(localPath);
+
+    if (localStat.isDirectory()) {
+      return this.uploadDirectory(connection, localPath, remotePath, config);
+    }
+
+    const result: SyncResult = {
+      uploaded: [],
+      downloaded: [],
+      deleted: [],
+      failed: [],
+      skipped: []
+    };
+
+    const fileName = path.basename(localPath);
+    try {
+      await this.uploadFile(connection, localPath, remotePath, config, {
+        size: localStat.size,
+        targetType: 'file'
+      });
+      result.uploaded.push(fileName);
+    } catch (error: any) {
+      result.failed.push({ path: fileName, error: error.message });
+    }
+
+    return result;
   }
 
   async syncToLocal(
@@ -509,7 +534,36 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     localPath: string,
     config: FTPConfig
   ): Promise<SyncResult> {
-    return this.downloadDirectory(connection, remotePath, localPath, config);
+    const remoteStat = await connection.stat(remotePath);
+
+    if (!remoteStat) {
+      throw new Error(`Remote path not found: ${remotePath}`);
+    }
+
+    if (remoteStat.type === 'directory' || remoteStat.isSymlinkToDirectory) {
+      return this.downloadDirectory(connection, remotePath, localPath, config);
+    }
+
+    const result: SyncResult = {
+      uploaded: [],
+      downloaded: [],
+      deleted: [],
+      failed: [],
+      skipped: []
+    };
+
+    const fileName = path.basename(localPath);
+    try {
+      await this.downloadFile(connection, remotePath, localPath, config, {
+        size: remoteStat.size,
+        targetType: 'file'
+      });
+      result.downloaded.push(fileName);
+    } catch (error: any) {
+      result.failed.push({ path: fileName, error: error.message });
+    }
+
+    return result;
   }
 
   async syncBothWays(
@@ -518,11 +572,8 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     remotePath: string,
     config: FTPConfig
   ): Promise<SyncResult> {
-    // First download from remote
-    const downloadResult = await this.downloadDirectory(connection, remotePath, localPath, config);
-
-    // Then upload to remote
-    const uploadResult = await this.uploadDirectory(connection, localPath, remotePath, config);
+    const downloadResult = await this.syncToLocal(connection, remotePath, localPath, config);
+    const uploadResult = await this.syncToRemote(connection, localPath, remotePath, config);
 
     return {
       uploaded: uploadResult.uploaded,
