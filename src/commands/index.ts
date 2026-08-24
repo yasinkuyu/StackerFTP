@@ -199,11 +199,35 @@ async function promptForProfileOverrides(
 
 function collectCommandSelection(args: any[]): any[] {
   const items: any[] = [];
-  const seen = new Set<any>();
+  const seenKeys = new Set<string>();
+
+  const getItemKey = (item: any): string | undefined => {
+    if (!item) return undefined;
+    if (typeof item.fsPath === 'string' && typeof item.scheme === 'string') {
+      return `${item.scheme}:${item.fsPath}`;
+    }
+    if (item.resourceUri?.fsPath) {
+      return `${item.resourceUri.scheme || 'file'}:${item.resourceUri.fsPath}`;
+    }
+    if (item.entry?.path) {
+      return `remote:${item.entry.path}`;
+    }
+    if (typeof item.fsPath === 'string') {
+      return `file:${item.fsPath}`;
+    }
+    if (typeof item.path === 'string') {
+      return item.path;
+    }
+    return undefined;
+  };
 
   const addItem = (item: any) => {
-    if (!item || seen.has(item)) return;
-    seen.add(item);
+    if (!item) return;
+    const key = getItemKey(item);
+    if (key) {
+      if (seenKeys.has(key)) return;
+      seenKeys.add(key);
+    }
     items.push(item);
   };
 
@@ -219,6 +243,7 @@ function collectCommandSelection(args: any[]): any[] {
 
     if ((typeof value?.fsPath === 'string' && typeof value?.scheme === 'string') || value?.resourceUri || value?.entry) {
       addItem(value);
+      return;
     }
 
     if (typeof value !== 'object') {
@@ -662,6 +687,7 @@ export function registerCommands(
   const uploadCommand = vscode.commands.registerCommand(
     'stackerftp.upload',
     async (...commandArgs: any[]) => {
+    transferManager.resetBatchCollision();
     const items = collectCommandSelection(commandArgs);
     const workspaceRoot = getWorkspaceRootFromItems(items);
     if (!workspaceRoot) return;
@@ -671,14 +697,20 @@ export function registerCommands(
       return;
     }
 
-    // Extract local paths from items
+    // Extract unique local paths from items
     const localPaths: string[] = [];
+    const seenLocalPaths = new Set<string>();
     for (const item of items) {
       if (!item) continue;
-      if ('resourceUri' in item) {
-        localPaths.push(item.resourceUri.fsPath);
-      } else if ('fsPath' in item) {
-        localPaths.push(item.fsPath);
+      let p: string | undefined;
+      if ('resourceUri' in item && item.resourceUri?.fsPath) {
+        p = item.resourceUri.fsPath;
+      } else if ('fsPath' in item && typeof item.fsPath === 'string') {
+        p = item.fsPath;
+      }
+      if (p && !seenLocalPaths.has(p)) {
+        seenLocalPaths.add(p);
+        localPaths.push(p);
       }
     }
 
@@ -715,6 +747,7 @@ export function registerCommands(
 
     try {
       let uploadedCount = 0;
+      let skippedCount = 0;
       let failedCount = 0;
 
       for (const localPath of localPaths) {
@@ -725,6 +758,7 @@ export function registerCommands(
           if (fs.statSync(localPath).isDirectory()) {
             const result = await transferManager.uploadDirectory(connection, localPath, remotePath, config);
             uploadedCount += result.uploaded.length;
+            skippedCount += result.skipped.length;
             failedCount += result.failed.length;
           } else {
             // Ensure remote directory exists
@@ -734,8 +768,12 @@ export function registerCommands(
             } catch {
               // Directory might already exist
             }
-            await transferManager.uploadFile(connection, localPath, remotePath, config);
-            uploadedCount++;
+            const res = await transferManager.uploadFile(connection, localPath, remotePath, config);
+            if (res.status === 'cancelled') {
+              skippedCount++;
+            } else {
+              uploadedCount++;
+            }
           }
         } catch (err) {
           failedCount++;
@@ -743,9 +781,13 @@ export function registerCommands(
       }
 
       if (failedCount === 0) {
-        statusBar.success(`Uploaded: ${uploadedCount} item(s)`);
+        if (skippedCount > 0) {
+          statusBar.success(`Uploaded: ${uploadedCount}, Skipped: ${skippedCount}`);
+        } else {
+          statusBar.success(`Uploaded: ${uploadedCount} item(s)`);
+        }
       } else {
-        statusBar.info(`Uploaded: ${uploadedCount}, Failed: ${failedCount}`);
+        statusBar.info(`Uploaded: ${uploadedCount}, Skipped: ${skippedCount}, Failed: ${failedCount}`);
       }
 
     } catch (error: any) {
@@ -815,6 +857,7 @@ export function registerCommands(
   });
 
   const downloadCommand = vscode.commands.registerCommand('stackerftp.download', async (...commandArgs: any[]) => {
+    transferManager.resetBatchCollision();
     const items = collectCommandSelection(commandArgs);
     const workspaceRoot = getWorkspaceRootFromItems(items);
     if (!workspaceRoot) return;
@@ -1654,6 +1697,17 @@ export function registerCommands(
   const transferQueueExpandAllCommand = vscode.commands.registerCommand('stackerftp.transferQueue.expandAll', () => {
     if (container.transferQueueProvider) {
       container.transferQueueProvider.expandAll();
+    }
+  });
+
+  // Transfer queue expand/collapse toggle commands
+  const resetCollisionBehaviorCommand = vscode.commands.registerCommand('stackerftp.resetCollisionBehavior', () => {
+    transferManager.resetCollisionBehavior();
+  });
+
+  const transferQueueToggleExpandCommand = vscode.commands.registerCommand('stackerftp.transferQueue.toggleExpand', () => {
+    if (container.transferQueueProvider) {
+      container.transferQueueProvider.toggleExpand();
     }
   });
 

@@ -23,6 +23,7 @@ function normalizePath(p: string): string {
 export class TransferFolderTreeItem extends vscode.TreeItem {
     public readonly totalFiles: number;
     public readonly completedFiles: number;
+    public readonly skippedFiles: number;
     public readonly errorFiles: number;
     public readonly pendingFiles: number;
     public readonly transferringFiles: number;
@@ -39,28 +40,30 @@ export class TransferFolderTreeItem extends vscode.TreeItem {
         public readonly batchId: string | undefined,
         public readonly items: TransferItem[],
         public readonly isRoot: boolean = false,
-        public readonly collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed
+        public readonly collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.Collapsed,
+        public readonly expandVersion: number = 0
     ) {
         super(`📁 ${folderName}`, collapsibleState);
 
         this.direction = items.length > 0 ? items[0].direction : 'upload';
         this.totalFiles = items.length;
         this.completedFiles = items.filter(i => i.status === 'completed').length;
-        this.errorFiles = items.filter(i => i.status === 'error' || i.status === 'cancelled').length;
+        this.skippedFiles = items.filter(i => i.status === 'cancelled').length;
+        this.errorFiles = items.filter(i => i.status === 'error').length;
         this.pendingFiles = items.filter(i => i.status === 'pending').length;
         this.transferringFiles = items.filter(i => i.status === 'transferring').length;
         this.totalBytes = items.reduce((acc, i) => acc + (i.size || 0), 0);
         this.transferredBytes = items.reduce((acc, i) => acc + (i.transferred || (i.status === 'completed' ? (i.size || 0) : 0)), 0);
-        this.progress = this.totalFiles > 0 ? Math.round((this.completedFiles / this.totalFiles) * 100) : 0;
+        const processedCount = this.completedFiles + this.skippedFiles;
+        this.progress = this.totalFiles > 0 ? Math.round((processedCount / this.totalFiles) * 100) : 0;
 
         if (this.transferringFiles > 0) this.status = 'transferring';
         else if (this.pendingFiles > 0) this.status = 'pending';
-        else if (this.errorFiles > 0 && this.completedFiles === 0) this.status = 'error';
-        else if (this.completedFiles === this.totalFiles) this.status = 'completed';
         else if (this.errorFiles > 0) this.status = 'error';
+        else if (processedCount === this.totalFiles) this.status = 'completed';
         else this.status = 'completed';
 
-        this.id = `folder-${batchId || 'root'}-${folderRelPath || folderName}`;
+        this.id = `folder-${batchId || 'root'}-${folderRelPath || folderName}-v${expandVersion}-${collapsibleState}`;
         this.contextValue = `transfer-group-${this.status}`;
         this.description = this.getDescription();
         this.iconPath = this.getIcon();
@@ -78,8 +81,12 @@ export class TransferFolderTreeItem extends vscode.TreeItem {
                 return `${dir} Pending (${this.totalFiles} file${this.totalFiles > 1 ? 's' : ''}${sizeStr})`;
             case 'transferring':
                 return `${dir} ${this.progress}% (${this.completedFiles}/${this.totalFiles} files${sizeStr})`;
-            case 'completed':
+            case 'completed': {
+                if (this.skippedFiles > 0) {
+                    return `${dir} Done (${this.completedFiles} transferred, ${this.skippedFiles} skipped${sizeStr})`;
+                }
                 return `${dir} Done (${this.totalFiles}/${this.totalFiles} files${sizeStr})`;
+            }
             case 'error':
                 return `${dir} Error (${this.errorFiles} failed • ${this.completedFiles}/${this.totalFiles}${sizeStr})`;
             default:
@@ -108,7 +115,7 @@ export class TransferFolderTreeItem extends vscode.TreeItem {
         md.appendMarkdown(`### 📁 ${this.folderName} (${dirLabel})\n\n`);
         md.appendMarkdown(`- **Status:** ${this.status}\n`);
         md.appendMarkdown(`- **Progress:** ${this.progress}%\n`);
-        md.appendMarkdown(`- **Files:** ${this.completedFiles} completed, ${this.transferringFiles} transferring, ${this.pendingFiles} pending`);
+        md.appendMarkdown(`- **Files:** ${this.completedFiles} completed, ${this.skippedFiles} skipped, ${this.transferringFiles} transferring, ${this.pendingFiles} pending`);
         if (this.errorFiles > 0) {
             md.appendMarkdown(`, ${this.errorFiles} failed`);
         }
@@ -153,6 +160,8 @@ export class TransferTreeItem extends vscode.TreeItem {
                 return `${direction} ${progress}%${sizeStr}`;
             case 'completed':
                 return `${direction} Done${sizeStr}`;
+            case 'cancelled':
+                return `${direction} Skipped`;
             case 'error':
                 return `${direction} Error`;
             default:
@@ -168,6 +177,8 @@ export class TransferTreeItem extends vscode.TreeItem {
                 return new vscode.ThemeIcon('sync~spin', new vscode.ThemeColor('charts.blue'));
             case 'completed':
                 return new vscode.ThemeIcon('check', new vscode.ThemeColor('charts.green'));
+            case 'cancelled':
+                return new vscode.ThemeIcon('debug-step-over', new vscode.ThemeColor('charts.gray'));
             case 'error':
                 return new vscode.ThemeIcon('error', new vscode.ThemeColor('charts.red'));
             default:
@@ -202,12 +213,13 @@ export class TransferQueueTreeProvider implements vscode.TreeDataProvider<Transf
     private disposables: vscode.Disposable[] = [];
     private treeView: vscode.TreeView<TransferQueueItem>;
     private expandMode: 'collapsed' | 'expanded' = 'collapsed';
+    private expandVersion = 0;
 
     constructor() {
         // Create tree view
         this.treeView = vscode.window.createTreeView('stackerftp.transferQueue', {
             treeDataProvider: this,
-            showCollapseAll: true,
+            showCollapseAll: false,
             canSelectMany: true
         });
 
@@ -218,19 +230,32 @@ export class TransferQueueTreeProvider implements vscode.TreeDataProvider<Transf
         transferManager.on('transferProgress', () => this.refresh());
 
         this.disposables.push(this.treeView);
+        vscode.commands.executeCommand('setContext', 'stackerftp:transferQueueExpanded', false);
     }
 
     refresh(): void {
         this._onDidChangeTreeData.fire();
     }
 
+    toggleExpand(): void {
+        if (this.expandMode === 'expanded') {
+            this.collapseAll();
+        } else {
+            this.expandAll();
+        }
+    }
+
     expandAll(): void {
         this.expandMode = 'expanded';
+        this.expandVersion++;
+        vscode.commands.executeCommand('setContext', 'stackerftp:transferQueueExpanded', true);
         this.refresh();
     }
 
     collapseAll(): void {
         this.expandMode = 'collapsed';
+        this.expandVersion++;
+        vscode.commands.executeCommand('setContext', 'stackerftp:transferQueueExpanded', false);
         this.refresh();
     }
 
@@ -295,15 +320,7 @@ export class TransferQueueTreeProvider implements vscode.TreeDataProvider<Transf
         // Add root batch folders
         for (const [batchId, batch] of batchMap.entries()) {
             rootItems.push(
-                new TransferFolderTreeItem(
-                    batch.groupName,
-                    '',
-                    batch.groupPath,
-                    batchId,
-                    batch.items,
-                    true,
-                    state
-                )
+                new TransferFolderTreeItem(batch.groupName, '', batch.groupPath, batchId, batch.items, true, state, this.expandVersion)
             );
         }
 
@@ -329,7 +346,8 @@ export class TransferQueueTreeProvider implements vscode.TreeDataProvider<Transf
                         `dir-${dir}`,
                         items,
                         true,
-                        state
+                        state,
+                        this.expandVersion
                     )
                 );
             } else {
@@ -395,15 +413,7 @@ export class TransferQueueTreeProvider implements vscode.TreeDataProvider<Transf
             const subItems = subfolderMap.get(subName)!;
             const subRelPath = currentRelPrefix ? `${currentRelPrefix}/${subName}` : subName;
             result.push(
-                new TransferFolderTreeItem(
-                    subName,
-                    subRelPath,
-                    rootPath,
-                    folderItem.batchId,
-                    subItems,
-                    false,
-                    state
-                )
+                new TransferFolderTreeItem(subName, subRelPath, rootPath, folderItem.batchId, subItems, false, state, this.expandVersion)
             );
         }
 

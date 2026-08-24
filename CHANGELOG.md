@@ -2,6 +2,37 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.2.19] - 2026-08-25
+
+### Fixed
+- **Cancel / Escape Termination**: Clicking Cancel or pressing Escape/closing the collision dialog now immediately aborts and clears all pending queue transfers instead of prompting repeatedly.
+- **Modal Action Order**: Prioritized 'Overwrite All' and 'Skip All' in modal dialog for seamless directory transfers.
+
+## [1.2.18] - 2026-08-25
+
+### Fixed
+- **Permission & Overwrite Lifecycle**: Cleaned collision decision state flow, added reset command (`stackerftp.resetCollisionBehavior`), and separated batch vs session overrides.
+- **Skip All & Queue Visuals**: Properly displayed skipped items with dedicated icons, eliminated false error states, and refined batch status summary.
+
+## [1.2.17] - 2026-08-25
+
+### Fixed
+- **Skip All Handling**: Fixed collision skip and skip-all logic to resolve gracefully as skipped items without throwing errors or triggering failure toasts.
+- **Batch vs Session Overwrite Lifecycle**: Ensured batch collision decisions (Overwrite All / Skip All) automatically reset at the end of each transfer operation while preserving session overrides.
+
+## [1.2.16] - 2026-08-25
+
+### Fixed
+- **Duplicate Upload Execution**: Fixed issue where explorer folder upload ran twice sequentially due to duplicate URI arguments passed by VS Code.
+- **Batch vs Session Overwrite**: Separated "Overwrite All" (applies only to current batch) from "Always Overwrite (Session)" (applies to whole session) and added `stackerftp.overwriteBehavior` configuration.
+- **Transfer Queue Expand/Collapse Toggle**: Fixed TreeView expand/collapse state caching issue with dynamic versioned IDs and consolidated duplicate toolbar buttons into a single toggle button.
+
+## [1.2.14] - 2026-08-24
+
+### Fixed
+- **File Watcher Context Isolation**: Fixed `context` path resolution in File Watcher to only monitor the target output directory (e.g. `out`) and ignore external source changes.
+- **File Watcher Auto-Connect**: Added automatic connection recovery on file system change events when the active SFTP/FTP session has timed out or disconnected.
+
 ## [1.2.13] - 2026-08-24
 
 ### Added

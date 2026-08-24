@@ -1,7 +1,7 @@
 {
   "name": "stackerftp",
   "displayName": "StackerFTP - Professional SFTP/FTP Client",
-  "version": "1.2.13",
+  "version": "1.2.19",
   "publisher": "yasinkuyu",
   "author": "Insya, Yasin Kuyu",
   "license": "MIT",
@@ -175,6 +175,21 @@
               "host"
             ]
           }
+        },
+        "stackerftp.overwriteBehavior": {
+          "type": "string",
+          "default": "ask",
+          "enum": [
+            "ask",
+            "always",
+            "skip"
+          ],
+          "enumDescriptions": [
+            "Ask before overwriting existing files",
+            "Always overwrite existing files without confirmation",
+            "Skip existing files without confirmation"
+          ],
+          "description": "Default overwrite behavior when transferring files that already exist"
         }
       }
     },
@@ -473,6 +488,12 @@
         "icon": "$(clear-all)"
       },
       {
+        "command": "stackerftp.transferQueue.toggleExpand",
+        "title": "Toggle Expand/Collapse",
+        "category": "StackerFTP",
+        "icon": "$(list-tree)"
+      },
+      {
         "command": "stackerftp.transferQueue.expandAll",
         "title": "Expand All",
         "category": "StackerFTP",
@@ -626,6 +647,12 @@
         "title": "Select All",
         "category": "StackerFTP",
         "icon": "$(check-all)"
+      },
+      {
+        "command": "stackerftp.resetCollisionBehavior",
+        "title": "SFTP: Reset Overwrite / Collision Behavior",
+        "category": "StackerFTP",
+        "icon": "$(refresh)"
       }
     ],
     "menus": {
@@ -843,13 +870,13 @@
         },
         {
           "command": "stackerftp.transferQueue.expandAll",
-          "when": "view == stackerftp.transferQueue",
+          "when": "view == stackerftp.transferQueue && !stackerftp:transferQueueExpanded",
           "group": "navigation@3"
         },
         {
           "command": "stackerftp.transferQueue.collapseAll",
-          "when": "view == stackerftp.transferQueue",
-          "group": "navigation@4"
+          "when": "view == stackerftp.transferQueue && stackerftp:transferQueueExpanded",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [

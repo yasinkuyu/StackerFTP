@@ -12,7 +12,7 @@ import { configManager } from './config';
 import { connectionManager } from './connection-manager';
 import { transferManager } from './transfer-manager';
 import { logger } from '../utils/logger';
-import { normalizeRemotePath, matchesPattern, getLocalRelativePath } from '../utils/helpers';
+import { normalizeRemotePath, matchesPattern, getLocalRelativePath, getLocalRoot } from '../utils/helpers';
 import { wasRecentlyUploaded } from '../extension';
 
 export class FileWatcher implements vscode.Disposable {
@@ -42,7 +42,8 @@ export class FileWatcher implements vscode.Disposable {
     const pattern = typeof watcherConfig === 'boolean'
       ? '**/*'
       : (watcherConfig?.files || '**/*');
-    const globPattern = new vscode.RelativePattern(this.workspaceRoot, pattern);
+    const rootToWatch = getLocalRoot(this.workspaceRoot, this.config);
+    const globPattern = new vscode.RelativePattern(rootToWatch, pattern);
 
     // Create watcher
     const watcher = vscode.workspace.createFileSystemWatcher(
@@ -92,6 +93,12 @@ export class FileWatcher implements vscode.Disposable {
   }
 
   private handleFileChange(filePath: string, type: 'create' | 'change' | 'delete'): void {
+    if (this.config.context) {
+      const contextDir = path.resolve(this.workspaceRoot, this.config.context);
+      if (filePath !== contextDir && !filePath.startsWith(contextDir + path.sep)) {
+        return;
+      }
+    }
     const relativePath = getLocalRelativePath(this.workspaceRoot, filePath, this.config);
 
     // Check ignore patterns
@@ -157,13 +164,16 @@ export class FileWatcher implements vscode.Disposable {
             return;
           }
 
-          // Only upload if there's an active connection - don't auto-connect
-          if (!connectionManager.isConnected(this.config)) {
-            logger.debug(`No active connection, skipping auto-upload: ${relativePath}`);
-            return;
+          let uploadConnection = connectionManager.getConnection(this.config);
+          if (!uploadConnection || !connectionManager.isConnected(this.config)) {
+            try {
+              logger.info(`Auto-upload connecting to ${this.config.name || this.config.host}...`);
+              uploadConnection = await connectionManager.connect(this.config);
+            } catch (err: any) {
+              logger.warn(`Auto-upload connection failed for ${relativePath}: ${err?.message || err}`);
+              return;
+            }
           }
-
-          const uploadConnection = connectionManager.getConnection(this.config);
           if (!uploadConnection) {
             return;
           }
@@ -184,13 +194,16 @@ export class FileWatcher implements vscode.Disposable {
 
         case 'delete':
           if (watcherConfig?.autoDelete === true) {
-            // Only delete if there's an active connection
-            if (!connectionManager.isConnected(this.config)) {
-              logger.debug(`No active connection, skipping auto-delete: ${relativePath}`);
-              return;
+            let deleteConnection = connectionManager.getConnection(this.config);
+            if (!deleteConnection || !connectionManager.isConnected(this.config)) {
+              try {
+                logger.info(`Auto-delete connecting to ${this.config.name || this.config.host}...`);
+                deleteConnection = await connectionManager.connect(this.config);
+              } catch (err: any) {
+                logger.warn(`Auto-delete connection failed for ${relativePath}: ${err?.message || err}`);
+                return;
+              }
             }
-
-            const deleteConnection = connectionManager.getConnection(this.config);
             if (!deleteConnection) {
               return;
             }

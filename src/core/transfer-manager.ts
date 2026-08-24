@@ -27,6 +27,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
   private cancelled = false;
   private currentItem?: TransferItem;
   private sessionCollisionAction: 'ask' | 'overwrite' | 'skip' = 'ask';
+  private batchCollisionAction: 'ask' | 'overwrite' | 'skip' = 'ask';
   private collisionLock: Promise<void> = Promise.resolve();
   private queueUpdateTimeout: NodeJS.Timeout | undefined;
   private _activeCount = 0;
@@ -63,7 +64,26 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     });
   }
 
-  private async handleCollision(targetPath: string, type: 'local' | 'remote', isDir = false): Promise<'overwrite' | 'skip'> {
+  private async handleCollision(targetPath: string, type: 'local' | 'remote', isDir = false): Promise<'overwrite' | 'skip' | 'cancel'> {
+    if (this.cancelled) return 'cancel';
+
+    // 1. Check persistent configuration setting in VS Code Settings
+    const configuredBehavior = vscode.workspace.getConfiguration('stackerftp').get<string>('overwriteBehavior', 'ask');
+    if (configuredBehavior === 'always' || configuredBehavior === 'overwrite') {
+      return 'overwrite';
+    }
+    if (configuredBehavior === 'skip') {
+      return 'skip';
+    }
+
+    // 2. Check session-level action (set ONLY if user clicked "Always Overwrite")
+    if (this.sessionCollisionAction === 'overwrite') return 'overwrite';
+    if (this.sessionCollisionAction === 'skip') return 'skip';
+
+    // 3. Check batch-level action (set if user clicked "Overwrite All" or "Skip All" in this batch)
+    if (this.batchCollisionAction === 'overwrite') return 'overwrite';
+    if (this.batchCollisionAction === 'skip') return 'skip';
+
     // Correctly serialize modal dialogs using a promise chain lock
     const currentLock = this.collisionLock;
     let resolveNext: () => void;
@@ -75,34 +95,48 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     logger.debug(`Checking collision for: ${targetPath}`);
 
     try {
-      // Re-check after acquiring lock in case it was set to 'All' by another thread
-      if (this.sessionCollisionAction === 'overwrite') return 'overwrite';
-      if (this.sessionCollisionAction === 'skip') return 'skip';
+      if (this.cancelled) return 'cancel';
+
+      // Re-check after acquiring lock in case it was set by another worker in the same batch/session
+      const sessionAction = this.sessionCollisionAction as 'ask' | 'overwrite' | 'skip';
+      const batchAction = this.batchCollisionAction as 'ask' | 'overwrite' | 'skip';
+      if (sessionAction === 'overwrite' || batchAction === 'overwrite') return 'overwrite';
+      if (sessionAction === 'skip' || batchAction === 'skip') return 'skip';
 
       const location = type === 'local' ? 'Local' : 'Remote';
       const kind = isDir ? 'directory' : 'file';
       const message = `${location} ${kind} already exists at "${targetPath}". Would you like to overwrite it?`;
 
-      // Show modal dialog - this will block the lock
+      // Show modal dialog with clear options including Cancel
       const choice = await vscode.window.showWarningMessage(
         message,
         { modal: true },
-        'Overwrite', 'Skip', 'Overwrite All', 'Skip All'
+        'Overwrite All', 'Overwrite', 'Skip All', 'Skip', 'Always Overwrite', 'Cancel'
       );
 
       logger.debug(`Collision choice for ${targetPath}: ${choice}`);
 
-      if (choice === 'Overwrite All') {
+      if (choice === 'Always Overwrite') {
         this.sessionCollisionAction = 'overwrite';
+        this.batchCollisionAction = 'overwrite';
+        statusBar.info('Overwrite mode set to "Always Overwrite" for current session');
         return 'overwrite';
-      } else if (choice === 'Skip All') {
-        this.sessionCollisionAction = 'skip';
-        return 'skip';
+      } else if (choice === 'Overwrite All') {
+        this.batchCollisionAction = 'overwrite';
+        return 'overwrite';
       } else if (choice === 'Overwrite') {
         return 'overwrite';
-      } else {
-        // Default to skip if canceled (Esc) to avoid accidental data loss
+      } else if (choice === 'Skip All') {
+        this.batchCollisionAction = 'skip';
         return 'skip';
+      } else if (choice === 'Skip') {
+        return 'skip';
+      } else {
+        // User pressed 'Cancel', clicked Esc, or closed the modal dialog
+        this.cancelled = true;
+        this.cancel();
+        statusBar.info('Transfer cancelled');
+        return 'cancel';
       }
     } finally {
       resolveNext!();
@@ -122,7 +156,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       groupName?: string;
       groupPath?: string;
     }
-  ): Promise<void> {
+  ): Promise<TransferItem> {
     return new Promise((resolve, reject) => {
       const item: TransferItem = {
         id: generateId(),
@@ -134,7 +168,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
         size: metadata?.size || 0,
         transferred: 0,
         config,
-        resolve,
+        resolve: () => resolve(item),
         reject,
         targetExists: metadata?.targetExists,
         targetType: metadata?.targetType,
@@ -166,7 +200,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       groupName?: string;
       groupPath?: string;
     }
-  ): Promise<void> {
+  ): Promise<TransferItem> {
     return new Promise((resolve, reject) => {
       const item: TransferItem = {
         id: generateId(),
@@ -178,7 +212,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
         size: metadata?.size || 0,
         transferred: 0,
         config: config || connection.getConfig(),
-        resolve,
+        resolve: () => resolve(item),
         reject,
         targetExists: metadata?.targetExists,
         targetType: metadata?.targetType,
@@ -244,25 +278,38 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
             }
           }
 
-          // Optimization: Bypass stat if metadata provided or session already set
+          // Optimization: Bypass stat if metadata provided or session/batch already set to overwrite
           let exists = item.targetExists;
           let targetType = item.targetType;
 
-          if (exists === undefined && this.sessionCollisionAction === 'ask') {
+          const shouldCheckCollision =
+            this.sessionCollisionAction !== 'overwrite' &&
+            this.batchCollisionAction !== 'overwrite';
+
+          if (exists === undefined && shouldCheckCollision) {
             try {
               const remoteStat = await connection.stat(item.remotePath);
               exists = !!remoteStat;
               targetType = remoteStat?.type;
             } catch {
-              // File doesn't exist yet (parent directory may not exist)
               exists = false;
             }
           }
 
-          if (exists && this.sessionCollisionAction === 'ask') {
+          if (exists && shouldCheckCollision) {
             const action = await this.handleCollision(item.remotePath, 'remote', targetType === 'directory');
+            if (action === 'cancel' || this.cancelled) {
+              item.status = 'cancelled';
+              if ((item as any).resolve) (item as any).resolve(item);
+              return;
+            }
             if (action === 'skip') {
-              throw new Error('Skipped: Remote target exists');
+              item.status = 'cancelled';
+              item.error = undefined;
+              item.progress = 100;
+              logger.info(`Skipped existing remote target: ${item.remotePath}`);
+              if ((item as any).resolve) (item as any).resolve(item);
+              return;
             }
             if (targetType === 'directory') {
               await connection.rmdir(item.remotePath, true);
@@ -275,11 +322,15 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
             `upload ${path.basename(item.localPath)}`
           );
         } else {
-          // Optimization: Bypass stat if metadata provided or session already set
+          // Optimization: Bypass stat if metadata provided or session/batch already set to overwrite
           let exists = item.targetExists;
           let targetType = item.targetType;
 
-          if (exists === undefined && this.sessionCollisionAction === 'ask') {
+          const shouldCheckCollision =
+            this.sessionCollisionAction !== 'overwrite' &&
+            this.batchCollisionAction !== 'overwrite';
+
+          if (exists === undefined && shouldCheckCollision) {
             try {
               const stats = await fs.promises.stat(item.localPath);
               exists = true;
@@ -289,10 +340,20 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
             }
           }
 
-          if (exists && this.sessionCollisionAction === 'ask') {
+          if (exists && shouldCheckCollision) {
             const action = await this.handleCollision(item.localPath, 'local', targetType === 'directory');
+            if (action === 'cancel' || this.cancelled) {
+              item.status = 'cancelled';
+              if ((item as any).resolve) (item as any).resolve(item);
+              return;
+            }
             if (action === 'skip') {
-              throw new Error('Skipped: Local target exists');
+              item.status = 'cancelled';
+              item.error = undefined;
+              item.progress = 100;
+              logger.info(`Skipped existing local target: ${item.localPath}`);
+              if ((item as any).resolve) (item as any).resolve(item);
+              return;
             }
             if (targetType === 'directory') {
               await fs.promises.rm(item.localPath, { recursive: true, force: true });
@@ -391,6 +452,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     } finally {
       this.isProcessing = false;
       this.active = false;
+      this.batchCollisionAction = 'ask';
       this.emit('queueComplete');
     }
   }
@@ -420,7 +482,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     const groupName = path.basename(localPath);
     const groupPath = localPath;
 
-    this.sessionCollisionAction = 'ask';
+    this.batchCollisionAction = 'ask';
     statusBar.info(`Adding ${files.length} files to queue...`);
 
     const filePromises = files.map(async (file) => {
@@ -436,12 +498,16 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
 
       try {
         // Existence/collision checks are done lazily in processQueue.
-        await this.uploadFile(connection, file, remoteFilePath, config, {
+        const transferRes = await this.uploadFile(connection, file, remoteFilePath, config, {
           batchId,
           groupName,
           groupPath
         });
-        result.uploaded.push(relativePath);
+        if (transferRes.status === 'cancelled') {
+          result.skipped.push(relativePath);
+        } else {
+          result.uploaded.push(relativePath);
+        }
       } catch (error: any) {
         logger.error(`Upload failed for ${relativePath}:`, error);
         result.failed.push({ path: relativePath, error: error.message });
@@ -480,7 +546,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     const groupName = path.basename(remotePath) || 'root';
     const groupPath = localPath;
 
-    this.sessionCollisionAction = 'ask';
+    this.batchCollisionAction = 'ask';
 
     // Process directory creation first
     statusBar.info(`Creating directory structure...`);
@@ -512,14 +578,18 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
 
       try {
         // Bypass redundant stat calls by passing known remote and local metadata
-        await this.downloadFile(connection, file.path, localFilePath, config, {
+        const transferRes = await this.downloadFile(connection, file.path, localFilePath, config, {
           size: file.size,
           targetType: 'file',
           batchId,
           groupName,
           groupPath
         });
-        result.downloaded.push(relativePath);
+        if (transferRes.status === 'cancelled') {
+          result.skipped.push(relativePath);
+        } else {
+          result.downloaded.push(relativePath);
+        }
       } catch (error: any) {
         result.failed.push({ path: relativePath, error: error.message });
       }
@@ -633,6 +703,16 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
 
     await traverse(remotePath, 0);
     return files;
+  }
+
+  public resetCollisionBehavior(): void {
+    this.sessionCollisionAction = 'ask';
+    this.batchCollisionAction = 'ask';
+    statusBar.info('Overwrite & collision confirmation settings have been reset to default.');
+  }
+
+  public resetBatchCollision(): void {
+    this.batchCollisionAction = 'ask';
   }
 
   cancel(): void {
