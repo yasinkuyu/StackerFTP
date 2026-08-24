@@ -21,6 +21,14 @@ describe('helpers', () => {
     expect(matchesPattern('src/utils/helpers.ts', ['**/*.js'])).toBe(false);
   });
 
+  it('matchesPattern handles folder names and nested files', () => {
+    expect(matchesPattern('node_modules/lodash/index.js', ['node_modules'])).toBe(true);
+    expect(matchesPattern('vendor/bundle/gems', ['vendor'])).toBe(true);
+    expect(matchesPattern('.git/objects/abc', ['.git'])).toBe(true);
+    expect(matchesPattern('logs/server.log', ['*.log'])).toBe(true);
+    expect(matchesPattern('src/components/App.tsx', ['**/*.tsx'])).toBe(true);
+  });
+
   it('formatFileSize formats bytes', () => {
     expect(formatFileSize(0)).toBe('0 B');
     expect(formatFileSize(1024)).toBe('1 KB');

@@ -245,9 +245,12 @@ export class ConnectionManager {
           } else {
             this.manualDisconnects.delete(key);
           }
-          // Clear primary if this was it
+          // Clear primary or active if this was it
           if (this.primaryConnectionKey === key) {
             this.primaryConnectionKey = undefined;
+          }
+          if (this.activeConnectionKey === key) {
+            this.activeConnectionKey = undefined;
           }
           this.updateStatusBar();
           this._onConnectionChanged.fire();

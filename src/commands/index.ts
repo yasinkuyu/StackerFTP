@@ -873,9 +873,12 @@ export function registerCommands(
 
         handledCount++;
 
+        const itemConfig = itemOrResource?.config || config;
+        const itemConnection = itemOrResource?.connectionRef || connectionManager.getConnection(itemConfig) || connection;
+
         try {
           if (isDirectory) {
-            const result = await transferManager.downloadDirectory(connection, remotePath, localPath, config);
+            const result = await transferManager.downloadDirectory(itemConnection, remotePath, localPath, itemConfig);
             downloadedCount += result.downloaded.length;
             failedCount += result.failed.length;
           } else {
@@ -884,7 +887,7 @@ export function registerCommands(
             if (!fs.existsSync(localDir)) {
               fs.mkdirSync(localDir, { recursive: true });
             }
-            await transferManager.downloadFile(connection, remotePath, localPath);
+            await transferManager.downloadFile(itemConnection, remotePath, localPath, itemConfig);
             downloadedCount++;
           }
         } catch (err) {
@@ -1025,13 +1028,13 @@ export function registerCommands(
 
   const openRemoteFileCommand = vscode.commands.registerCommand('stackerftp.openRemoteFile', async (item: any) => {
     const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) return;
+    if (!workspaceRoot && !item?.config) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
+    const config = item?.config || (workspaceRoot ? configManager.getActiveConfig(workspaceRoot) : undefined);
     if (!config) return;
 
     try {
-      const connection = await connectionManager.ensureConnection(config);
+      const connection = item?.connectionRef || connectionManager.getConnection(config) || await connectionManager.ensureConnection(config);
       const content = await connection.readFile(item.entry.path);
 
       // Create a temporary file
@@ -1076,15 +1079,14 @@ export function registerCommands(
     }
 
     const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) return;
-
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) return;
 
     try {
-      const connection = await connectionManager.ensureConnection(config);
-
       for (const item of items) {
+        const config = item.config || (workspaceRoot ? configManager.getActiveConfig(workspaceRoot) : undefined);
+        if (!config) continue;
+
+        const connection = item.connectionRef || connectionManager.getConnection(config) || await connectionManager.ensureConnection(config);
+
         if (item.entry.type === 'directory') {
           await connection.rmdir(item.entry.path, true);
         } else {

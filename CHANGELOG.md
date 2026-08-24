@@ -2,6 +2,16 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.2.12] - 2026-08-24
+
+### Fixed
+- **Ignore Pattern Matching**: Enhanced `matchesPattern` with `minimatch` and prefix path matching so patterns like `node_modules`, `.git`, `vendor` or `*.log` properly match files in nested subdirectories.
+- **Multi-Server Command Routing**: Fixed `deleteRemote`, `openRemoteFile`, and `download` commands to use the target tree item's configuration and connection reference instead of falling back to default active server.
+- **File Watcher Safety**: Fixed `autoDelete` check in file watcher to require explicit `autoDelete: true` before deleting remote files, preventing accidental deletions when omitted.
+- **Remote POSIX Path Normalization**: Normalized remote root and target paths with `path.posix.relative` in `getLocalPathFromRemote` for robust cross-platform path resolution on Windows.
+- **Remote Explorer Webview Context Support**: Fixed file download and open actions in the Webview Remote Explorer to respect the configured local `context` directory.
+- **Connection Manager State Cleanup**: Cleaned up active connection key state on disconnect events.
+
 ## [1.2.11] - 2026-08-24
 
 ### Added

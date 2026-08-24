@@ -13,7 +13,7 @@ import { BaseConnection } from '../core/connection';
 import { FileEntry, FTPConfig } from '../types';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
-import { formatFileSize, formatDate, normalizeRemotePath } from '../utils/helpers';
+import { formatFileSize, formatDate, normalizeRemotePath, getLocalPathFromRemote } from '../utils/helpers';
 import * as fs from 'fs';
 
 export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider {
@@ -410,8 +410,7 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
     if (!workspaceRoot) return;
 
     try {
-      const relativePath = path.relative(this._currentConfig.remotePath, remotePath);
-      const localPath = path.join(workspaceRoot, relativePath);
+      const localPath = getLocalPathFromRemote(workspaceRoot, remotePath, this._currentConfig);
 
       if (isDirectory) {
         const result = await transferManager.downloadDirectory(this._connection, remotePath, localPath, this._currentConfig);
@@ -636,9 +635,8 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
       // Show inline loading state on the specific file
       this._view?.webview.postMessage({ type: 'fileLoading', path: filePath, loading: true });
 
-      // Calculate local path (mirror remote structure in workspace)
-      const relativePath = path.relative(this._currentConfig.remotePath, filePath);
-      const localPath = path.join(workspaceRoot, relativePath);
+      // Calculate local path (mirror remote structure in workspace / context)
+      const localPath = getLocalPathFromRemote(workspaceRoot, filePath, this._currentConfig);
       const localDir = path.dirname(localPath);
 
       // Ensure local directory exists

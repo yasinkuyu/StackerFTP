@@ -5,6 +5,7 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { minimatch } from 'minimatch';
 import { FilePermissions, FileEntry } from '../types';
 
 export function formatFileSize(bytes: number): string {
@@ -158,19 +159,38 @@ export function getRelativePath(from: string, to: string): string {
 }
 
 export function matchesPattern(filePath: string, patterns: string[]): boolean {
+  if (!filePath || !patterns) return false;
   // Ensure patterns is an array to prevent iteration errors on strings/objects
   const patternList = Array.isArray(patterns) ? patterns : [patterns].filter(p => typeof p === 'string');
+  const normalizedPath = filePath.replace(/\\/g, '/');
 
-  for (const pattern of patternList) {
-    const regex = new RegExp(
-      '^' + pattern
-        .replace(/\./g, '\\.')
-        .replace(/\*\*/g, '___DOUBLESTAR___')
-        .replace(/\*/g, '[^/]*')
-        .replace(/\?/g, '.')
-        .replace(/___DOUBLESTAR___/g, '.*') + '$'
-    );
-    if (regex.test(filePath)) return true;
+  for (const rawPattern of patternList) {
+    if (!rawPattern || typeof rawPattern !== 'string') continue;
+    const pattern = rawPattern.trim().replace(/\\/g, '/');
+    if (!pattern) continue;
+
+    const cleanPattern = pattern.endsWith('/') ? pattern.slice(0, -1) : pattern;
+
+    // Direct exact or segment prefix match (e.g. "node_modules", ".git")
+    if (
+      normalizedPath === cleanPattern ||
+      normalizedPath.startsWith(cleanPattern + '/') ||
+      normalizedPath.includes('/' + cleanPattern + '/') ||
+      normalizedPath.endsWith('/' + cleanPattern)
+    ) {
+      return true;
+    }
+
+    // Glob / minimatch checks
+    if (
+      minimatch(normalizedPath, pattern, { dot: true }) ||
+      minimatch(normalizedPath, `**/${pattern}`, { dot: true }) ||
+      minimatch(normalizedPath, `${cleanPattern}/**`, { dot: true }) ||
+      minimatch(normalizedPath, `**/${cleanPattern}/**`, { dot: true }) ||
+      minimatch(normalizedPath, pattern, { dot: true, matchBase: true })
+    ) {
+      return true;
+    }
   }
   return false;
 }
@@ -349,7 +369,9 @@ export function getLocalRelativePath(workspaceRoot: string, localPath: string, c
 }
 
 export function getLocalPathFromRemote(workspaceRoot: string, remoteFilePath: string, config: { remotePath: string; context?: string }): string {
-  const rel = path.relative(config.remotePath || "/", remoteFilePath);
+  const normRemoteRoot = normalizeRemotePath(config.remotePath || "/");
+  const normRemoteFile = normalizeRemotePath(remoteFilePath);
+  const rel = path.posix.relative(normRemoteRoot, normRemoteFile);
   const localBase = getLocalRoot(workspaceRoot, config);
   return path.join(localBase, rel);
 }

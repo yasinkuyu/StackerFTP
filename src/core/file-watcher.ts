@@ -183,7 +183,7 @@ export class FileWatcher implements vscode.Disposable {
           break;
 
         case 'delete':
-          if (watcherConfig?.autoDelete !== false) {
+          if (watcherConfig?.autoDelete === true) {
             // Only delete if there's an active connection
             if (!connectionManager.isConnected(this.config)) {
               logger.debug(`No active connection, skipping auto-delete: ${relativePath}`);
