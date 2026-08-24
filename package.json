@@ -1,7 +1,7 @@
 {
   "name": "stackerftp",
   "displayName": "StackerFTP - Professional SFTP/FTP Client",
-  "version": "1.2.12",
+  "version": "1.2.13",
   "publisher": "yasinkuyu",
   "author": "Insya, Yasin Kuyu",
   "license": "MIT",
@@ -473,6 +473,18 @@
         "icon": "$(clear-all)"
       },
       {
+        "command": "stackerftp.transferQueue.expandAll",
+        "title": "Expand All",
+        "category": "StackerFTP",
+        "icon": "$(expand-all)"
+      },
+      {
+        "command": "stackerftp.transferQueue.collapseAll",
+        "title": "Collapse All",
+        "category": "StackerFTP",
+        "icon": "$(collapse-all)"
+      },
+      {
         "command": "stackerftp.transferQueue",
         "title": "SFTP: Show Transfer Queue (Legacy)",
         "category": "StackerFTP",
@@ -828,6 +840,16 @@
           "command": "stackerftp.clearTransferQueue",
           "when": "view == stackerftp.transferQueue",
           "group": "navigation@2"
+        },
+        {
+          "command": "stackerftp.transferQueue.expandAll",
+          "when": "view == stackerftp.transferQueue",
+          "group": "navigation@3"
+        },
+        {
+          "command": "stackerftp.transferQueue.collapseAll",
+          "when": "view == stackerftp.transferQueue",
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [
@@ -983,17 +1005,17 @@
         },
         {
           "command": "stackerftp.cancelTransferItem",
-          "when": "view == stackerftp.transferQueue && viewItem =~ /transfer-(pending|transferring)/",
+          "when": "view == stackerftp.transferQueue && viewItem =~ /transfer-(group-)?(pending|transferring)/",
           "group": "inline"
         },
         {
           "command": "stackerftp.retryTransferItem",
-          "when": "view == stackerftp.transferQueue && viewItem =~ /^transfer-error$/",
+          "when": "view == stackerftp.transferQueue && viewItem =~ /transfer-(group-)?error/",
           "group": "inline"
         },
         {
           "command": "stackerftp.retryTransferItem",
-          "when": "view == stackerftp.transferQueue && viewItem =~ /^transfer-error$/",
+          "when": "view == stackerftp.transferQueue && viewItem =~ /transfer-(group-)?error/",
           "group": "navigation@1"
         }
       ],

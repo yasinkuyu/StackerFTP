@@ -102,6 +102,29 @@ export interface TransferItem {
   /** Metadata to avoid redundant stat calls */
   targetExists?: boolean;
   targetType?: 'file' | 'directory' | 'symlink';
+  /** Batch identifier for grouped folder uploads/downloads */
+  batchId?: string;
+  /** Display group name (e.g. folder name) for hierarchical view */
+  groupName?: string;
+  /** Root folder path associated with this batch */
+  groupPath?: string;
+}
+
+export interface TransferBatchInfo {
+  batchId: string;
+  groupName: string;
+  groupPath?: string;
+  direction: 'upload' | 'download';
+  items: TransferItem[];
+  totalFiles: number;
+  completedFiles: number;
+  errorFiles: number;
+  pendingFiles: number;
+  transferringFiles: number;
+  totalBytes: number;
+  transferredBytes: number;
+  progress: number;
+  status: 'pending' | 'transferring' | 'completed' | 'error';
 }
 
 export interface SyncResult {

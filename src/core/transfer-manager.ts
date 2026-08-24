@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { BaseConnection } from './connection';
 import { connectionManager } from './connection-manager';
-import { TransferItem, SyncResult, FTPConfig } from '../types';
+import { TransferItem, SyncResult, FTPConfig, TransferBatchInfo } from '../types';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
 import { generateId, normalizeRemotePath, matchesPattern } from '../utils/helpers';
@@ -114,7 +114,14 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     localPath: string,
     remotePath: string,
     config: FTPConfig,
-    metadata?: { size?: number; targetExists?: boolean; targetType?: 'file' | 'directory' | 'symlink' }
+    metadata?: {
+      size?: number;
+      targetExists?: boolean;
+      targetType?: 'file' | 'directory' | 'symlink';
+      batchId?: string;
+      groupName?: string;
+      groupPath?: string;
+    }
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const item: TransferItem = {
@@ -130,7 +137,10 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
         resolve,
         reject,
         targetExists: metadata?.targetExists,
-        targetType: metadata?.targetType
+        targetType: metadata?.targetType,
+        batchId: metadata?.batchId,
+        groupName: metadata?.groupName,
+        groupPath: metadata?.groupPath
       };
 
       this.queue.push(item);
@@ -148,7 +158,14 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     remotePath: string,
     localPath: string,
     config?: FTPConfig,
-    metadata?: { size?: number; targetExists?: boolean; targetType?: 'file' | 'directory' | 'symlink' }
+    metadata?: {
+      size?: number;
+      targetExists?: boolean;
+      targetType?: 'file' | 'directory' | 'symlink';
+      batchId?: string;
+      groupName?: string;
+      groupPath?: string;
+    }
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const item: TransferItem = {
@@ -164,7 +181,10 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
         resolve,
         reject,
         targetExists: metadata?.targetExists,
-        targetType: metadata?.targetType
+        targetType: metadata?.targetType,
+        batchId: metadata?.batchId,
+        groupName: metadata?.groupName,
+        groupPath: metadata?.groupPath
       };
 
       this.queue.push(item);
@@ -396,6 +416,10 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       return result;
     }
 
+    const batchId = `upload-batch-${generateId()}`;
+    const groupName = path.basename(localPath);
+    const groupPath = localPath;
+
     this.sessionCollisionAction = 'ask';
     statusBar.info(`Adding ${files.length} files to queue...`);
 
@@ -412,7 +436,11 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
 
       try {
         // Existence/collision checks are done lazily in processQueue.
-        await this.uploadFile(connection, file, remoteFilePath, config);
+        await this.uploadFile(connection, file, remoteFilePath, config, {
+          batchId,
+          groupName,
+          groupPath
+        });
         result.uploaded.push(relativePath);
       } catch (error: any) {
         logger.error(`Upload failed for ${relativePath}:`, error);
@@ -448,6 +476,10 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       return result;
     }
 
+    const batchId = `download-batch-${generateId()}`;
+    const groupName = path.basename(remotePath) || 'root';
+    const groupPath = localPath;
+
     this.sessionCollisionAction = 'ask';
 
     // Process directory creation first
@@ -482,7 +514,10 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
         // Bypass redundant stat calls by passing known remote and local metadata
         await this.downloadFile(connection, file.path, localFilePath, config, {
           size: file.size,
-          targetType: 'file'
+          targetType: 'file',
+          batchId,
+          groupName,
+          groupPath
         });
         result.downloaded.push(relativePath);
       } catch (error: any) {
@@ -621,6 +656,32 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       this.queue.splice(index, 1);
       this.emitQueueUpdate();
     }
+  }
+
+  /**
+   * Cancel all transfers belonging to a specific batch
+   */
+  cancelBatch(batchId: string): void {
+    const itemsToCancel = this.queue.filter(item => item.batchId === batchId);
+    for (const item of itemsToCancel) {
+      if (item.status === 'pending' || item.status === 'transferring') {
+        this._activeCount--;
+      }
+      item.status = 'error';
+      item.error = 'Cancelled by user';
+    }
+    this.queue = this.queue.filter(item => item.batchId !== batchId);
+    this.emitQueueUpdate();
+  }
+
+  /**
+   * Retry all failed items belonging to a specific batch
+   */
+  retryBatch(batchId: string): number {
+    const failedIds = this.queue
+      .filter(item => item.batchId === batchId && item.status === 'error')
+      .map(item => item.id);
+    return this.retryItems(failedIds);
   }
 
   /**

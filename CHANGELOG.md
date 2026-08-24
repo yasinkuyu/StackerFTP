@@ -2,6 +2,14 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.2.13] - 2026-08-24
+
+### Added
+- **Hierarchical & Recursive Transfer Queue Tree**: Added true multi-level folder and subfolder hierarchy in the Transfer Queue panel, organizing directory transfers into collapsible folder trees.
+- **Per-Folder Progress Tracking**: Displays live percentage, completed/total file counters, and byte transfer progress for each folder and subfolder branch.
+- **Expand All / Collapse All in Transfer Queue**: Added toolbar buttons (`Expand All` and `Collapse All`) with default collapsed state for a clean and minimalist transfer queue view.
+- **Folder-Level Batch Cancel & Retry**: Added ability to cancel or retry all transfers within a specific folder/subfolder branch with a single action.
+
 ## [1.2.12] - 2026-08-24
 
 ### Fixed

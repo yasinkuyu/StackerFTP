@@ -56,4 +56,9 @@ describe('helpers', () => {
     const expected = path.resolve(ws, 'out/index.html');
     expect(getLocalPathFromRemote(ws, '/index.html', { remotePath: '/', context: 'out' })).toBe(expected);
   });
+
+  it('formatFileSize formats large bytes', () => {
+    expect(formatFileSize(1048576)).toBe('1 MB');
+    expect(formatFileSize(1073741824)).toBe('1 GB');
+  });
 });

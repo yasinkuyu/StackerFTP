@@ -25,6 +25,7 @@ export interface ProviderContainer {
   remoteExplorer?: any;
   connectionFormProvider?: ConnectionFormProvider;
   treeView?: vscode.TreeView<any>;
+  transferQueueProvider?: any;
 }
 
 type ProfileAction = 'create' | 'edit' | 'delete' | 'setDefault' | 'clearDefault' | 'openJson';
@@ -1588,30 +1589,53 @@ export function registerCommands(
     await vscode.commands.executeCommand('stackerftp.transferQueue.focus');
   });
 
-  // Cancel specific transfer item
+  // Cancel specific transfer item or folder batch
   const cancelTransferItemCommand = vscode.commands.registerCommand('stackerftp.cancelTransferItem', (item: any) => {
     if (item && item.transferItem) {
       transferManager.cancelItem(item.transferItem.id);
       statusBar.success(`Cancelled: ${path.basename(item.transferItem.localPath)}`);
+    } else if (item && item.items) {
+      for (const file of item.items) {
+        transferManager.cancelItem(file.id);
+      }
+      if (item.batchId && item.isRoot) {
+        transferManager.cancelBatch(item.batchId);
+      }
+      statusBar.success(`Cancelled folder transfer: ${item.folderName || 'folder'}`);
+    } else if (item && item.batchInfo) {
+      transferManager.cancelBatch(item.batchInfo.batchId);
+      statusBar.success(`Cancelled folder transfer: ${item.batchInfo.groupName}`);
     }
   });
 
-  // Retry failed transfer items
+  // Retry failed transfer items or folder batch
   const retryTransferItemCommand = vscode.commands.registerCommand('stackerftp.retryTransferItem', (item: any, selectedItems?: any[]) => {
     const items = selectedItems && selectedItems.length > 0
       ? selectedItems
       : (item ? [item] : []);
 
-    const retryableIds = items
-      .filter(queueItem => queueItem?.transferItem?.status === 'error')
-      .map(queueItem => queueItem.transferItem.id);
+    let retriedCount = 0;
+    const retryableIds: string[] = [];
 
-    if (retryableIds.length === 0) {
-      statusBar.warn('No failed transfers selected');
-      return;
+    for (const queueItem of items) {
+      if (queueItem?.transferItem?.status === 'error') {
+        retryableIds.push(queueItem.transferItem.id);
+      } else if (queueItem?.items) {
+        const errorIds = queueItem.items
+          .filter((i: any) => i.status === 'error')
+          .map((i: any) => i.id);
+        if (errorIds.length > 0) {
+          retryableIds.push(...errorIds);
+        }
+      } else if (queueItem?.batchInfo) {
+        retriedCount += transferManager.retryBatch(queueItem.batchInfo.batchId);
+      }
     }
 
-    const retriedCount = transferManager.retryItems(retryableIds);
+    if (retryableIds.length > 0) {
+      retriedCount += transferManager.retryItems(retryableIds);
+    }
+
     if (retriedCount === 0) {
       statusBar.warn('No failed transfers were re-queued');
       return;
@@ -1624,6 +1648,20 @@ export function registerCommands(
   const clearTransferQueueCommand = vscode.commands.registerCommand('stackerftp.clearTransferQueue', () => {
     transferManager.clearCompleted();
     statusBar.success('Queue cleared');
+  });
+
+  // Transfer queue expand all
+  const transferQueueExpandAllCommand = vscode.commands.registerCommand('stackerftp.transferQueue.expandAll', () => {
+    if (container.transferQueueProvider) {
+      container.transferQueueProvider.expandAll();
+    }
+  });
+
+  // Transfer queue collapse all
+  const transferQueueCollapseAllCommand = vscode.commands.registerCommand('stackerftp.transferQueue.collapseAll', () => {
+    if (container.transferQueueProvider) {
+      container.transferQueueProvider.collapseAll();
+    }
   });
 
   // Legacy quick pick for transfer queue (backwards compatibility)
@@ -2905,7 +2943,9 @@ export function registerCommands(
     showTransferQueueCommand,
     cancelTransferItemCommand,
     retryTransferItemCommand,
-    clearTransferQueueCommand
+    clearTransferQueueCommand,
+    transferQueueExpandAllCommand,
+    transferQueueCollapseAllCommand
   );
 
   const viewDisposables = registerViewCommands(container);

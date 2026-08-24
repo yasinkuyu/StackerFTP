@@ -175,6 +175,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // 8. Transfer Queue & File Watcher
   const transferQueueProvider = new TransferQueueTreeProvider();
+  providerContainer.transferQueueProvider = transferQueueProvider;
   context.subscriptions.push(transferQueueProvider);
 
   transferManager.on('queueUpdate', () => {
