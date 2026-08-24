@@ -23,6 +23,7 @@ export interface FTPConfig {
   privateKeyPath?: string;
   passphrase?: string;
   remotePath: string;
+  context?: string;
   localPath?: string;
   uploadOnSave?: boolean;
   downloadOnOpen?: boolean;

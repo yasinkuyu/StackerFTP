@@ -12,7 +12,7 @@ import { configManager } from './config';
 import { connectionManager } from './connection-manager';
 import { transferManager } from './transfer-manager';
 import { logger } from '../utils/logger';
-import { normalizeRemotePath, matchesPattern } from '../utils/helpers';
+import { normalizeRemotePath, matchesPattern, getLocalRelativePath } from '../utils/helpers';
 import { wasRecentlyUploaded } from '../extension';
 
 export class FileWatcher implements vscode.Disposable {
@@ -92,7 +92,7 @@ export class FileWatcher implements vscode.Disposable {
   }
 
   private handleFileChange(filePath: string, type: 'create' | 'change' | 'delete'): void {
-    const relativePath = path.relative(this.workspaceRoot, filePath);
+    const relativePath = getLocalRelativePath(this.workspaceRoot, filePath, this.config);
 
     // Check ignore patterns
     if (this.config.ignore && matchesPattern(relativePath, this.config.ignore)) {
@@ -125,7 +125,7 @@ export class FileWatcher implements vscode.Disposable {
 
     if (!changeType) return;
 
-    const relativePath = path.relative(this.workspaceRoot, filePath);
+    const relativePath = getLocalRelativePath(this.workspaceRoot, filePath, this.config);
     const remotePath = normalizeRemotePath(path.join(this.config.remotePath, relativePath));
 
     // Normalize watcher config (handle boolean case)

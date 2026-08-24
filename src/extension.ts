@@ -17,7 +17,7 @@ import { logger } from './utils/logger';
 import { statusBar } from './utils/status-bar';
 import { registerCommands } from './commands';
 import { fileWatcherManager } from './core/file-watcher';
-import { matchesPattern } from './utils/helpers';
+import { matchesPattern, getLocalRelativePath, normalizeRemotePath } from './utils/helpers';
 import { TransferQueueTreeProvider } from './providers/transfer-queue-tree';
 
 let remoteExplorerProvider: RemoteExplorerWebviewProvider;
@@ -271,7 +271,7 @@ async function handleFileSave(document: vscode.TextDocument, workspaceRoot: stri
     return;
   }
 
-  const relativePath = path.relative(workspaceRoot, document.fileName);
+  const relativePath = getLocalRelativePath(workspaceRoot, document.fileName, config);
   if (config.ignore && matchesPattern(relativePath, config.ignore)) {
     return;
   }
@@ -309,7 +309,7 @@ async function handleFileSave(document: vscode.TextDocument, workspaceRoot: stri
       logger.warn(`Connection lost during save for ${config.host}`);
       return;
     }
-    const remotePath = path.join(config.remotePath, relativePath).replace(/\\/g, '/');
+    const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
     const remoteDir = path.dirname(remotePath);
     try {

@@ -198,6 +198,9 @@ export class ConnectionManager {
           }
 
           workingConfig.password = password;
+          // Keep prompted credentials in memory on the original config so reconnects
+          // and later commands do not lose them after the first successful login.
+          config.password = password;
         }
 
         // Show connecting status

@@ -15,6 +15,7 @@ import { webMasterTools } from '../webmaster/tools';
 import { getWorkspaceRoot } from '../commands/utils';
 import { formatFileSize, normalizeRemotePath } from '../utils/helpers';
 import { statusBar } from '../utils/status-bar';
+import { getLocalPathFromRemote } from '../utils/helpers';
 
 export class QuickSearchPanel {
   private static _panel?: vscode.WebviewPanel;
@@ -273,7 +274,7 @@ export class QuickSearchPanel {
   private static async _openFile(filePath: string): Promise<void> {
     if (!this._workspaceRoot || !this._config) return;
 
-    const localPath = path.join(this._workspaceRoot, path.relative(this._config.remotePath, filePath));
+    const localPath = getLocalPathFromRemote(this._workspaceRoot, filePath, this._config);
     const localDir = path.dirname(localPath);
 
     try {
@@ -295,7 +296,7 @@ export class QuickSearchPanel {
   private static async _downloadFile(filePath: string): Promise<void> {
     if (!this._workspaceRoot || !this._config) return;
 
-    const localPath = path.join(this._workspaceRoot, path.relative(this._config.remotePath, filePath));
+    const localPath = getLocalPathFromRemote(this._workspaceRoot, filePath, this._config);
     const localDir = path.dirname(localPath);
 
     try {
@@ -316,7 +317,7 @@ export class QuickSearchPanel {
   private static async _revealInExplorer(filePath: string): Promise<void> {
     if (!this._workspaceRoot || !this._config) return;
 
-    const localPath = path.join(this._workspaceRoot, path.relative(this._config.remotePath, filePath));
+    const localPath = getLocalPathFromRemote(this._workspaceRoot, filePath, this._config);
 
     if (fs.existsSync(localPath)) {
       await vscode.commands.executeCommand('revealFileInExplorer', vscode.Uri.file(localPath));

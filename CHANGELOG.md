@@ -2,6 +2,28 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.2.11] - 2026-08-24
+
+### Added
+- **Local Context Path Support (`context`)**: Added full support for the `context` setting in `sftp.json`. Subdirectories (e.g. `out`, `build`, `dist`) can now be directly mapped to the remote root or custom remote paths.
+
+### Fixed
+- **Context Path Mapping Across Operations**: Fixed relative path calculation in `upload`, `forceUpload`, `uploadProject`, `download`, `downloadProject`, `diff`, `uploadOnSave`, file watcher, and quick search panel so files within the configured context folder upload/download without extraneous local folder prefixes on the remote server.
+- **Remote to Local Path Resolution**: Fixed downloads and diff inspections so remote files map back to the local `context` subfolder when configured.
+
+## [1.2.10] - 2026-03-26
+
+### Fixed
+- **Config Resolution During Transfers**: Fixed intermittent `No SFTP configuration found` errors by resolving the workspace from the selected item and reloading `sftp.json` when the in-memory config cache is empty.
+- **SFTP Reconnect Stability**: Fixed reconnect behavior after password-prompt logins by retaining runtime credentials in memory for later reconnect attempts.
+- **Connection State Cleanup**: Improved SFTP close/end handling and keepalive settings so dropped sessions are cleaned up consistently before reconnecting.
+
+## [1.2.9] - 2026-03-26
+
+### Fixed
+- **SCM Multi-Select Upload**: Fixed Source Control `Changes` context-menu uploads so all selected files are uploaded instead of only the active item.
+- **SCM Multi-Select Download**: Fixed the matching download path for Source Control multi-selection so all selected files are processed consistently.
+
 ## [1.2.8] - 2026-03-18
 
 ### Changed

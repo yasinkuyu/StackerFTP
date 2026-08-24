@@ -32,7 +32,8 @@ export class SFTPConnection extends BaseConnection {
         port: this.config.port || 22,
         username: this.config.username,
         readyTimeout: this.config.connTimeout || 20000,
-        keepaliveInterval: this.config.keepalive || 10000
+        keepaliveInterval: this.config.keepalive || 10000,
+        keepaliveCountMax: 3
       };
 
       if (this.config.privateKeyPath) {
@@ -68,8 +69,16 @@ export class SFTPConnection extends BaseConnection {
       this.client.on('close', () => {
         logger.info('SSH connection closed');
         this._connected = false;
+        this.client = null;
         this.sftp = null;
         this.emit('disconnected');
+      });
+
+      this.client.on('end', () => {
+        logger.info('SSH connection ended');
+        this._connected = false;
+        this.client = null;
+        this.sftp = null;
       });
 
       this.client.connect(connectConfig);
@@ -85,8 +94,16 @@ export class SFTPConnection extends BaseConnection {
     client.on('close', () => {
       logger.info('SSH connection closed');
       this._connected = false;
+      this.client = null;
       this.sftp = null;
       this.emit('disconnected');
+    });
+
+    client.on('end', () => {
+      logger.info('SSH connection ended');
+      this._connected = false;
+      this.client = null;
+      this.sftp = null;
     });
   }
 

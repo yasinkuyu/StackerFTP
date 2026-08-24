@@ -330,3 +330,26 @@ export function isBinaryFile(filePath: string): boolean {
 export function isSystemFile(filePath: string): boolean {
   return SYSTEM_PATTERNS.some(pattern => filePath.includes(pattern));
 }
+
+export function getLocalRoot(workspaceRoot: string, config?: { context?: string }): string {
+  if (config?.context) {
+    return path.resolve(workspaceRoot, config.context);
+  }
+  return workspaceRoot;
+}
+
+export function getLocalRelativePath(workspaceRoot: string, localPath: string, config?: { context?: string }): string {
+  if (config?.context) {
+    const contextDir = path.resolve(workspaceRoot, config.context);
+    if (localPath === contextDir || localPath.startsWith(contextDir + path.sep)) {
+      return path.relative(contextDir, localPath);
+    }
+  }
+  return path.relative(workspaceRoot, localPath);
+}
+
+export function getLocalPathFromRemote(workspaceRoot: string, remoteFilePath: string, config: { remotePath: string; context?: string }): string {
+  const rel = path.relative(config.remotePath || "/", remoteFilePath);
+  const localBase = getLocalRoot(workspaceRoot, config);
+  return path.join(localBase, rel);
+}

@@ -12,7 +12,7 @@ import { transferManager } from '../core/transfer-manager';
 import { FTPConfig, Protocol } from '../types';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
-import { normalizeRemotePath, formatFileSize, sanitizeRelativePath } from '../utils/helpers';
+import { normalizeRemotePath, formatFileSize, sanitizeRelativePath, getLocalRelativePath, getLocalRoot, getLocalPathFromRemote } from '../utils/helpers';
 import { ConnectionWizard } from '../core/connection-wizard';
 import { createGitIntegration } from '../core/git-integration';
 import { getWorkspaceRoot } from './utils';
@@ -194,6 +194,85 @@ async function promptForProfileOverrides(
   setOptionalProfileField(profile, 'secure', secure ?? undefined);
 
   return profile;
+}
+
+function collectCommandSelection(args: any[]): any[] {
+  const items: any[] = [];
+  const seen = new Set<any>();
+
+  const addItem = (item: any) => {
+    if (!item || seen.has(item)) return;
+    seen.add(item);
+    items.push(item);
+  };
+
+  const visit = (value: any) => {
+    if (!value) return;
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        visit(item);
+      }
+      return;
+    }
+
+    if ((typeof value?.fsPath === 'string' && typeof value?.scheme === 'string') || value?.resourceUri || value?.entry) {
+      addItem(value);
+    }
+
+    if (typeof value !== 'object') {
+      return;
+    }
+
+    for (const key of ['selectedItems', 'selection', 'selectedResourceStates', 'resourceStates', 'scmResourceStates', 'items']) {
+      if (key in value) {
+        visit(value[key]);
+      }
+    }
+  };
+
+  for (const arg of args) {
+    visit(arg);
+  }
+
+  return items;
+}
+
+function getCommandItemUri(item: any): vscode.Uri | undefined {
+  if (!item) return undefined;
+  if (item.resourceUri) return item.resourceUri;
+  if (typeof item.fsPath === 'string' && typeof item.scheme === 'string') return item;
+  if (typeof item.fsPath === 'string') return vscode.Uri.file(item.fsPath);
+  return undefined;
+}
+
+function getWorkspaceRootFromItems(items: any[]): string | undefined {
+  for (const item of items) {
+    const itemUri = getCommandItemUri(item);
+    if (itemUri) {
+      const workspaceRoot = getWorkspaceRoot(itemUri);
+      if (workspaceRoot) {
+        return workspaceRoot;
+      }
+    }
+  }
+
+  return getWorkspaceRoot();
+}
+
+async function getResolvedActiveConfig(workspaceRoot: string): Promise<FTPConfig | undefined> {
+  let config = configManager.getActiveConfig(workspaceRoot);
+  if (config) {
+    return config;
+  }
+
+  if (!configManager.configExists(workspaceRoot)) {
+    return undefined;
+  }
+
+  await configManager.loadConfig(workspaceRoot);
+  config = configManager.getActiveConfig(workspaceRoot);
+  return config;
 }
 
 async function manageProfiles(workspaceRoot: string): Promise<void> {
@@ -581,17 +660,10 @@ export function registerCommands(
 
   const uploadCommand = vscode.commands.registerCommand(
     'stackerftp.upload',
-    async (
-      uriOrResource: vscode.Uri | { resourceUri: vscode.Uri } | (vscode.Uri | { resourceUri: vscode.Uri })[],
-      selectedItems?: (vscode.Uri | { resourceUri: vscode.Uri })[]
-    ) => {
-    const workspaceRoot = getWorkspaceRoot();
+    async (...commandArgs: any[]) => {
+    const items = collectCommandSelection(commandArgs);
+    const workspaceRoot = getWorkspaceRootFromItems(items);
     if (!workspaceRoot) return;
-
-    // VS Code context menus pass multi-selection as the second argument.
-    const items = selectedItems && selectedItems.length > 0
-      ? selectedItems
-      : (Array.isArray(uriOrResource) ? uriOrResource : [uriOrResource]);
 
     if (!items || items.length === 0) {
       statusBar.error('No file selected');
@@ -622,7 +694,7 @@ export function registerCommands(
 
     if (activeConns.length === 0) {
       // No active connections - use config and connect
-      config = configManager.getActiveConfig(workspaceRoot);
+      config = await getResolvedActiveConfig(workspaceRoot);
       if (!config) {
         statusBar.error('No SFTP configuration found', true);
         return;
@@ -646,7 +718,7 @@ export function registerCommands(
 
       for (const localPath of localPaths) {
         try {
-          const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+          const relativePath = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, localPath, config));
           const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
           if (fs.statSync(localPath).isDirectory()) {
@@ -688,7 +760,7 @@ export function registerCommands(
     }
 
     const localPath = editor.document.fileName;
-    const workspaceRoot = getWorkspaceRoot();
+    const workspaceRoot = getWorkspaceRoot(editor.document.uri);
     if (!workspaceRoot) return;
 
     // Check for active connections first
@@ -698,7 +770,7 @@ export function registerCommands(
     let connection: any;
 
     if (activeConns.length === 0) {
-      config = configManager.getActiveConfig(workspaceRoot);
+      config = await getResolvedActiveConfig(workspaceRoot);
       if (!config) {
         statusBar.error('No SFTP configuration found', true);
         return;
@@ -715,7 +787,7 @@ export function registerCommands(
     }
 
     try {
-      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+      const relativePath = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, localPath, config));
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
       // Save file first if modified
@@ -741,20 +813,16 @@ export function registerCommands(
     }
   });
 
-  const downloadCommand = vscode.commands.registerCommand('stackerftp.download', async (itemOrItems?: any | any[], selectedItems?: any[]) => {
-    const workspaceRoot = getWorkspaceRoot();
+  const downloadCommand = vscode.commands.registerCommand('stackerftp.download', async (...commandArgs: any[]) => {
+    const items = collectCommandSelection(commandArgs);
+    const workspaceRoot = getWorkspaceRootFromItems(items);
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
+    const config = await getResolvedActiveConfig(workspaceRoot);
     if (!config) {
       statusBar.error('No SFTP configuration found', true);
       return;
     }
-
-    // VS Code context menus pass multi-selection as the second argument.
-    const items = selectedItems && selectedItems.length > 0
-      ? selectedItems
-      : (Array.isArray(itemOrItems) ? itemOrItems : (itemOrItems ? [itemOrItems] : []));
 
     if (items.length === 0) {
       statusBar.error('No item selected. Use "Download Project" for full project download.');
@@ -779,12 +847,12 @@ export function registerCommands(
         if (itemOrResource && 'resourceUri' in itemOrResource) {
           // SCM resource - download from remote to this local file
           localPath = itemOrResource.resourceUri.fsPath;
-          const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+          const relativePath = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, localPath, config));
           remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
         } else if (itemOrResource && 'fsPath' in itemOrResource) {
           // Local Explorer / editor resource - download matching remote path to selected local target
           localPath = itemOrResource.fsPath;
-          const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+          const relativePath = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, localPath, config));
           remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
           try {
@@ -795,8 +863,7 @@ export function registerCommands(
         } else if (itemOrResource?.entry) {
           // Remote explorer item
           remotePath = itemOrResource.entry.path;
-          const relativePath = path.relative(config.remotePath, remotePath);
-          localPath = path.join(workspaceRoot, relativePath);
+          localPath = getLocalPathFromRemote(workspaceRoot, remotePath, config);
           isDirectory = itemOrResource.entry.type === 'directory' ||
             (itemOrResource.entry.type === 'symlink' && itemOrResource.entry.isSymlinkToDirectory);
         } else {
@@ -909,7 +976,7 @@ export function registerCommands(
 
       if (uri) {
         localPath = uri.fsPath;
-        const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+        const relativePath = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, localPath, config));
         remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
       } else {
         localPath = workspaceRoot;
@@ -1380,7 +1447,7 @@ export function registerCommands(
           return;
         }
         localPath = uri.fsPath;
-        const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+        const relativePath = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, localPath, activeConfig));
         remotePath = normalizeRemotePath(path.posix.join(activeConfig.remotePath, relativePath.replace(/\\/g, '/')));
         fileName = path.basename(localPath);
       } else {
@@ -1664,7 +1731,7 @@ export function registerCommands(
         for (const file of filesToUpload) {
           if (token.isCancellationRequested) break;
 
-          const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, file.absolutePath));
+          const relativePath = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, file.absolutePath, config));
           const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
           progress.report({
@@ -1713,7 +1780,8 @@ export function registerCommands(
 
     try {
       const connection = await connectionManager.ensureConnection(config);
-      const result = await transferManager.uploadDirectory(connection, workspaceRoot, config.remotePath, config);
+      const uploadRoot = getLocalRoot(workspaceRoot, config);
+      const result = await transferManager.uploadDirectory(connection, uploadRoot, config.remotePath, config);
 
       statusBar.success(`Project uploaded: ${result.uploaded.length} files (${result.failed.length} failed)`);
     } catch (error: any) {
@@ -1750,8 +1818,7 @@ export function registerCommands(
 
       if (selected && selected.entry.type === 'file') {
         // Download and open
-        const relativePath = path.relative(config.remotePath, selected.entry.path);
-        const localPath = path.join(workspaceRoot, relativePath);
+        const localPath = getLocalPathFromRemote(workspaceRoot, selected.entry.path, config);
         const localDir = path.dirname(localPath);
 
         if (!fs.existsSync(localDir)) {
@@ -1814,8 +1881,7 @@ export function registerCommands(
       });
 
       if (selected) {
-        const relativePath = path.relative(config.remotePath, selected.entry.path);
-        const localPath = path.join(workspaceRoot, relativePath);
+        const localPath = getLocalPathFromRemote(workspaceRoot, selected.entry.path, config);
         const localDir = path.dirname(localPath);
 
         if (!fs.existsSync(localDir)) {
@@ -1857,7 +1923,7 @@ export function registerCommands(
 
     try {
       const connection = await connectionManager.ensureConnection(config);
-      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+      const relativePath = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, localPath, config));
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
       await transferManager.downloadFile(connection, remotePath, localPath);
@@ -2182,7 +2248,7 @@ export function registerCommands(
     }
 
     try {
-      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+      const relativePath = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, localPath, config));
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
       await connectionManager.ensureConnection(config);
@@ -2308,7 +2374,7 @@ export function registerCommands(
 
           try {
             const connection = await connectionManager.ensureConnection(config);
-            const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+            const relativePath = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, localPath, config));
             const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
             // Ensure remote directory exists
@@ -2501,8 +2567,7 @@ export function registerCommands(
 
     try {
       const remotePath = item.entry.path;
-      const relativePath = path.relative(config.remotePath, remotePath);
-      const localPath = path.join(workspaceRoot, relativePath);
+      const localPath = getLocalPathFromRemote(workspaceRoot, remotePath, config);
 
       if (fs.existsSync(localPath)) {
         // Reveal in VS Code explorer
@@ -2564,7 +2629,7 @@ export function registerCommands(
 
       for (const localPath of localPaths) {
         try {
-          const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+          const relativePath = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, localPath, config));
           const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
           // Ensure remote directory exists
@@ -2627,7 +2692,7 @@ export function registerCommands(
 
       for (const localPath of localPaths) {
         try {
-          const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+          const relativePath = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, localPath, config));
           const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
 
           await transferManager.downloadFile(connection, remotePath, localPath);
@@ -2671,7 +2736,7 @@ export function registerCommands(
 
     try {
       const connection = await connectionManager.ensureConnection(config);
-      const relativePath = sanitizeRelativePath(path.relative(workspaceRoot, localPath));
+      const relativePath = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, localPath, config));
       const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
       const remoteDir = path.dirname(remotePath);
       const baseName = path.basename(remotePath, path.extname(remotePath));
