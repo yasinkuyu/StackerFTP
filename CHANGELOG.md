@@ -2,6 +2,16 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.2.21] - 2026-08-25
+
+### Fixed
+- **Duplicate Cancel Button**: Removed explicit Cancel action to prevent duplicate button with VS Code's native modal Cancel button.
+
+## [1.2.20] - 2026-08-25
+
+### Fixed
+- **Cancelled State Reset**: Automatically reset 'cancelled' flag and collision locks when starting a new transfer operation so subsequent uploads cleanly scan files and show overwrite dialogs as expected.
+
 ## [1.2.19] - 2026-08-25
 
 ### Fixed

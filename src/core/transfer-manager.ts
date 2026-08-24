@@ -107,11 +107,11 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       const kind = isDir ? 'directory' : 'file';
       const message = `${location} ${kind} already exists at "${targetPath}". Would you like to overwrite it?`;
 
-      // Show modal dialog with clear options including Cancel
+      // Show modal dialog (VS Code modal automatically adds the native Cancel button)
       const choice = await vscode.window.showWarningMessage(
         message,
         { modal: true },
-        'Overwrite All', 'Overwrite', 'Skip All', 'Skip', 'Always Overwrite', 'Cancel'
+        'Overwrite All', 'Overwrite', 'Skip All', 'Skip', 'Always Overwrite'
       );
 
       logger.debug(`Collision choice for ${targetPath}: ${choice}`);
@@ -158,6 +158,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     }
   ): Promise<TransferItem> {
     return new Promise((resolve, reject) => {
+      this.cancelled = false;
       const item: TransferItem = {
         id: generateId(),
         localPath,
@@ -202,6 +203,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     }
   ): Promise<TransferItem> {
     return new Promise((resolve, reject) => {
+      this.cancelled = false;
       const item: TransferItem = {
         id: generateId(),
         localPath,
@@ -463,6 +465,9 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     remotePath: string,
     config: FTPConfig
   ): Promise<SyncResult> {
+    this.cancelled = false;
+    this.batchCollisionAction = 'ask';
+    this.collisionLock = Promise.resolve();
     const result: SyncResult = {
       uploaded: [],
       downloaded: [],
@@ -527,6 +532,9 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     localPath: string,
     config: FTPConfig
   ): Promise<SyncResult> {
+    this.cancelled = false;
+    this.batchCollisionAction = 'ask';
+    this.collisionLock = Promise.resolve();
     const result: SyncResult = {
       uploaded: [],
       downloaded: [],
@@ -705,20 +713,29 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     return files;
   }
 
-  public resetCollisionBehavior(): void {
+    public resetCollisionBehavior(): void {
     this.sessionCollisionAction = 'ask';
     this.batchCollisionAction = 'ask';
+    this.cancelled = false;
+    this.collisionLock = Promise.resolve();
     statusBar.info('Overwrite & collision confirmation settings have been reset to default.');
   }
 
   public resetBatchCollision(): void {
     this.batchCollisionAction = 'ask';
+    this.cancelled = false;
+    this.collisionLock = Promise.resolve();
   }
 
   cancel(): void {
     this.cancelled = true;
     this.queue = [];
     this._activeCount = 0;
+    this.collisionLock = Promise.resolve();
+    if (this.completionResolve) {
+      this.completionResolve();
+      this.completionResolve = null;
+    }
     this.emitQueueUpdate();
   }
 
