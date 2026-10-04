@@ -5,6 +5,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { BaseConnection } from './connection';
 import { connectionManager } from './connection-manager';
 import { TransferItem, SyncResult, FTPConfig, TransferBatchInfo } from '../types';
@@ -28,6 +29,8 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
   private currentItem?: TransferItem;
   private sessionCollisionAction: 'ask' | 'overwrite' | 'skip' = 'ask';
   private batchCollisionAction: 'ask' | 'overwrite' | 'skip' = 'ask';
+  /** "Overwrite all / Skip all" answer to the "target is newer" warning in this batch */
+  private batchNewerAction: 'ask' | 'overwrite' | 'skip' = 'ask';
   private collisionLock: Promise<void> = Promise.resolve();
   private queueUpdateTimeout: NodeJS.Timeout | undefined;
   private _activeCount = 0;
@@ -292,6 +295,29 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
             this.sessionCollisionAction !== 'overwrite' &&
             this.batchCollisionAction !== 'overwrite';
 
+          // Optional protection: don't silently overwrite a file someone changed on the server.
+          // Skipped for transfers already reviewed (sync preview / compare pass targetExists).
+          let newerApproved = false;
+          if (item.targetExists === undefined && TransferManager.warnIfTargetNewer()) {
+            const remoteStat = await connection.stat(item.remotePath).catch(() => null);
+            exists = !!remoteStat;
+            targetType = remoteStat?.type;
+            if (remoteStat && remoteStat.type === 'file') {
+              const localStat = await fs.promises.stat(item.localPath);
+              const source = { size: localStat.size, mtime: localStat.mtimeMs };
+              const target = { size: remoteStat.size, mtime: remoteStat.modifyTime?.getTime() || 0 };
+              if (TransferManager.isTargetNewer(source, target, item.config)) {
+                if (await this.confirmOverwriteNewer(item, connection, source, target) === 'skip') {
+                  item.status = 'cancelled';
+                  item.progress = 100;
+                  if ((item as any).resolve) (item as any).resolve(item);
+                  return;
+                }
+                newerApproved = true;
+              }
+            }
+          }
+
           if (exists === undefined && shouldCheckCollision) {
             try {
               const remoteStat = await connection.stat(item.remotePath);
@@ -302,7 +328,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
             }
           }
 
-          if (exists && shouldCheckCollision) {
+          if (exists && shouldCheckCollision && !newerApproved) {
             const action = await this.handleCollision(item.remotePath, 'remote', targetType === 'directory');
             if (action === 'cancel' || this.cancelled) {
               item.status = 'cancelled';
@@ -336,6 +362,29 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
             this.sessionCollisionAction !== 'overwrite' &&
             this.batchCollisionAction !== 'overwrite';
 
+          let newerApproved = false;
+          if (item.targetExists === undefined && TransferManager.warnIfTargetNewer()) {
+            const localStat = await fs.promises.stat(item.localPath).catch(() => null);
+            exists = !!localStat;
+            targetType = localStat ? (localStat.isDirectory() ? 'directory' : 'file') : undefined;
+            if (localStat && localStat.isFile()) {
+              const remoteStat = await connection.stat(item.remotePath).catch(() => null);
+              if (remoteStat && remoteStat.type === 'file') {
+                const source = { size: remoteStat.size, mtime: remoteStat.modifyTime?.getTime() || 0 };
+                const target = { size: localStat.size, mtime: localStat.mtimeMs };
+                if (TransferManager.isTargetNewer(source, target, item.config)) {
+                  if (await this.confirmOverwriteNewer(item, connection, source, target) === 'skip') {
+                    item.status = 'cancelled';
+                    item.progress = 100;
+                    if ((item as any).resolve) (item as any).resolve(item);
+                    return;
+                  }
+                  newerApproved = true;
+                }
+              }
+            }
+          }
+
           if (exists === undefined && shouldCheckCollision) {
             try {
               const stats = await fs.promises.stat(item.localPath);
@@ -346,7 +395,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
             }
           }
 
-          if (exists && shouldCheckCollision) {
+          if (exists && shouldCheckCollision && !newerApproved) {
             const action = await this.handleCollision(item.localPath, 'local', targetType === 'directory');
             if (action === 'cancel' || this.cancelled) {
               item.status = 'cancelled';
@@ -476,6 +525,85 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       this.active = false;
       this.batchCollisionAction = 'ask';
       this.emit('queueComplete');
+    }
+  }
+
+  private static warnIfTargetNewer(): boolean {
+    return vscode.workspace.getConfiguration('stackerftp').get<boolean>('warnIfTargetNewer', false);
+  }
+
+  /** The target was changed after the source (someone else edited it) */
+  private static isTargetNewer(source: { size: number; mtime: number }, target: { size: number; mtime: number }, config?: FTPConfig): boolean {
+    const tolerance = config?.protocol === 'sftp' ? 2000 : 60000; // FTP listings have minute precision
+    const same = source.size === target.size && Math.abs(source.mtime - target.mtime) <= tolerance;
+    return !same && target.mtime > source.mtime + tolerance;
+  }
+
+  /**
+   * Ask before overwriting a newer target. Dialogs are serialized; "… All"
+   * answers apply to the rest of the batch. Esc skips just this file.
+   */
+  private async confirmOverwriteNewer(
+    item: TransferItem,
+    connection: BaseConnection,
+    source: { size: number; mtime: number },
+    target: { size: number; mtime: number }
+  ): Promise<'overwrite' | 'skip'> {
+    if (this.batchNewerAction !== 'ask') return this.batchNewerAction;
+
+    const currentLock = this.collisionLock;
+    let release: () => void;
+    this.collisionLock = new Promise(resolve => { release = resolve; });
+    await currentLock;
+
+    try {
+      if (this.batchNewerAction !== 'ask') return this.batchNewerAction;
+
+      const upload = item.direction === 'upload';
+      const name = path.basename(item.localPath);
+      const fmt = (s: { size: number; mtime: number }) => `${new Date(s.mtime).toLocaleString()} • ${s.size} bytes`;
+      const detail = upload
+        ? `The file on the server was changed after your local copy – someone else may have edited it.\n\nServer: ${fmt(target)}\nLocal: ${fmt(source)}`
+        : `Your local file was changed after the server copy.\n\nLocal: ${fmt(target)}\nServer: ${fmt(source)}`;
+
+      const choice = await vscode.window.showWarningMessage(
+        upload ? `"${name}" is newer on the server. Overwrite it?` : `Your local "${name}" is newer. Overwrite it?`,
+        { modal: true, detail },
+        'Overwrite', 'Compare', 'Skip', 'Overwrite All', 'Skip All'
+      );
+
+      switch (choice) {
+        case 'Overwrite':
+          return 'overwrite';
+        case 'Overwrite All':
+          this.batchNewerAction = 'overwrite';
+          return 'overwrite';
+        case 'Skip All':
+          this.batchNewerAction = 'skip';
+          return 'skip';
+        case 'Compare':
+          await this.showNewerDiff(item, connection);
+          return 'skip';
+        default:
+          return 'skip';
+      }
+    } finally {
+      release!();
+    }
+  }
+
+  /** Remote copy (temp) vs local file, so the user can merge before transferring */
+  private async showNewerDiff(item: TransferItem, connection: BaseConnection): Promise<void> {
+    try {
+      const temp = path.join(os.tmpdir(), 'stackerftp-compare', `${Date.now()}-${path.basename(item.remotePath)}`);
+      await fs.promises.mkdir(path.dirname(temp), { recursive: true });
+      await connection.download(item.remotePath, temp);
+      const name = path.basename(item.localPath);
+      await vscode.commands.executeCommand('vscode.diff', vscode.Uri.file(temp), vscode.Uri.file(item.localPath),
+        `${name} (Server ↔ Local)`);
+      statusBar.info(`Skipped ${name} – review the diff, then transfer again`);
+    } catch (error: any) {
+      vscode.window.showErrorMessage(`StackerFTP: Could not open diff – ${error.message}`);
     }
   }
 
@@ -775,6 +903,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
 
   public resetBatchCollision(): void {
     this.batchCollisionAction = 'ask';
+    this.batchNewerAction = 'ask';
     this.cancelled = false;
     this.collisionLock = Promise.resolve();
   }

@@ -167,6 +167,9 @@ Run **Compare with Remote** from the Command Palette (whole project), or right-c
 
 Compare and Sync use the same ignore rules and change detection.
 
+### Working in a team
+Turn on `stackerftp.warnIfTargetNewer` to avoid overwriting each other's changes: before a file is uploaded (also on save) or downloaded, StackerFTP checks whether the target is newer and asks whether to **Overwrite**, **Compare** (opens a diff) or **Skip**.
+
 ## When a Transfer Fails
 
 - The Transfer Queue shows the reason next to the file, e.g. `↑ Error: Permission denied`.
@@ -352,6 +355,7 @@ Open VS Code settings and search for "StackerFTP":
 | `stackerftp.rememberTargetConnection` | string | "session" | Remember the target connection for the "session" or the "workspace" |
 | `stackerftp.rememberMultiTargets` | boolean | true | Pre-select the servers last used with "Upload to Multiple Servers" |
 | `stackerftp.preserveTimestamps` | boolean | true | Keep modification times on transferred files |
+| `stackerftp.warnIfTargetNewer` | boolean | false | Ask before overwriting a newer file (e.g. changed by a teammate on the server): Overwrite / Compare / Skip |
 | `stackerftp.autoRefresh` | boolean | true | Auto refresh remote explorer after operations |
 | `stackerftp.transferConcurrency` | number | 4 | Number of concurrent file transfers |
 | `stackerftp.showWebMasterTools` | boolean | true | Show web master tools in context menu |

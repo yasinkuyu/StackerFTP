@@ -7,6 +7,8 @@ All notable changes to the "StackerFTP" extension will be documented in this fil
 ### Added
 - **Copy Path / Copy Relative Path** (#7): Right-click files, folders or a connection in the Remote Explorer to copy the remote path, or the path relative to the connection's Remote Path – handy for `cd` in a terminal. Works with multi-select and with the usual shortcuts (`Alt+Cmd+C` / `Shift+Alt+C`, `Alt+Shift+Cmd+C` / `Ctrl+K Ctrl+Shift+Alt+C`).
 
+- **Warn before overwriting newer files** (#3): New setting `stackerftp.warnIfTargetNewer` (off by default). Before Upload, Upload on Save or Download, StackerFTP checks whether the target is newer – e.g. a teammate changed the file on the server – and asks: Overwrite, Compare (opens a diff and skips), Skip, or Overwrite/Skip All.
+
 ### Fixed
 - **Uploads failing after a few idle minutes (FTP/FTPS)** (#2, #8): A connection closed by the server (idle timeout) was still shown as connected and reused, so every transfer failed until a manual reconnect. FTP/FTPS now detect the closed control connection, send NOOP keepalives while idle (`keepalive`, default 30 s, `0` disables), and auto-reconnect. Transfers reconnect on demand and a transfer interrupted by a dropped connection is retried once.
 - **Local file lost when a download fails** (#4): Downloads wrote straight into the local file, which was emptied as soon as the download started; a dropped connection left it empty or truncated. Downloads now go to a temporary file that replaces the local file only when complete (permissions are kept), so a failed download never touches the existing file.

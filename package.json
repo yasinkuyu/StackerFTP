@@ -62,6 +62,11 @@
           "default": true,
           "description": "Confirm before deleting remote files"
         },
+        "stackerftp.warnIfTargetNewer": {
+          "type": "boolean",
+          "default": false,
+          "description": "Before uploading or downloading a file, check whether the target is newer (e.g. a teammate changed it on the server) and ask: Overwrite, Compare or Skip. Applies to Upload, Upload on Save and Download; costs one extra stat per file."
+        },
         "stackerftp.preserveTimestamps": {
           "type": "boolean",
           "default": true,
