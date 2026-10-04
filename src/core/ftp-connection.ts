@@ -10,7 +10,7 @@ import { Client, FileInfo } from 'basic-ftp';
 import { BaseConnection } from './connection';
 import { FileEntry, FTPConfig } from '../types';
 import { logger } from '../utils/logger';
-import { normalizeRemotePath } from '../utils/helpers';
+import { normalizeRemotePath, downloadAtomically } from '../utils/helpers';
 
 /** basic-ftp applies this timeout to every command/transfer, not only to connecting */
 const MIN_OPERATION_TIMEOUT_MS = 30000;
@@ -237,7 +237,8 @@ export class FTPConnection extends BaseConnection {
         if (e.code !== 'ENOENT') throw e;
       }
 
-      await this.client.downloadTo(localPath, remotePath);
+      // Atomic: the existing local file is only replaced after a complete download
+      await downloadAtomically(localPath, tempPath => this.client.downloadTo(tempPath, remotePath).then(() => undefined));
 
       this.emit('transferComplete', { direction: 'download', remotePath, localPath });
     } catch (error) {

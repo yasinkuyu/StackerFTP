@@ -407,3 +407,35 @@ export function getLocalPathFromRemote(workspaceRoot: string, remoteFilePath: st
   const localBase = getLocalRoot(workspaceRoot, config);
   return path.join(localBase, rel);
 }
+
+/** Suffix of in-progress download files (never synced, uploaded or watched) */
+export const DOWNLOAD_TEMP_SUFFIX = '.stackerftp-download';
+
+export function isTransferTempFile(filePath: string): boolean {
+  return filePath.endsWith(DOWNLOAD_TEMP_SUFFIX) || filePath.endsWith('.stackerftp.tmp');
+}
+
+/**
+ * Download into a temporary file next to the target and replace the target
+ * only when the download completed. If the connection drops midway, the
+ * existing local file stays untouched (it is never truncated or deleted).
+ */
+export async function downloadAtomically(localPath: string, write: (tempPath: string) => Promise<void>): Promise<void> {
+  const tempPath = `${localPath}${DOWNLOAD_TEMP_SUFFIX}`;
+  try {
+    await write(tempPath);
+
+    // Keep the permissions of the file being replaced (e.g. executable scripts)
+    try {
+      const existing = await fs.promises.stat(localPath);
+      await fs.promises.chmod(tempPath, existing.mode);
+    } catch {
+      // New file or permissions not supported
+    }
+
+    await fs.promises.rename(tempPath, localPath);
+  } catch (error) {
+    await fs.promises.unlink(tempPath).catch(() => undefined);
+    throw error;
+  }
+}

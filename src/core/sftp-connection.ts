@@ -8,7 +8,7 @@ import { Client, SFTPWrapper } from 'ssh2';
 import { BaseConnection } from './connection';
 import { FileEntry, FTPConfig } from '../types';
 import { logger } from '../utils/logger';
-import { normalizeRemotePath } from '../utils/helpers';
+import { normalizeRemotePath, downloadAtomically } from '../utils/helpers';
 import { connectionHopping } from './connection-hopping';
 
 export class SFTPConnection extends BaseConnection {
@@ -258,21 +258,17 @@ export class SFTPConnection extends BaseConnection {
       if (e.code !== 'ENOENT') throw e;
     }
 
-    return new Promise((resolve, reject) => {
-      this.sftp!.fastGet(remotePath, localPath, {
+    // Atomic: the existing local file is only replaced after a complete download
+    await downloadAtomically(localPath, tempPath => new Promise<void>((resolve, reject) => {
+      this.sftp!.fastGet(remotePath, tempPath, {
         concurrency: 128,
         chunkSize: 262144, // 256KB
         step: (transferred) => {
           this.emitProgress(path.basename(remotePath), transferred, 0);
         }
-      }, (err) => {
-        if (err) reject(err);
-        else {
-          this.emit('transferComplete', { direction: 'download', remotePath, localPath });
-          resolve();
-        }
-      });
-    });
+      }, (err) => err ? reject(err) : resolve());
+    }));
+    this.emit('transferComplete', { direction: 'download', remotePath, localPath });
   }
 
   async upload(localPath: string, remotePath: string): Promise<void> {

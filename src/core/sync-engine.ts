@@ -59,7 +59,7 @@ export interface ScanResult {
 }
 
 /** Never transferred, regardless of user config (credentials, VCS, temp files) */
-const MANDATORY_IGNORE = ['.git', '.vscode/sftp.json', '*.stackerftp.tmp'];
+const MANDATORY_IGNORE = ['.git', '.vscode/sftp.json', '*.stackerftp.tmp', '*.stackerftp-download'];
 /** Used when the connection has no "ignore" list */
 const DEFAULT_IGNORE = ['node_modules', '.DS_Store', 'Thumbs.db', '.vscode', '.idea', '__pycache__', '*.pyc'];
 

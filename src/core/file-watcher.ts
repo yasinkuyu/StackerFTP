@@ -12,7 +12,7 @@ import { configManager } from './config';
 import { connectionManager } from './connection-manager';
 import { transferManager } from './transfer-manager';
 import { logger } from '../utils/logger';
-import { normalizeRemotePath, matchesPattern, getLocalRelativePath, getLocalRoot } from '../utils/helpers';
+import { normalizeRemotePath, matchesPattern, getLocalRelativePath, getLocalRoot, isTransferTempFile } from '../utils/helpers';
 import { wasRecentlyUploaded } from '../extension';
 
 export class FileWatcher implements vscode.Disposable {
@@ -93,6 +93,8 @@ export class FileWatcher implements vscode.Disposable {
   }
 
   private handleFileChange(filePath: string, type: 'create' | 'change' | 'delete'): void {
+    // In-progress transfer files are never uploaded
+    if (isTransferTempFile(filePath)) return;
     const localRoot = getLocalRoot(this.workspaceRoot, this.config);
     if (filePath !== localRoot && !filePath.startsWith(localRoot + path.sep)) {
       return;
