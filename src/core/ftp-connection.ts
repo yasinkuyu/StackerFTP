@@ -343,6 +343,16 @@ export class FTPConnection extends BaseConnection {
     }
   }
 
+  async setModifyTime(remotePath: string, mtime: Date): Promise<void> {
+    return this.enqueue(async () => {
+      // MFMT is an extension (RFC draft); servers without it reject the command
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const stamp = `${mtime.getUTCFullYear()}${pad(mtime.getUTCMonth() + 1)}${pad(mtime.getUTCDate())}` +
+        `${pad(mtime.getUTCHours())}${pad(mtime.getUTCMinutes())}${pad(mtime.getUTCSeconds())}`;
+      await this.client.send(`MFMT ${stamp} ${remotePath}`);
+    });
+  }
+
   async chmod(remotePath: string, mode: number | string): Promise<void> {
     return this.enqueue(async () => {
       try {

@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { BaseConnection } from '../core/connection';
 import { FileEntry, ChecksumResult, SearchResult, FileInfo, FTPConfig, CompareItem, CompareTreeNode, CompareResult } from '../types';
-import { formatFileSize, formatDate, formatPermissions, calculateChecksum } from '../utils/helpers';
+import { formatFileSize, formatDate, formatPermissions, calculateChecksum, matchesPattern } from '../utils/helpers';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
 import { lookup as lookupMimeType } from 'mime-types';
@@ -494,18 +494,10 @@ export class WebMasterTools {
    * Check if a path should be ignored based on patterns
    */
   private shouldIgnore(filePath: string, ignorePatterns: string[]): boolean {
-    const fileName = path.basename(filePath);
-    for (const pattern of ignorePatterns) {
-      if (pattern.startsWith('*.')) {
-        // Extension match
-        const ext = pattern.slice(1);
-        if (fileName.endsWith(ext)) return true;
-      } else if (filePath.includes(pattern) || fileName === pattern) {
-        return true;
-      }
-    }
-    return false;
+    // Same matcher as sync/upload, so Compare and Sync agree on what is ignored
+    return matchesPattern(filePath, ignorePatterns);
   }
+
 
   /**
    * Compare folders with performance optimizations
@@ -517,6 +509,7 @@ export class WebMasterTools {
     options?: {
       ignorePatterns?: string[];
       useMtime?: boolean;
+      timeToleranceMs?: number;
       onProgress?: (message: string, increment?: number) => void;
     }
   ): Promise<{
@@ -527,6 +520,7 @@ export class WebMasterTools {
   }> {
     const ignorePatterns = options?.ignorePatterns || WebMasterTools.DEFAULT_IGNORE_PATTERNS;
     const useMtime = options?.useMtime !== false; // Default to true
+    const timeTolerance = options?.timeToleranceMs ?? 2000;
     const onProgress = options?.onProgress;
 
     const result = {
@@ -642,7 +636,7 @@ export class WebMasterTools {
         // Compare both size AND mtime for more accurate comparison
         const sizeDifferent = remoteInfo.size !== localInfo.size;
         // Consider different if size differs OR if mtime differs by more than 2 seconds
-        const mtimeDifferent = Math.abs(remoteInfo.mtime - localInfo.mtime) > 2000;
+        const mtimeDifferent = Math.abs(remoteInfo.mtime - localInfo.mtime) > timeTolerance;
 
         if (sizeDifferent || mtimeDifferent) {
           result.different.push({

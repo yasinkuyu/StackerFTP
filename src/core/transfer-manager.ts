@@ -152,6 +152,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       size?: number;
       targetExists?: boolean;
       targetType?: 'file' | 'directory' | 'symlink';
+      sourceMtime?: number;
       batchId?: string;
       groupName?: string;
       groupPath?: string;
@@ -173,6 +174,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
         reject,
         targetExists: metadata?.targetExists,
         targetType: metadata?.targetType,
+        sourceMtime: metadata?.sourceMtime,
         batchId: metadata?.batchId,
         groupName: metadata?.groupName,
         groupPath: metadata?.groupPath
@@ -197,6 +199,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       size?: number;
       targetExists?: boolean;
       targetType?: 'file' | 'directory' | 'symlink';
+      sourceMtime?: number;
       batchId?: string;
       groupName?: string;
       groupPath?: string;
@@ -218,6 +221,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
         reject,
         targetExists: metadata?.targetExists,
         targetType: metadata?.targetType,
+        sourceMtime: metadata?.sourceMtime,
         batchId: metadata?.batchId,
         groupName: metadata?.groupName,
         groupPath: metadata?.groupPath
@@ -381,6 +385,8 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
           );
         }
 
+        await this.preserveTimestamp(connection, item);
+
         item.status = 'completed';
         item.progress = 100;
         if ((item as any).resolve) (item as any).resolve();
@@ -456,6 +462,31 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       this.active = false;
       this.batchCollisionAction = 'ask';
       this.emit('queueComplete');
+    }
+  }
+
+  /**
+   * Keep the source modification time on the target so later compares/syncs
+   * see transferred files as unchanged. Best-effort: never fails the transfer.
+   */
+  private async preserveTimestamp(connection: BaseConnection, item: TransferItem): Promise<void> {
+    if (!vscode.workspace.getConfiguration('stackerftp').get<boolean>('preserveTimestamps', true)) return;
+    try {
+      if (item.direction === 'upload') {
+        const mtime = item.sourceMtime ? new Date(item.sourceMtime) : (await fs.promises.stat(item.localPath)).mtime;
+        await connection.setModifyTime(item.remotePath, mtime);
+      } else {
+        let mtime = item.sourceMtime;
+        if (!mtime) {
+          mtime = (await connection.stat(item.remotePath))?.modifyTime?.getTime();
+        }
+        if (mtime) {
+          const date = new Date(mtime);
+          await fs.promises.utimes(item.localPath, date, date);
+        }
+      }
+    } catch (error: any) {
+      logger.debug(`Could not preserve timestamp for ${item.remotePath}: ${error?.message || error}`);
     }
   }
 

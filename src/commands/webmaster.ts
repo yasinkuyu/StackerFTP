@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { configManager } from '../core/config';
 import { connectionManager } from '../core/connection-manager';
+import { resolveTargetConfig } from '../core/target';
 import { webMasterTools } from '../webmaster/tools';
 import { statusBar } from '../utils/status-bar';
 import { getWorkspaceRoot } from './utils';
@@ -14,7 +15,7 @@ export function registerWebMasterCommands(): vscode.Disposable[] {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
+    const config = item?.config || await resolveTargetConfig(workspaceRoot);
     if (!config) return;
 
     try {
@@ -29,7 +30,7 @@ export function registerWebMasterCommands(): vscode.Disposable[] {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
+    const config = item?.config || await resolveTargetConfig(workspaceRoot);
     if (!config) return;
 
     try {
@@ -57,7 +58,7 @@ export function registerWebMasterCommands(): vscode.Disposable[] {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = item.config || configManager.getActiveConfig(workspaceRoot);
+    const config = item?.config || await resolveTargetConfig(workspaceRoot);
     if (!config) return;
 
     try {
@@ -82,7 +83,7 @@ export function registerWebMasterCommands(): vscode.Disposable[] {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
+    const config = item?.config || await resolveTargetConfig(workspaceRoot);
     if (!config) return;
 
     try {
@@ -98,7 +99,7 @@ export function registerWebMasterCommands(): vscode.Disposable[] {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
+    const config = await resolveTargetConfig(workspaceRoot, 'Search');
     if (!config) return;
 
     const pattern = await vscode.window.showInputBox({
@@ -143,7 +144,7 @@ export function registerWebMasterCommands(): vscode.Disposable[] {
     if (!workspaceRoot) return;
 
     // Use item's config if available, otherwise get active config
-    const config = item.config || configManager.getActiveConfig(workspaceRoot);
+    const config = item?.config || await resolveTargetConfig(workspaceRoot);
     if (!config) {
       statusBar.error('No configuration found');
       return;
@@ -182,40 +183,15 @@ export function registerWebMasterCommands(): vscode.Disposable[] {
     }
 
     try {
-      // Check if called from context menu with a specific folder
+      // Folder from context menu -> that folder; file -> side-by-side diff; none -> whole project
       let localPath: string | undefined;
-
       if (uri && uri.fsPath) {
-        // Context menu - check if it's a folder
         const stat = await vscode.workspace.fs.stat(uri);
-        if (stat.type === vscode.FileType.Directory) {
-          localPath = uri.fsPath;
+        if (stat.type === vscode.FileType.File) {
+          await vscode.commands.executeCommand('stackerftp.diff', uri);
+          return;
         }
-      }
-
-      // If we have a folder path, ask user what to compare
-      if (localPath) {
-        const workspaceRoot = getWorkspaceRoot();
-        if (workspaceRoot && localPath.startsWith(workspaceRoot)) {
-          const relativePath = path.relative(workspaceRoot, localPath);
-
-          if (relativePath) {
-            const choice = await vscode.window.showQuickPick([
-              { label: `$(file-directory) Selected: ${path.basename(localPath)}`, description: 'Compare only this folder', value: 'selected' },
-              { label: '$(files) Entire Workspace', description: 'Compare entire workspace', value: 'workspace' }
-            ], {
-              title: 'Compare Folders',
-              placeHolder: 'What would you like to compare?'
-            });
-
-            if (!choice) return;
-
-            if (choice.value === 'workspace') {
-              localPath = undefined; // Will use workspace root
-            }
-            // If 'selected', use the localPath
-          }
-        }
+        localPath = uri.fsPath;
       }
 
       await compareViewProvider.show(localPath);
@@ -228,7 +204,7 @@ export function registerWebMasterCommands(): vscode.Disposable[] {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
+    const config = await resolveTargetConfig(workspaceRoot, 'Find & Replace');
     if (!config) return;
 
     try {
@@ -243,7 +219,7 @@ export function registerWebMasterCommands(): vscode.Disposable[] {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
+    const config = await resolveTargetConfig(workspaceRoot, 'Purge Cache');
     if (!config) return;
 
     const choice = await vscode.window.showWarningMessage(

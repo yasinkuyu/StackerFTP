@@ -10,7 +10,8 @@ import { RemoteExplorerWebviewProvider } from './providers/remote-explorer-webvi
 import { RemoteExplorerTreeProvider } from './providers/remote-explorer-tree';
 import { ConnectionFormProvider } from './providers/connection-form-provider';
 import { RemoteDocumentProvider } from './providers/remote-document-provider';
-import { configManager } from './core/config';
+import { configManager, ConfigManager } from './core/config';
+import { getTargetConfig } from './core/target';
 import { connectionManager } from './core/connection-manager';
 import { transferManager } from './core/transfer-manager';
 import { logger } from './utils/logger';
@@ -19,6 +20,7 @@ import { registerCommands } from './commands';
 import { fileWatcherManager } from './core/file-watcher';
 import { matchesPattern, getLocalRelativePath, normalizeRemotePath } from './utils/helpers';
 import { TransferQueueTreeProvider } from './providers/transfer-queue-tree';
+import { registerTransferErrorNotifications } from './providers/transfer-error-reporter';
 
 let remoteExplorerProvider: RemoteExplorerWebviewProvider;
 let remoteTreeProvider: RemoteExplorerTreeProvider;
@@ -69,6 +71,15 @@ export function wasRecentlyUploaded(filePath: string): boolean {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+  configManager.initState(context.workspaceState);
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration(e => {
+      if (e.affectsConfiguration('stackerftp.rememberTargetConnection')) {
+        configManager.saveTargets();
+      }
+    })
+  );
+
   // 1. Fundamental Command Registration (Always available)
   context.subscriptions.push(
     vscode.commands.registerCommand('stackerftp.showOutput', () => {
@@ -180,12 +191,18 @@ export function activate(context: vscode.ExtensionContext): void {
 
   transferManager.on('queueUpdate', () => {
     const activeCount = transferManager.getActiveCount();
+    statusBar.setFailedTransferCount(transferManager.getQueue().filter(i => i.status === 'error').length);
     statusBar.updateTransferCount(activeCount);
     // UI Update: Badge on Activity Bar
     if (transferQueueProvider) {
       transferQueueProvider.updateBadge(activeCount);
     }
   });
+
+  // Failed transfers are reported once per run with details / retry actions
+  context.subscriptions.push(registerTransferErrorNotifications(() => {
+    vscode.commands.executeCommand('stackerftp.transferQueue.focus');
+  }));
 
   transferManager.on('queueComplete', () => {
     statusBar.updateTransferCount(0);
@@ -195,8 +212,15 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   // 9. Startup Tasks
-  loadConfiguration(workspaceRoot);
-  startFileWatcher(workspaceRoot);
+  loadConfiguration(workspaceRoot).then(() => syncTarget(workspaceRoot, true));
+
+  // Keep status bar, primary connection and file watcher aligned with the target connection
+  context.subscriptions.push(
+    configManager.onDidChangeTarget(root => syncTarget(root)),
+    connectionManager.onConnectionChanged(() => syncTarget(workspaceRoot)),
+    connectionManager.onDidManualDisconnect(configs =>
+      configManager.forgetTargetOnDisconnect(configs, (a, b) => connectionManager.isSameTarget(a, b)))
+  );
 
   // 10. Event Listeners (Workspace changes, Save)
   context.subscriptions.push(
@@ -213,6 +237,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const configPath = path.join(workspaceRoot, '.vscode', 'sftp.json');
       if (document.fileName === configPath) {
         await loadConfiguration(workspaceRoot);
+        syncTarget(workspaceRoot, true);
         if (connectionFormProvider) connectionFormProvider.refresh();
         statusBar.success('Configuration reloaded');
         return;
@@ -267,7 +292,8 @@ async function handleFileSave(document: vscode.TextDocument, workspaceRoot: stri
     return;
   }
 
-  const config = configManager.getActiveConfig(workspaceRoot);
+  // Ambiguous target (multiple connections, none chosen) -> never guess in the background
+  const config = getTargetConfig(workspaceRoot);
   if (!config || !config.uploadOnSave) {
     return;
   }
@@ -340,10 +366,33 @@ async function handleFileSave(document: vscode.TextDocument, workspaceRoot: stri
   }
 }
 
-async function startFileWatcher(workspaceRoot: string): Promise<void> {
-  const config = configManager.getActiveConfig(workspaceRoot);
-  if (config && config.watcher) {
-    fileWatcherManager.startWatcher(workspaceRoot, config);
+let watchedTargetId: string | undefined;
+
+/**
+ * Align UI and background services with the current target connection:
+ * status bar label, primary connection (for explicit selection) and file watcher.
+ */
+function syncTarget(workspaceRoot: string, forceWatcherRestart = false): void {
+  const target = getTargetConfig(workspaceRoot);
+  connectionManager.setTargetLabel(target ? (target.name || target.host) : undefined);
+
+  const selected = configManager.getSelectedConfig(workspaceRoot);
+  if (selected && connectionManager.isConnected(selected)) {
+    const primary = connectionManager.getPrimaryConfig();
+    if (!primary || !connectionManager.isSameTarget(primary, selected)) {
+      connectionManager.setPrimaryConnection(selected);
+    }
+  }
+
+  // Watcher follows the target; with no resolvable target nothing is auto-synced
+  const targetId = target?.watcher ? ConfigManager.getConfigId(target) : undefined;
+  if (!forceWatcherRestart && targetId === watchedTargetId) return;
+
+  fileWatcherManager.stopAll();
+  watchedTargetId = targetId;
+  if (target?.watcher) {
+    fileWatcherManager.startWatcher(workspaceRoot, target);
+    logger.info(`File watcher started for ${target.name || target.host}`);
   }
 }
 

@@ -626,6 +626,16 @@ export class SFTPConnection extends BaseConnection {
     });
   }
 
+  async setModifyTime(remotePath: string, mtime: Date): Promise<void> {
+    return this.enqueue(() => new Promise<void>((resolve, reject) => {
+      if (!this.sftp) {
+        reject(new Error('Not connected'));
+        return;
+      }
+      this.sftp.utimes(remotePath, mtime, mtime, (err: any) => err ? reject(err) : resolve());
+    }));
+  }
+
   async chmod(remotePath: string, mode: number | string): Promise<void> {
     return this.enqueue(() => this._chmod(remotePath, mode));
   }

@@ -22,17 +22,20 @@ export function registerViewCommands(container: ProviderContainer): vscode.Dispo
 
     const activeConns = connectionManager.getAllActiveConnections();
     const primaryConfig = connectionManager.getPrimaryConfig();
+    const selectedTarget = configManager.getSelectedConfig(workspaceRoot);
 
     const items = configs.map(config => {
       const isConnected = connectionManager.isConnected(config);
       const isPrimary = primaryConfig && config.name === primaryConfig.name && config.host === primaryConfig.host;
+      const isTarget = !!selectedTarget && connectionManager.isSameTarget(selectedTarget, configManager.withProfile(workspaceRoot, config));
 
       let icon = '$(primitive-square)'; // Default disconnected
       if (isPrimary) icon = '$(star-full)';
+      else if (isTarget) icon = '$(target)';
       else if (isConnected) icon = '$(star-empty)';
 
       const description = `${config.protocol?.toUpperCase()} • ${config.username}@${config.host}`;
-      let detail = 'Disconnected - Click to connect';
+      let detail = isTarget ? 'Transfer target (disconnected) - Click to connect' : 'Disconnected - Click to connect';
 
       if (isPrimary) detail = 'Primary Connection - Click to manage';
       else if (isConnected) detail = 'Connected - Click to set as Primary';
@@ -89,6 +92,7 @@ export function registerViewCommands(container: ProviderContainer): vscode.Dispo
     } else if (selected.isConnected) {
       // Connected but not primary - set as primary
       connectionManager.setPrimaryConnection(selected.config);
+      configManager.setSelectedConfig(workspaceRoot, selected.config);
       statusBar.success(`Primary connection set to: ${selected.config.name || selected.config.host}`);
       vscode.commands.executeCommand('stackerftp.tree.refresh');
     } else {
@@ -99,6 +103,7 @@ export function registerViewCommands(container: ProviderContainer): vscode.Dispo
         if (activeConns.length > 0) {
           connectionManager.setPrimaryConnection(selected.config);
         }
+        configManager.setSelectedConfig(workspaceRoot, selected.config);
         vscode.commands.executeCommand('stackerftp.tree.refresh');
       } catch (error: any) {
         statusBar.error(`Connection failed: ${error.message}`, true);

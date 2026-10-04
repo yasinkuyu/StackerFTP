@@ -102,6 +102,8 @@ export interface TransferItem {
   /** Metadata to avoid redundant stat calls */
   targetExists?: boolean;
   targetType?: 'file' | 'directory' | 'symlink';
+  /** Source modification time (ms) to apply to the target after transfer */
+  sourceMtime?: number;
   /** Batch identifier for grouped folder uploads/downloads */
   batchId?: string;
   /** Display group name (e.g. folder name) for hierarchical view */

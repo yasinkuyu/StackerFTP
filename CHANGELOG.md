@@ -2,6 +2,24 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.3.0] - 2026-10-04
+
+### Added
+- **Target Connection Selection**: With multiple connections configured, transfers no longer go to the first one silently. The user picks the target once; it is used by all commands, upload on save, the file watcher and the status bar. Change it via "Select Target Connection" or "Select Primary Connection".
+- **Remember Target Setting**: `stackerftp.rememberTargetConnection` – `session` (default, forgotten when the target is disconnected) or `workspace` (kept across reloads).
+- **Upload to Multiple Servers**: Pick several servers (e.g. staging + production) and upload files/folders to all of them; the last selection is pre-selected (`stackerftp.rememberMultiTargets`). "Upload to All Servers" replaces "Upload File To All Profiles" and now supports folders.
+- **Sync with Preview**: Sync compares both sides (size + modification time) and shows only the changes to apply, grouped as upload / download / delete. Conflicts (target is newer) are not pre-selected. `syncMode: "full"` deletes orphans after an extra confirmation; local deletes go to the trash.
+- **Compare with Remote**: Compares the whole project, a folder, or a file (diff). New "Sync to Remote / Sync to Local" buttons in the compare view.
+- **Transfer Error Details**: Failed transfers show the error message in the queue, a notification after the run (Show Details / Retry / Show Queue), full details on click (Retry / Copy Error / Show Log), and a persistent "X failed" status bar item and badge.
+- **Preserve Timestamps**: Uploaded/downloaded files keep the source modification time (`stackerftp.preserveTimestamps`), so Compare and Sync detect changes reliably.
+
+### Fixed
+- **Sync**: Previously uploaded/downloaded everything (two-way sync could overwrite local changes), ignored `syncMode` and `context`, and scanned ignored folders.
+- **Compare View**: Download failed (missing config); diff/upload/download/refresh used the wrong remote path for subfolders; `ignore` and `context` were not applied.
+- **Remote Terminal**: Uses the target connection, `privateKeyPath`, hop (jump) hosts, and opens in `remotePath`.
+- **Webmaster Tools**: Permissions, checksum and file info used the first connection instead of the selected remote item's connection.
+- **File Watcher**: Started before the configuration was loaded, so it never ran.
+
 ## [1.2.21] - 2026-08-25
 
 ### Fixed

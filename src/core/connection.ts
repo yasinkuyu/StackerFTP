@@ -116,6 +116,13 @@ export abstract class BaseConnection extends EventEmitter {
   abstract exists(remotePath: string): Promise<boolean>;
   abstract stat(remotePath: string): Promise<FileEntry | null>;
   abstract chmod(remotePath: string, mode: number | string): Promise<void>;
+  /**
+   * Set remote modification time. Optional capability: protocols/servers that
+   * cannot do it resolve without effect (callers treat it as best-effort).
+   */
+  async setModifyTime(_remotePath: string, _mtime: Date): Promise<void> {
+    // Not supported by default
+  }
   abstract readFile(remotePath: string): Promise<Buffer>;
   abstract writeFile(remotePath: string, content: Buffer | string): Promise<void>;
   abstract exec(command: string): Promise<{ stdout: string; stderr: string; code: number }>;

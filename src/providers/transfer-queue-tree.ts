@@ -146,6 +146,13 @@ export class TransferTreeItem extends vscode.TreeItem {
         this.description = this.getDescription();
         this.iconPath = this.getIcon();
         this.tooltip = this.getTooltip();
+        if (transferItem.status === 'error') {
+            this.command = {
+                command: 'stackerftp.showTransferError',
+                title: 'Show Error Details',
+                arguments: [this]
+            };
+        }
     }
 
     private getDescription(): string {
@@ -162,8 +169,10 @@ export class TransferTreeItem extends vscode.TreeItem {
                 return `${direction} Done${sizeStr}`;
             case 'cancelled':
                 return `${direction} Skipped`;
-            case 'error':
-                return `${direction} Error`;
+            case 'error': {
+                const message = (this.transferItem.error || 'Unknown error').replace(/\s+/g, ' ');
+                return `${direction} Error: ${message.length > 80 ? message.slice(0, 77) + '…' : message}`;
+            }
             default:
                 return direction;
         }
@@ -198,7 +207,7 @@ export class TransferTreeItem extends vscode.TreeItem {
         md.appendMarkdown(`- Local: \`${this.transferItem.localPath}\`\n`);
         md.appendMarkdown(`- Remote: \`${this.transferItem.remotePath}\`\n`);
         if (this.transferItem.error) {
-            md.appendMarkdown(`\n⚠️ Error: ${this.transferItem.error}`);
+            md.appendMarkdown(`\n⚠️ Error: ${this.transferItem.error}\n\n_Click to see full details_`);
         }
         return md;
     }
@@ -459,7 +468,14 @@ export class TransferQueueTreeProvider implements vscode.TreeDataProvider<Transf
      * Update the Activity Bar badge for the transfer queue
      */
     updateBadge(count: number): void {
-        this.treeView.badge = count > 0 ? { value: count, tooltip: `${count} active transfer${count > 1 ? 's' : ''}` } : undefined;
+        if (count > 0) {
+            this.treeView.badge = { value: count, tooltip: `${count} active transfer${count > 1 ? 's' : ''}` };
+            return;
+        }
+        const failed = transferManager.getQueue().filter(i => i.status === 'error').length;
+        this.treeView.badge = failed > 0
+            ? { value: failed, tooltip: `${failed} failed transfer${failed > 1 ? 's' : ''} - click an item to see the error` }
+            : undefined;
     }
 
     /**

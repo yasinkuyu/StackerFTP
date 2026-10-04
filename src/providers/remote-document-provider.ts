@@ -7,6 +7,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { configManager } from '../core/config';
+import { getTargetConfig } from '../core/target';
 import { connectionManager } from '../core/connection-manager';
 import { transferManager } from '../core/transfer-manager';
 import { logger } from '../utils/logger';
@@ -87,7 +88,7 @@ export class RemoteDocumentProvider implements vscode.TextDocumentContentProvide
         if (!workspaceRoot) {
           return '// No workspace folder open';
         }
-        config = configManager.getActiveConfig(workspaceRoot);
+        config = getTargetConfig(workspaceRoot);
       }
 
       if (!config) {

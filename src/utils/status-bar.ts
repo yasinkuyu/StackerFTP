@@ -25,6 +25,7 @@ class StatusBarNotifier {
   private progressItems: Map<string, vscode.StatusBarItem> = new Map();
   private progressTimeouts: Map<string, NodeJS.Timeout> = new Map();
   private activeTransferCount = 0;
+  private failedTransferCount = 0;
 
   private hasBulkTransferProgress(): boolean {
     return this.progressItems.has('upload-folder') || this.progressItems.has('download-folder');
@@ -323,6 +324,12 @@ class StatusBarNotifier {
    * Update transfer count in status bar
    * Call this when transfers are added/removed
    */
+  setFailedTransferCount(count: number): void {
+    if (this.failedTransferCount === count) return;
+    this.failedTransferCount = count;
+    this.updateTransferCount(this.activeTransferCount);
+  }
+
   updateTransferCount(count: number): void {
     this.activeTransferCount = count;
     if (this.hasBulkTransferProgress()) {
@@ -332,8 +339,19 @@ class StatusBarNotifier {
     }
 
     if (count === 0) {
-      this.transferStatusBarItem.hide();
+      if (this.failedTransferCount > 0) {
+        // Persistent until failures are retried or cleared
+        const n = this.failedTransferCount;
+        this.transferStatusBarItem.text = `$(error) ${n} failed`;
+        this.transferStatusBarItem.tooltip = `${n} transfer${n > 1 ? 's' : ''} failed - Click to view queue`;
+        this.transferStatusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+        this.transferStatusBarItem.show();
+      } else {
+        this.transferStatusBarItem.backgroundColor = undefined;
+        this.transferStatusBarItem.hide();
+      }
     } else {
+      this.transferStatusBarItem.backgroundColor = undefined;
       const icon = count > 0 ? '$(sync~spin)' : '$(check)';
       this.transferStatusBarItem.text = `${icon} ${count} transfer${count > 1 ? 's' : ''}`;
       this.transferStatusBarItem.tooltip = `${count} active transfer${count > 1 ? 's' : ''} - Click to view queue`;
@@ -349,7 +367,7 @@ class StatusBarNotifier {
     this.transferStatusBarItem.show();
     setTimeout(() => {
       if (this.activeTransferCount === 0) {
-        this.transferStatusBarItem.hide();
+        this.updateTransferCount(0);
       }
     }, 3000);
   }

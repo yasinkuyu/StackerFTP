@@ -1,7 +1,7 @@
 {
   "name": "stackerftp",
   "displayName": "StackerFTP - Professional SFTP/FTP Client",
-  "version": "1.2.21",
+  "version": "1.3.0",
   "publisher": "yasinkuyu",
   "author": "Insya, Yasin Kuyu",
   "license": "MIT",
@@ -62,10 +62,15 @@
           "default": true,
           "description": "Confirm before deleting remote files"
         },
+        "stackerftp.preserveTimestamps": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep the original modification time on uploaded/downloaded files, so Compare and Sync detect changes reliably"
+        },
         "stackerftp.confirmSync": {
           "type": "boolean",
           "default": true,
-          "description": "Confirm before syncing directories"
+          "description": "Show the sync preview (list of changes to apply) before syncing. When disabled, recommended changes are applied directly"
         },
         "stackerftp.autoRefresh": {
           "type": "boolean",
@@ -88,6 +93,21 @@
           "type": "boolean",
           "default": false,
           "description": "Watch local files for changes"
+        },
+        "stackerftp.rememberTargetConnection": {
+          "type": "string",
+          "enum": ["session", "workspace"],
+          "enumDescriptions": [
+            "Remember the selected target connection until the window is closed or reloaded",
+            "Remember the selected target connection per workspace, across reloads and restarts"
+          ],
+          "default": "session",
+          "description": "How long the selected target connection (used when multiple connections are configured) is remembered"
+        },
+        "stackerftp.rememberMultiTargets": {
+          "type": "boolean",
+          "default": true,
+          "description": "Pre-select the servers last used with \"Upload to Multiple Servers\""
         },
         "stackerftp.autoReconnect": {
           "type": "boolean",
@@ -245,6 +265,12 @@
         "title": "SFTP: Connect",
         "category": "StackerFTP",
         "icon": "$(plug)"
+      },
+      {
+        "command": "stackerftp.selectTarget",
+        "title": "Select Target Connection",
+        "category": "StackerFTP",
+        "icon": "$(target)"
       },
       {
         "command": "stackerftp.selectPrimaryConnection",
@@ -447,7 +473,7 @@
       },
       {
         "command": "stackerftp.webmaster.compareFolders",
-        "title": "Compare Local and Remote Folders",
+        "title": "Compare with Remote",
         "category": "StackerFTP - WebMaster",
         "icon": "$(git-compare)"
       },
@@ -474,6 +500,12 @@
         "title": "Cancel Transfer",
         "category": "StackerFTP",
         "icon": "$(close)"
+      },
+      {
+        "command": "stackerftp.showTransferError",
+        "title": "Show Error Details",
+        "category": "StackerFTP",
+        "icon": "$(info)"
       },
       {
         "command": "stackerftp.retryTransferItem",
@@ -529,8 +561,14 @@
         "icon": "$(plug)"
       },
       {
+        "command": "stackerftp.uploadToMultiple",
+        "title": "Upload to Multiple Servers...",
+        "category": "StackerFTP",
+        "icon": "$(cloud-upload)"
+      },
+      {
         "command": "stackerftp.uploadToAllProfiles",
-        "title": "Upload File To All Profiles",
+        "title": "Upload to All Servers",
         "category": "StackerFTP",
         "icon": "$(cloud-upload)"
       },
@@ -706,9 +744,12 @@
       ],
       "stackerftp.submenu": [
         {
+          "command": "stackerftp.uploadToMultiple",
+          "group": "1_transfer@0"
+        },
+        {
           "command": "stackerftp.uploadToAllProfiles",
-          "group": "1_transfer@1",
-          "when": "explorerResourceIsFile"
+          "group": "1_transfer@1"
         },
         {
           "command": "stackerftp.revealInRemoteExplorer",
@@ -770,6 +811,10 @@
         }
       ],
       "stackerftp.editor.submenu": [
+        {
+          "command": "stackerftp.uploadToMultiple",
+          "group": "1_upload@0"
+        },
         {
           "command": "stackerftp.uploadToAllProfiles",
           "group": "1_upload@1"
@@ -1044,6 +1089,16 @@
           "command": "stackerftp.retryTransferItem",
           "when": "view == stackerftp.transferQueue && viewItem =~ /transfer-(group-)?error/",
           "group": "navigation@1"
+        },
+        {
+          "command": "stackerftp.showTransferError",
+          "when": "view == stackerftp.transferQueue && viewItem =~ /transfer-(group-)?error/",
+          "group": "inline"
+        },
+        {
+          "command": "stackerftp.showTransferError",
+          "when": "view == stackerftp.transferQueue && viewItem =~ /transfer-(group-)?error/",
+          "group": "navigation@0"
         }
       ],
       "scm/title": [

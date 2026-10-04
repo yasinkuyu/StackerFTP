@@ -16,6 +16,64 @@ export class ConfigManager {
   private static instance: ConfigManager;
   private configs: Map<string, FTPConfig[]> = new Map();
   private currentProfile: Map<string, string> = new Map();
+  // Session-scoped target connection per workspace (config id). Not persisted.
+  private selectedTargets: Map<string, string> = new Map();
+
+  private _onDidChangeTarget = new vscode.EventEmitter<string>();
+  /** Fires with the workspaceRoot whose selected target connection changed */
+  public readonly onDidChangeTarget: vscode.Event<string> = this._onDidChangeTarget.event;
+
+  private state: vscode.Memento | undefined;
+  private static readonly TARGETS_STATE_KEY = 'stackerftp.selectedTargets';
+  private static readonly MULTI_TARGETS_STATE_KEY = 'stackerftp.multiTargets';
+  // Last "upload to multiple servers" selection per workspace (config ids)
+  private multiTargets: Map<string, string[]> = new Map();
+
+  /**
+   * Attach workspace storage. Targets are restored only when
+   * "stackerftp.rememberTargetConnection" is "workspace".
+   */
+  initState(state: vscode.Memento): void {
+    this.state = state;
+    if (this.persistTargets()) {
+      const saved = state.get<Record<string, string>>(ConfigManager.TARGETS_STATE_KEY, {});
+      for (const [root, id] of Object.entries(saved)) {
+        if (!this.selectedTargets.has(root)) this.selectedTargets.set(root, id);
+      }
+    }
+    const savedMulti = state.get<Record<string, string[]>>(ConfigManager.MULTI_TARGETS_STATE_KEY, {});
+    for (const [root, ids] of Object.entries(savedMulti)) {
+      this.multiTargets.set(root, ids);
+    }
+  }
+
+  private persistTargets(): boolean {
+    return vscode.workspace.getConfiguration('stackerftp').get<string>('rememberTargetConnection', 'session') === 'workspace';
+  }
+
+  /** Write (or drop) stored targets according to the current setting */
+  saveTargets(): void {
+    if (!this.state) return;
+    const value = this.persistTargets() ? Object.fromEntries(this.selectedTargets) : undefined;
+    this.state.update(ConfigManager.TARGETS_STATE_KEY, value);
+  }
+
+  /** Configs last chosen for multi-server upload (still existing ones only) */
+  getMultiTargets(workspaceRoot: string): FTPConfig[] {
+    const ids = this.multiTargets.get(workspaceRoot) || [];
+    return this.getConfigs(workspaceRoot).filter(c => ids.includes(ConfigManager.getConfigId(c)));
+  }
+
+  setMultiTargets(workspaceRoot: string, configs: FTPConfig[]): void {
+    this.multiTargets.set(workspaceRoot, configs.map(c => ConfigManager.getConfigId(this.findConfig(workspaceRoot, c) || c)));
+    this.state?.update(ConfigManager.MULTI_TARGETS_STATE_KEY, Object.fromEntries(this.multiTargets));
+  }
+
+  /** Stable identity of a configured connection (independent of profile overrides) */
+  static getConfigId(config: FTPConfig): string {
+    const port = config.port || (config.protocol === 'sftp' ? 22 : 21);
+    return `${config.name || config.host}|${config.host}|${port}|${config.username}`;
+  }
 
   static getInstance(): ConfigManager {
     if (!ConfigManager.instance) {
@@ -148,7 +206,11 @@ export class ConfigManager {
     const configs = this.getConfigs(workspaceRoot);
     if (configs.length === 0) return undefined;
 
-    if (configs.length === 1) return configs[0];
+    if (configs.length === 1) return this.withProfile(workspaceRoot, configs[0]);
+
+    // Session-selected target wins
+    const selected = this.getSelectedConfig(workspaceRoot);
+    if (selected) return selected;
 
     // Multiple configs - check for profile
     const profile = this.currentProfile.get(workspaceRoot);
@@ -161,13 +223,67 @@ export class ConfigManager {
       }
     }
 
-    // Return first config or default profile
-    const firstConfig = configs[0];
-    if (firstConfig.defaultProfile && firstConfig.profiles) {
-      return this.mergeWithProfile(firstConfig, firstConfig.defaultProfile);
-    }
+    return this.withProfile(workspaceRoot, configs[0]);
+  }
 
-    return firstConfig;
+  /** Apply the current (or default) profile to a raw config */
+  withProfile(workspaceRoot: string, config: FTPConfig): FTPConfig {
+    const profile = this.currentProfile.get(workspaceRoot);
+    if (profile && config.profiles?.[profile]) {
+      return this.mergeWithProfile(config, profile);
+    }
+    if (config.defaultProfile && config.profiles?.[config.defaultProfile]) {
+      return this.mergeWithProfile(config, config.defaultProfile);
+    }
+    return config;
+  }
+
+  /** Raw configured connection matching the given (raw or profile-merged) config */
+  findConfig(workspaceRoot: string, config: FTPConfig): FTPConfig | undefined {
+    const configs = this.getConfigs(workspaceRoot);
+    const id = ConfigManager.getConfigId(config);
+    return configs.find(c => ConfigManager.getConfigId(c) === id)
+      || configs.find(c => ConfigManager.getConfigId(this.withProfile(workspaceRoot, c)) === id);
+  }
+
+  setSelectedConfig(workspaceRoot: string, config: FTPConfig): void {
+    const raw = this.findConfig(workspaceRoot, config) || config;
+    const id = ConfigManager.getConfigId(raw);
+    if (this.selectedTargets.get(workspaceRoot) === id) return;
+    this.selectedTargets.set(workspaceRoot, id);
+    this.saveTargets();
+    logger.info(`Target connection: ${raw.name || raw.host}`);
+    this._onDidChangeTarget.fire(workspaceRoot);
+  }
+
+  clearSelectedConfig(workspaceRoot: string): void {
+    if (this.selectedTargets.delete(workspaceRoot)) {
+      this.saveTargets();
+      this._onDidChangeTarget.fire(workspaceRoot);
+    }
+  }
+
+  /**
+   * Session mode: the choice lives only as long as the connection.
+   * When the user disconnects the selected target, forget it so the next
+   * transfer asks again instead of silently reconnecting.
+   */
+  forgetTargetOnDisconnect(disconnected: FTPConfig[], isSame: (a: FTPConfig, b: FTPConfig) => boolean): void {
+    if (this.persistTargets()) return;
+    for (const root of Array.from(this.selectedTargets.keys())) {
+      const selected = this.getSelectedConfig(root);
+      if (selected && disconnected.some(d => isSame(d, selected))) {
+        this.clearSelectedConfig(root);
+      }
+    }
+  }
+
+  /** Session-selected target (profile applied), if it still exists in config */
+  getSelectedConfig(workspaceRoot: string): FTPConfig | undefined {
+    const id = this.selectedTargets.get(workspaceRoot);
+    if (!id) return undefined;
+    const raw = this.getConfigs(workspaceRoot).find(c => ConfigManager.getConfigId(c) === id);
+    return raw ? this.withProfile(workspaceRoot, raw) : undefined;
   }
 
   private mergeWithProfile(config: FTPConfig, profileName: string): FTPConfig {
@@ -233,6 +349,7 @@ export class ConfigManager {
   setProfile(workspaceRoot: string, profileName: string): void {
     this.currentProfile.set(workspaceRoot, profileName);
     logger.info(`Switched to profile: ${profileName}`);
+    this._onDidChangeTarget.fire(workspaceRoot);
   }
 
   getCurrentProfile(workspaceRoot: string): string | undefined {

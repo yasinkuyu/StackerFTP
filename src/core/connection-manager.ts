@@ -21,9 +21,14 @@ export class ConnectionManager {
   private reconnectTimers: Map<string, NodeJS.Timeout> = new Map();
   private reconnectAttempts: Map<string, number> = new Map();
   private ongoingConnections: Map<string, Promise<BaseConnection>> = new Map();
+  private targetLabel: string | undefined;
 
   private _onConnectionChanged: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
   public readonly onConnectionChanged: vscode.Event<void> = this._onConnectionChanged.event;
+
+  private _onDidManualDisconnect = new vscode.EventEmitter<FTPConfig[]>();
+  /** Fires with the configs the user disconnected on purpose (not on connection drops) */
+  public readonly onDidManualDisconnect: vscode.Event<FTPConfig[]> = this._onDidManualDisconnect.event;
 
   private constructor() {
     this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -94,8 +99,10 @@ export class ConnectionManager {
     const activeConns = this.getAllActiveConnections();
 
     if (activeConns.length === 0) {
-      this.statusBarItem.text = `$(cloud) StackerFTP`;
-      this.statusBarItem.tooltip = 'Click to select connection';
+      this.statusBarItem.text = this.targetLabel ? `$(cloud) ${this.targetLabel}` : `$(cloud) StackerFTP`;
+      this.statusBarItem.tooltip = this.targetLabel
+        ? `Target: ${this.targetLabel} (disconnected)\nClick to manage connections`
+        : 'Click to select connection';
       this.statusBarItem.show();
       return;
     }
@@ -119,48 +126,14 @@ export class ConnectionManager {
     this.statusBarItem.show();
   }
 
-  // Select target connection for upload/download when multiple are active
-  async selectConnectionForTransfer(operation: 'upload' | 'download'): Promise<{ connection: BaseConnection; config: FTPConfig } | undefined> {
-    const activeConns = this.getAllActiveConnections();
+  isSameTarget(a: FTPConfig, b: FTPConfig): boolean {
+    return this.getConnectionKey(a) === this.getConnectionKey(b);
+  }
 
-    if (activeConns.length === 0) {
-      statusBar.warn('No active connections. Please connect first.');
-      return undefined;
-    }
-
-    if (activeConns.length === 1) {
-      return activeConns[0];
-    }
-
-    // Multiple connections - ask user
-    const items = activeConns.map(({ config }) => ({
-      label: config.name || config.host,
-      description: `${config.protocol?.toUpperCase()} • ${config.username}@${config.host}`,
-      config
-    }));
-
-    // Add "Primary" indicator
-    const primaryConfig = this.getPrimaryConfig();
-    if (primaryConfig) {
-      const primaryItem = items.find(i =>
-        i.config.name === primaryConfig.name && i.config.host === primaryConfig.host
-      );
-      if (primaryItem) {
-        primaryItem.label = `$(star-full) ${primaryItem.label} (Primary)`;
-      }
-    }
-
-    const selected = await vscode.window.showQuickPick(items, {
-      placeHolder: `Select connection for ${operation}`,
-      title: `${operation === 'upload' ? 'Upload' : 'Download'} - Select Target`
-    });
-
-    if (!selected) return undefined;
-
-    const conn = activeConns.find(c =>
-      c.config.name === selected.config.name && c.config.host === selected.config.host
-    );
-    return conn;
+  /** Name of the selected (possibly disconnected) target, shown when nothing is connected */
+  setTargetLabel(label: string | undefined): void {
+    this.targetLabel = label;
+    this.updateStatusBar();
   }
 
   async connect(config: FTPConfig): Promise<BaseConnection> {
@@ -282,10 +255,12 @@ export class ConnectionManager {
   }
 
   async disconnect(config?: FTPConfig): Promise<void> {
+    const disconnected: FTPConfig[] = [];
     if (config) {
       const key = this.getConnectionKey(config);
       const connection = this.connections.get(key);
       if (connection) {
+        disconnected.push(connection.getConfig());
         this.manualDisconnects.add(key);
         this.clearReconnectState(key);
         await connectionPool.drain(config);
@@ -302,6 +277,7 @@ export class ConnectionManager {
       // Disconnect all
       await connectionPool.drainAll();
       for (const [key, connection] of this.connections) {
+        disconnected.push(connection.getConfig());
         this.manualDisconnects.add(key);
         this.clearReconnectState(key);
         await connection.disconnect();
@@ -311,6 +287,9 @@ export class ConnectionManager {
       this.primaryConnectionKey = undefined;
     }
     this.updateStatusBar();
+    if (disconnected.length > 0) {
+      this._onDidManualDisconnect.fire(disconnected);
+    }
     this._onConnectionChanged.fire();
   }
 

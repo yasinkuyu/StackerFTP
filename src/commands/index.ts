@@ -9,13 +9,17 @@ import * as os from 'os';
 import { configManager } from '../core/config';
 import { connectionManager } from '../core/connection-manager';
 import { transferManager } from '../core/transfer-manager';
-import { FTPConfig, Protocol } from '../types';
+import { BaseConnection } from '../core/connection';
+import { showTransferErrorDetails } from '../providers/transfer-error-reporter';
+import { resolveTarget, resolveTargetConfig, pickTargetConfig, getTargetConfig } from '../core/target';
+import { FTPConfig, Protocol, TransferItem } from '../types';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
 import { normalizeRemotePath, formatFileSize, sanitizeRelativePath, getLocalRelativePath, getLocalRoot, getLocalPathFromRemote } from '../utils/helpers';
 import { ConnectionWizard } from '../core/connection-wizard';
 import { createGitIntegration } from '../core/git-integration';
 import { getWorkspaceRoot } from './utils';
+import { runSync } from './sync';
 import { registerWebMasterCommands } from './webmaster';
 import { registerViewCommands } from './view';
 
@@ -286,19 +290,168 @@ function getWorkspaceRootFromItems(items: any[]): string | undefined {
   return getWorkspaceRoot();
 }
 
-async function getResolvedActiveConfig(workspaceRoot: string): Promise<FTPConfig | undefined> {
-  let config = configManager.getActiveConfig(workspaceRoot);
-  if (config) {
-    return config;
+function expandHomePath(p: string): string {
+  return p.startsWith('~') ? path.join(os.homedir(), p.slice(1)) : p;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * ssh arguments for an interactive session: key, jump hosts and start directory.
+ * Passwords cannot be passed to ssh; ssh prompts for them in the terminal.
+ */
+function buildSshArgs(config: FTPConfig, startDir?: string): string[] {
+  const args: string[] = ['-p', String(config.port || 22)];
+
+  if (config.privateKeyPath) {
+    args.push('-i', expandHomePath(config.privateKeyPath));
   }
 
-  if (!configManager.configExists(workspaceRoot)) {
+  const hops = config.hop ? (Array.isArray(config.hop) ? config.hop : [config.hop]) : [];
+  if (hops.length > 0) {
+    args.push('-J', hops.map(h => `${h.username}@${h.host}:${h.port || 22}`).join(','));
+  }
+
+  args.push('-t', `${config.username}@${config.host}`);
+
+  const dir = startDir || config.remotePath;
+  if (dir) {
+    // Open the shell in the project directory; fall back to home if it does not exist
+    args.push(`cd ${shellQuote(dir)} 2>/dev/null || echo "StackerFTP: ${dir.replace(/"/g, '')} not found"; exec "$SHELL" -l`);
+  }
+
+  return args;
+}
+
+function collectLocalPaths(items: any[]): string[] {
+  const localPaths: string[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (!item) continue;
+    let p: string | undefined;
+    if ('resourceUri' in item && item.resourceUri?.fsPath) {
+      p = item.resourceUri.fsPath;
+    } else if ('fsPath' in item && typeof item.fsPath === 'string') {
+      p = item.fsPath;
+    }
+    if (p && !seen.has(p)) {
+      seen.add(p);
+      localPaths.push(p);
+    }
+  }
+  return localPaths;
+}
+
+interface UploadCounts { uploaded: number; skipped: number; failed: number }
+
+/** Upload local files/folders to one server, mirroring the workspace-relative layout */
+async function uploadLocalPaths(
+  workspaceRoot: string,
+  localPaths: string[],
+  config: FTPConfig,
+  connection: BaseConnection
+): Promise<UploadCounts> {
+  const counts: UploadCounts = { uploaded: 0, skipped: 0, failed: 0 };
+
+  for (const localPath of localPaths) {
+    try {
+      const relativePath = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, localPath, config));
+      const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
+
+      if (fs.statSync(localPath).isDirectory()) {
+        const result = await transferManager.uploadDirectory(connection, localPath, remotePath, config);
+        counts.uploaded += result.uploaded.length;
+        counts.skipped += result.skipped.length;
+        counts.failed += result.failed.length;
+      } else {
+        // Ensure remote directory exists
+        const remoteDir = normalizeRemotePath(path.dirname(remotePath));
+        try {
+          await connection.mkdir(remoteDir);
+        } catch {
+          // Directory might already exist
+        }
+        const res = await transferManager.uploadFile(connection, localPath, remotePath, config);
+        if (res.status === 'cancelled') {
+          counts.skipped++;
+        } else {
+          counts.uploaded++;
+        }
+      }
+    } catch {
+      counts.failed++;
+    }
+  }
+
+  return counts;
+}
+
+/** Local paths from explorer selection, or the active editor file (saved first) */
+async function getUploadSelection(commandArgs: any[]): Promise<{ workspaceRoot: string; localPaths: string[] } | undefined> {
+  const items = collectCommandSelection(commandArgs);
+  let localPaths = collectLocalPaths(items);
+  let workspaceRoot = items.length > 0 ? getWorkspaceRootFromItems(items) : undefined;
+
+  if (localPaths.length === 0) {
+    const editor = vscode.window.activeTextEditor;
+    if (editor && editor.document.uri.scheme === 'file') {
+      localPaths = [editor.document.fileName];
+      workspaceRoot = getWorkspaceRoot(editor.document.uri);
+    }
+  }
+
+  if (!workspaceRoot) return undefined;
+  if (localPaths.length === 0) {
+    statusBar.error('No file selected');
     return undefined;
   }
 
-  await configManager.loadConfig(workspaceRoot);
-  config = configManager.getActiveConfig(workspaceRoot);
-  return config;
+  // Upload what the user sees: save unsaved editors of the selected files
+  for (const doc of vscode.workspace.textDocuments) {
+    if (doc.isDirty && localPaths.includes(doc.fileName)) await doc.save();
+  }
+  return { workspaceRoot, localPaths };
+}
+
+/** Upload the same paths to several servers, one after another, with a per-server summary */
+async function uploadToServers(workspaceRoot: string, localPaths: string[], configs: FTPConfig[]): Promise<void> {
+  const results: { name: string; counts?: UploadCounts; error?: string }[] = [];
+
+  for (const config of configs) {
+    const name = config.name || config.host;
+    transferManager.resetBatchCollision();
+    try {
+      statusBar.info(`Uploading to ${name}...`);
+      const connection = await connectionManager.ensureConnection(config);
+      results.push({ name, counts: await uploadLocalPaths(workspaceRoot, localPaths, config, connection) });
+    } catch (error: any) {
+      results.push({ name, error: error.message });
+    }
+  }
+
+  const failedServers = results.filter(r => r.error || (r.counts && r.counts.failed > 0));
+  const summary = results.map(r => r.error
+    ? `${r.name}: connection failed (${r.error})`
+    : `${r.name}: ${r.counts!.uploaded} uploaded${r.counts!.skipped ? `, ${r.counts!.skipped} skipped` : ''}${r.counts!.failed ? `, ${r.counts!.failed} failed` : ''}`
+  );
+
+  if (failedServers.length === 0) {
+    statusBar.success(`Uploaded to ${results.length} server${results.length > 1 ? 's' : ''}`);
+    logger.info(`Multi-server upload:\n${summary.join('\n')}`);
+  } else {
+    // Connection failures never reach the transfer queue, so report them here
+    vscode.window.showErrorMessage(
+      `StackerFTP: Upload failed on ${failedServers.length}/${results.length} server(s): ${failedServers.map(r => r.name).join(', ')}`,
+      'Show Details'
+    ).then(choice => {
+      if (choice === 'Show Details') {
+        vscode.window.showErrorMessage('Multi-server upload result', { modal: true, detail: summary.join('\n') });
+      }
+    });
+    logger.error(`Multi-server upload:\n${summary.join('\n')}`);
+  }
 }
 
 async function manageProfiles(workspaceRoot: string): Promise<void> {
@@ -611,6 +764,8 @@ export function registerCommands(
 
     try {
       await connectionManager.connect(selected.config);
+      // Explicitly chosen server becomes the transfer target
+      configManager.setSelectedConfig(workspaceRoot, selected.config);
       statusBar.success(`Connected to ${selected.config.name || selected.config.host}`);
       if (remoteExplorer?.refresh) {
         remoteExplorer.refresh();
@@ -684,6 +839,12 @@ export function registerCommands(
 
   // ==================== Transfer Commands ====================
 
+  const selectTargetCommand = vscode.commands.registerCommand('stackerftp.selectTarget', async () => {
+    const workspaceRoot = getWorkspaceRoot();
+    if (!workspaceRoot) return;
+    await pickTargetConfig(workspaceRoot);
+  });
+
   const uploadCommand = vscode.commands.registerCommand(
     'stackerftp.upload',
     async (...commandArgs: any[]) => {
@@ -697,99 +858,30 @@ export function registerCommands(
       return;
     }
 
-    // Extract unique local paths from items
-    const localPaths: string[] = [];
-    const seenLocalPaths = new Set<string>();
-    for (const item of items) {
-      if (!item) continue;
-      let p: string | undefined;
-      if ('resourceUri' in item && item.resourceUri?.fsPath) {
-        p = item.resourceUri.fsPath;
-      } else if ('fsPath' in item && typeof item.fsPath === 'string') {
-        p = item.fsPath;
-      }
-      if (p && !seenLocalPaths.has(p)) {
-        seenLocalPaths.add(p);
-        localPaths.push(p);
-      }
-    }
+    const localPaths = collectLocalPaths(items);
 
     if (localPaths.length === 0) {
       statusBar.error('No valid file selected');
       return;
     }
 
-    // Check for active connections first
-    const activeConns = connectionManager.getAllActiveConnections();
-
-    let config: any;
-    let connection: any;
-
-    if (activeConns.length === 0) {
-      // No active connections - use config and connect
-      config = await getResolvedActiveConfig(workspaceRoot);
-      if (!config) {
-        statusBar.error('No SFTP configuration found', true);
-        return;
-      }
-      connection = await connectionManager.ensureConnection(config);
-    } else if (activeConns.length === 1) {
-      // Single connection - use it
-      config = activeConns[0].config;
-      connection = activeConns[0].connection;
-    } else {
-      // Multiple connections - ask user or use primary
-      const selected = await connectionManager.selectConnectionForTransfer('upload');
-      if (!selected) return;
-      config = selected.config;
-      connection = selected.connection;
+    let target: { config: FTPConfig; connection: BaseConnection } | undefined;
+    try {
+      target = await resolveTarget(workspaceRoot, 'Upload');
+    } catch (error: any) {
+      statusBar.error(`Connection failed: ${error.message}`, true);
+      return;
     }
+    if (!target) return;
+    const { config, connection } = target;
 
     try {
-      let uploadedCount = 0;
-      let skippedCount = 0;
-      let failedCount = 0;
-
-      for (const localPath of localPaths) {
-        try {
-          const relativePath = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, localPath, config));
-          const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
-
-          if (fs.statSync(localPath).isDirectory()) {
-            const result = await transferManager.uploadDirectory(connection, localPath, remotePath, config);
-            uploadedCount += result.uploaded.length;
-            skippedCount += result.skipped.length;
-            failedCount += result.failed.length;
-          } else {
-            // Ensure remote directory exists
-            const remoteDir = normalizeRemotePath(path.dirname(remotePath));
-            try {
-              await connection.mkdir(remoteDir);
-            } catch {
-              // Directory might already exist
-            }
-            const res = await transferManager.uploadFile(connection, localPath, remotePath, config);
-            if (res.status === 'cancelled') {
-              skippedCount++;
-            } else {
-              uploadedCount++;
-            }
-          }
-        } catch (err) {
-          failedCount++;
-        }
-      }
-
-      if (failedCount === 0) {
-        if (skippedCount > 0) {
-          statusBar.success(`Uploaded: ${uploadedCount}, Skipped: ${skippedCount}`);
-        } else {
-          statusBar.success(`Uploaded: ${uploadedCount} item(s)`);
-        }
+      const { uploaded, skipped, failed } = await uploadLocalPaths(workspaceRoot, localPaths, config, connection);
+      if (failed === 0) {
+        statusBar.success(skipped > 0 ? `Uploaded: ${uploaded}, Skipped: ${skipped}` : `Uploaded: ${uploaded} item(s)`);
       } else {
-        statusBar.info(`Uploaded: ${uploadedCount}, Skipped: ${skippedCount}, Failed: ${failedCount}`);
+        statusBar.error(`Uploaded: ${uploaded}, Skipped: ${skipped}, Failed: ${failed}`);
       }
-
     } catch (error: any) {
       statusBar.error(`Upload failed: ${error.message}`, true);
     }
@@ -806,28 +898,15 @@ export function registerCommands(
     const workspaceRoot = getWorkspaceRoot(editor.document.uri);
     if (!workspaceRoot) return;
 
-    // Check for active connections first
-    const activeConns = connectionManager.getAllActiveConnections();
-
-    let config: any;
-    let connection: any;
-
-    if (activeConns.length === 0) {
-      config = await getResolvedActiveConfig(workspaceRoot);
-      if (!config) {
-        statusBar.error('No SFTP configuration found', true);
-        return;
-      }
-      connection = await connectionManager.ensureConnection(config);
-    } else if (activeConns.length === 1) {
-      config = activeConns[0].config;
-      connection = activeConns[0].connection;
-    } else {
-      const selected = await connectionManager.selectConnectionForTransfer('upload');
-      if (!selected) return;
-      config = selected.config;
-      connection = selected.connection;
+    let target: { config: FTPConfig; connection: BaseConnection } | undefined;
+    try {
+      target = await resolveTarget(workspaceRoot, 'Upload');
+    } catch (error: any) {
+      statusBar.error(`Connection failed: ${error.message}`, true);
+      return;
     }
+    if (!target) return;
+    const { config, connection } = target;
 
     try {
       const relativePath = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, localPath, config));
@@ -852,7 +931,8 @@ export function registerCommands(
       await transferManager.uploadFile(connection, localPath, remotePath, config);
       statusBar.success(`Uploaded: ${path.basename(localPath)}`);
     } catch (error: any) {
-      statusBar.error(`Upload failed: ${error.message}`, true);
+      // Queue failures are reported centrally (transfer-error-reporter)
+      statusBar.error(`Upload failed: ${error.message}`);
     }
   });
 
@@ -862,19 +942,24 @@ export function registerCommands(
     const workspaceRoot = getWorkspaceRootFromItems(items);
     if (!workspaceRoot) return;
 
-    const config = await getResolvedActiveConfig(workspaceRoot);
-    if (!config) {
-      statusBar.error('No SFTP configuration found', true);
-      return;
-    }
-
     if (items.length === 0) {
       statusBar.error('No item selected. Use "Download Project" for full project download.');
       return;
     }
 
     try {
-      const connection = await connectionManager.ensureConnection(config);
+      // Remote explorer items carry their own connection; local items need a (session-remembered) target
+      const remoteItem = items.find((i: any) => i?.config);
+      let config: FTPConfig;
+      let connection: BaseConnection;
+      if (remoteItem && items.every((i: any) => !i || i.config)) {
+        config = remoteItem.config;
+        connection = await connectionManager.ensureConnection(config);
+      } else {
+        const target = await resolveTarget(workspaceRoot, 'Download');
+        if (!target) return;
+        ({ config, connection } = target);
+      }
 
       let downloadedCount = 0;
       let failedCount = 0;
@@ -947,7 +1032,7 @@ export function registerCommands(
       if (failedCount === 0) {
         statusBar.success(`Downloaded: ${downloadedCount} item(s)`);
       } else {
-        statusBar.info(`Downloaded: ${downloadedCount}, Failed: ${failedCount}`);
+        statusBar.error(`Downloaded: ${downloadedCount}, Failed: ${failedCount}`);
       }
     } catch (error: any) {
       statusBar.error(`Download failed: ${error.message}`, true);
@@ -958,11 +1043,8 @@ export function registerCommands(
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      statusBar.error('No SFTP configuration found', true);
-      return;
-    }
+    const config = await resolveTargetConfig(workspaceRoot, 'Download Project');
+    if (!config) return;
 
     const choice = await vscode.window.showWarningMessage(
       'Download entire project?',
@@ -995,55 +1077,7 @@ export function registerCommands(
   });
 
   async function performSync(direction: 'toRemote' | 'toLocal' | 'both', uri?: vscode.Uri) {
-    const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) return;
-
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      statusBar.error('No SFTP configuration found', true);
-      return;
-    }
-
-    const confirmSync = vscode.workspace.getConfiguration('stackerftp').get<boolean>('confirmSync', true);
-    if (confirmSync) {
-      const action = direction === 'toRemote' ? 'Local → Remote' : direction === 'toLocal' ? 'Remote → Local' : 'Both ways';
-      const choice = await vscode.window.showWarningMessage(
-        `Sync ${action}?`,
-        { modal: true },
-        'Yes', 'No'
-      );
-      if (choice !== 'Yes') return;
-    }
-
-    try {
-      const connection = await connectionManager.ensureConnection(config);
-
-      let localPath: string;
-      let remotePath: string;
-
-      if (uri) {
-        localPath = uri.fsPath;
-        const relativePath = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, localPath, config));
-        remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
-      } else {
-        localPath = workspaceRoot;
-        remotePath = config.remotePath;
-      }
-
-      let result;
-      if (direction === 'toRemote') {
-        result = await transferManager.syncToRemote(connection, localPath, remotePath, config);
-      } else if (direction === 'toLocal') {
-        result = await transferManager.syncToLocal(connection, remotePath, localPath, config);
-      } else {
-        result = await transferManager.syncBothWays(connection, localPath, remotePath, config);
-      }
-
-      showSyncResult(result, direction === 'toRemote' ? 'upload' : 'download');
-
-    } catch (error: any) {
-      statusBar.error(`Sync failed: ${error.message}`, true);
-    }
+    await runSync(direction, uri);
   }
 
   function showSyncResult(result: { uploaded: string[]; downloaded: string[]; failed: any[] }, type: string): void {
@@ -1060,7 +1094,11 @@ export function registerCommands(
     }
 
     if (messages.length > 0) {
-      statusBar.success(messages.join(', '));
+      if (result.failed.length > 0) {
+        statusBar.error(messages.join(', '));
+      } else {
+        statusBar.success(messages.join(', '));
+      }
     }
 
     if (result.failed.length > 0) {
@@ -1074,7 +1112,7 @@ export function registerCommands(
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot && !item?.config) return;
 
-    const config = item?.config || (workspaceRoot ? configManager.getActiveConfig(workspaceRoot) : undefined);
+    const config = item?.config || (workspaceRoot ? await resolveTargetConfig(workspaceRoot, 'Open') : undefined);
     if (!config) return;
 
     try {
@@ -1126,7 +1164,7 @@ export function registerCommands(
 
     try {
       for (const item of items) {
-        const config = item.config || (workspaceRoot ? configManager.getActiveConfig(workspaceRoot) : undefined);
+        const config = item.config || (workspaceRoot ? await resolveTargetConfig(workspaceRoot, 'Delete') : undefined);
         if (!config) continue;
 
         const connection = item.connectionRef || connectionManager.getConnection(config) || await connectionManager.ensureConnection(config);
@@ -1487,11 +1525,8 @@ export function registerCommands(
         localPath = path.join(workspaceRoot, relativePath);
       } else if (uri) {
         // Called from local file
-        activeConfig = configManager.getActiveConfig(workspaceRoot);
-        if (!activeConfig) {
-          statusBar.error('No SFTP configuration found', true);
-          return;
-        }
+        activeConfig = await resolveTargetConfig(workspaceRoot, 'Diff');
+        if (!activeConfig) return;
         localPath = uri.fsPath;
         const relativePath = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, localPath, activeConfig));
         remotePath = normalizeRemotePath(path.posix.join(activeConfig.remotePath, relativePath.replace(/\\/g, '/')));
@@ -1532,68 +1567,12 @@ export function registerCommands(
     }
   });
 
-  const terminalCommand = vscode.commands.registerCommand('stackerftp.terminal', async () => {
+  const terminalCommand = vscode.commands.registerCommand('stackerftp.terminal', async (item?: any) => {
     const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) return;
+    if (!workspaceRoot && !item?.config) return;
 
-    // Get active connections
-    const activeConns = connectionManager.getAllActiveConnections();
-
-    let targetConfig: any;
-
-    if (activeConns.length === 0) {
-      // No active connections - check if we have any configs
-      const configs = configManager.getConfigs(workspaceRoot);
-      if (configs.length === 0) {
-        statusBar.error('No configurations found');
-        return;
-      }
-
-      // Prompt to select a config to connect and open terminal
-      const items = configs.map(c => ({
-        label: c.name || c.host,
-        description: `${c.protocol.toUpperCase()} • ${c.username}@${c.host}`,
-        config: c
-      }));
-
-      const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: 'Select a server to connect and open terminal'
-      });
-
-      if (!selected) return;
-
-      try {
-        await connectionManager.connect(selected.config);
-        targetConfig = selected.config;
-      } catch (error: any) {
-        statusBar.error(`Connection failed: ${error.message}`);
-        return;
-      }
-    } else if (activeConns.length === 1) {
-      // Single active connection
-      targetConfig = activeConns[0].config;
-    } else {
-      // Multiple active connections - prompt to select
-      const primaryConfig = connectionManager.getPrimaryConfig();
-
-      const items = activeConns.map(({ config }) => {
-        const isPrimary = primaryConfig && config.name === primaryConfig.name && config.host === primaryConfig.host;
-        return {
-          label: isPrimary ? `$(star-full) ${config.name || config.host}` : (config.name || config.host),
-          description: `${config.protocol.toUpperCase()} • ${config.username}@${config.host}`,
-          detail: isPrimary ? 'Primary Connection' : '',
-          config
-        };
-      });
-
-      const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: 'Select connection for terminal'
-      });
-
-      if (!selected) return;
-      targetConfig = selected.config;
-    }
-
+    const targetConfig: FTPConfig | undefined = item?.config
+      || (workspaceRoot ? await resolveTargetConfig(workspaceRoot, 'Terminal') : undefined);
     if (!targetConfig) return;
 
     if (targetConfig.protocol !== 'sftp') {
@@ -1604,10 +1583,8 @@ export function registerCommands(
     const terminal = vscode.window.createTerminal({
       name: `SFTP: ${targetConfig.name || targetConfig.host}`,
       shellPath: 'ssh',
-      shellArgs: [
-        '-p', String(targetConfig.port || 22),
-        `${targetConfig.username}@${targetConfig.host}`
-      ]
+      shellArgs: buildSshArgs(targetConfig, item?.entry?.type === 'directory' ? item.entry.path : undefined),
+      cwd: workspaceRoot
     });
 
     terminal.show();
@@ -1687,6 +1664,15 @@ export function registerCommands(
     statusBar.success(`Retried: ${retriedCount} transfer${retriedCount > 1 ? 's' : ''}`);
   });
 
+  // Full error details for failed transfer items (click on item or context menu)
+  const showTransferErrorCommand = vscode.commands.registerCommand('stackerftp.showTransferError', async (item?: any, selectedItems?: any[]) => {
+    const queueItems = selectedItems && selectedItems.length > 0 ? selectedItems : (item ? [item] : []);
+    const transfers: TransferItem[] = queueItems.length > 0
+      ? queueItems.flatMap((q: any) => q?.transferItem ? [q.transferItem] : (q?.items || []))
+      : transferManager.getQueue();
+    await showTransferErrorDetails(transfers);
+  });
+
   // Clear completed/error transfers
   const clearTransferQueueCommand = vscode.commands.registerCommand('stackerftp.clearTransferQueue', () => {
     transferManager.clearCompleted();
@@ -1760,11 +1746,8 @@ export function registerCommands(
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      statusBar.error('No SFTP configuration found', true);
-      return;
-    }
+    const config = await resolveTargetConfig(workspaceRoot, 'Upload Changed Files');
+    if (!config) return;
 
     const gitIntegration = createGitIntegration(workspaceRoot);
 
@@ -1858,11 +1841,8 @@ export function registerCommands(
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      statusBar.error('No SFTP configuration found', true);
-      return;
-    }
+    const config = await resolveTargetConfig(workspaceRoot, 'Upload Project');
+    if (!config) return;
 
     const choice = await vscode.window.showWarningMessage(
       'Upload entire project to remote? This may overwrite remote files.',
@@ -1889,11 +1869,8 @@ export function registerCommands(
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      statusBar.error('No SFTP configuration found', true);
-      return;
-    }
+    const config = await resolveTargetConfig(workspaceRoot, 'List');
+    if (!config) return;
 
     try {
       const connection = await connectionManager.ensureConnection(config);
@@ -1932,11 +1909,8 @@ export function registerCommands(
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      statusBar.error('No SFTP configuration found', true);
-      return;
-    }
+    const config = await resolveTargetConfig(workspaceRoot, 'List All');
+    if (!config) return;
 
     try {
       const connection = await connectionManager.ensureConnection(config);
@@ -1997,11 +1971,8 @@ export function registerCommands(
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      statusBar.error('No SFTP configuration found', true);
-      return;
-    }
+    const config = await resolveTargetConfig(workspaceRoot, 'Refresh');
+    if (!config) return;
 
     const activeEditor = vscode.window.activeTextEditor;
     if (!activeEditor) {
@@ -2317,11 +2288,8 @@ export function registerCommands(
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      statusBar.error('No SFTP configuration found', true);
-      return;
-    }
+    const config = await resolveTargetConfig(workspaceRoot, 'Reveal');
+    if (!config) return;
 
     // Get file path from URI or active editor
     let localPath: string | undefined;
@@ -2428,74 +2396,69 @@ export function registerCommands(
 
   // ==================== Upload/Download Extended Commands ====================
 
-  const uploadToAllProfilesCommand = vscode.commands.registerCommand('stackerftp.uploadToAllProfiles', async (uri: vscode.Uri, selectedItems?: vscode.Uri[]) => {
-    const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) return;
+  // Upload to every configured server (no prompt)
+  const uploadToAllProfilesCommand = vscode.commands.registerCommand('stackerftp.uploadToAllProfiles', async (...commandArgs: any[]) => {
+    const selection = await getUploadSelection(commandArgs);
+    if (!selection) return;
+    const { workspaceRoot, localPaths } = selection;
 
-    const configs = configManager.getConfigs(workspaceRoot);
+    const configs = configManager.getConfigs(workspaceRoot).map(c => configManager.withProfile(workspaceRoot, c));
     if (configs.length === 0) {
       statusBar.error('No SFTP configurations found', true);
       return;
     }
 
-    const localPaths = selectedItems && selectedItems.length > 0
-      ? selectedItems.map(item => item.fsPath).filter(Boolean)
-      : (uri?.fsPath ? [uri.fsPath] : (vscode.window.activeTextEditor?.document.fileName ? [vscode.window.activeTextEditor.document.fileName] : []));
+    const names = configs.map(c => c.name || c.host).join(', ');
+    const confirm = await vscode.window.showWarningMessage(
+      `Upload ${localPaths.length} item(s) to all ${configs.length} servers?`,
+      { modal: true, detail: names },
+      'Upload'
+    );
+    if (confirm !== 'Upload') return;
 
-    if (localPaths.length === 0) {
-      statusBar.error('No file selected');
+    await uploadToServers(workspaceRoot, localPaths, configs);
+  });
+
+  // Upload to a chosen set of servers (e.g. staging + production); the set is remembered
+  const uploadToMultipleCommand = vscode.commands.registerCommand('stackerftp.uploadToMultiple', async (...commandArgs: any[]) => {
+    const selection = await getUploadSelection(commandArgs);
+    if (!selection) return;
+    const { workspaceRoot, localPaths } = selection;
+
+    const rawConfigs = configManager.getConfigs(workspaceRoot);
+    if (rawConfigs.length === 0) {
+      statusBar.error('No SFTP configurations found', true);
       return;
     }
 
-    const results: { name: string; success: boolean; error?: string }[] = [];
-    const totalOperations = configs.length * localPaths.length;
-    let completedOperations = 0;
+    const remember = vscode.workspace.getConfiguration('stackerftp').get<boolean>('rememberMultiTargets', true);
+    const previous = remember ? configManager.getMultiTargets(workspaceRoot) : [];
+    const preselected = previous.length > 0
+      ? previous
+      : [getTargetConfig(workspaceRoot)].filter((c): c is FTPConfig => !!c);
 
-    await vscode.window.withProgress({
-      location: vscode.ProgressLocation.Notification,
-      title: 'Uploading to all profiles...',
-      cancellable: false
-    }, async (progress) => {
-      for (const localPath of localPaths) {
-        for (let i = 0; i < configs.length; i++) {
-          const config = configs[i];
-          const profileName = config.name || config.host;
-          completedOperations++;
-          progress.report({
-            message: `${path.basename(localPath)} -> ${profileName} (${completedOperations}/${totalOperations})`,
-            increment: totalOperations > 0 ? (100 / totalOperations) : 100
-          });
-
-          try {
-            const connection = await connectionManager.ensureConnection(config);
-            const relativePath = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, localPath, config));
-            const remotePath = normalizeRemotePath(path.join(config.remotePath, relativePath));
-
-            // Ensure remote directory exists
-            const remoteDir = normalizeRemotePath(path.dirname(remotePath));
-            try {
-              await connection.mkdir(remoteDir);
-            } catch {
-              // Directory might already exist
-            }
-
-            await transferManager.uploadFile(connection, localPath, remotePath, config);
-            results.push({ name: `${profileName}:${path.basename(localPath)}`, success: true });
-          } catch (error: any) {
-            results.push({ name: `${profileName}:${path.basename(localPath)}`, success: false, error: error.message });
-          }
-        }
-      }
+    const picks = rawConfigs.map(raw => {
+      const config = configManager.withProfile(workspaceRoot, raw);
+      return {
+        label: config.name || config.host,
+        description: `${config.protocol.toUpperCase()} • ${config.username}@${config.host}:${config.remotePath}`,
+        detail: connectionManager.isConnected(config) ? 'Connected' : undefined,
+        picked: preselected.some(p => connectionManager.isSameTarget(configManager.withProfile(workspaceRoot, p), config)),
+        raw,
+        config
+      };
     });
 
-    const successful = results.filter(r => r.success).length;
-    const failed = results.filter(r => !r.success);
+    const selected = await vscode.window.showQuickPick(picks, {
+      canPickMany: true,
+      title: `Upload ${localPaths.length} item(s) to Multiple Servers`,
+      placeHolder: 'Select servers (use the checkbox at the top to select all)',
+      ignoreFocusOut: true
+    });
+    if (!selected || selected.length === 0) return;
 
-    if (failed.length === 0) {
-      statusBar.success(`Uploaded to all ${successful} profiles successfully`);
-    } else {
-      statusBar.warn(`Uploaded to ${successful}/${results.length} profiles. Failed: ${failed.map(f => f.name).join(', ')}`);
-    }
+    configManager.setMultiTargets(workspaceRoot, selected.map(s => s.raw));
+    await uploadToServers(workspaceRoot, localPaths, selected.map(s => s.config));
   });
 
   // Note: uploadFolder and downloadFolder commands are disabled.
@@ -2587,11 +2550,8 @@ export function registerCommands(
     if (!workspaceRoot) return;
 
     // Use item's config if available, otherwise get active config
-    const config = item?.config || configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      statusBar.error('No SFTP configuration found', true);
-      return;
-    }
+    const config = item?.config || await resolveTargetConfig(workspaceRoot, 'Edit');
+    if (!config) return;
 
     if (!item || !item.entry) {
       statusBar.error('No file selected');
@@ -2648,11 +2608,8 @@ export function registerCommands(
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      statusBar.error('No SFTP configuration found', true);
-      return;
-    }
+    const config = item?.config || await resolveTargetConfig(workspaceRoot, 'Reveal');
+    if (!config) return;
 
     if (!item || !item.entry) {
       statusBar.error('No file selected');
@@ -2692,11 +2649,8 @@ export function registerCommands(
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      statusBar.error('No SFTP configuration found', true);
-      return;
-    }
+    const config = await resolveTargetConfig(workspaceRoot, 'Force Upload');
+    if (!config) return;
 
     const localPaths = selectedItems && selectedItems.length > 0
       ? selectedItems.map(item => item.fsPath).filter(Boolean)
@@ -2744,7 +2698,7 @@ export function registerCommands(
       if (failedCount === 0) {
         statusBar.success(`Force uploaded: ${uploadedCount} item(s)`);
       } else {
-        statusBar.info(`Force uploaded: ${uploadedCount}, Failed: ${failedCount}`);
+        statusBar.error(`Force uploaded: ${uploadedCount}, Failed: ${failedCount}`);
       }
     } catch (error: any) {
       statusBar.error(`Force upload failed: ${error.message}`, true);
@@ -2755,11 +2709,8 @@ export function registerCommands(
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      statusBar.error('No SFTP configuration found', true);
-      return;
-    }
+    const config = await resolveTargetConfig(workspaceRoot, 'Force Download');
+    if (!config) return;
 
     const localPaths = selectedItems && selectedItems.length > 0
       ? selectedItems.map(item => item.fsPath).filter(Boolean)
@@ -2805,7 +2756,7 @@ export function registerCommands(
       if (failedCount === 0) {
         statusBar.success(`Force downloaded: ${downloadedCount} item(s)`);
       } else {
-        statusBar.info(`Force downloaded: ${downloadedCount}, Failed: ${failedCount}`);
+        statusBar.error(`Force downloaded: ${downloadedCount}, Failed: ${failedCount}`);
       }
     } catch (error: any) {
       statusBar.error(`Force download failed: ${error.message}`, true);
@@ -2816,11 +2767,8 @@ export function registerCommands(
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      statusBar.error('No SFTP configuration found', true);
-      return;
-    }
+    const config = await resolveTargetConfig(workspaceRoot, 'Remote Revisions');
+    if (!config) return;
 
     const localPath = uri?.fsPath || vscode.window.activeTextEditor?.document.fileName;
     if (!localPath) {
@@ -2952,7 +2900,9 @@ export function registerCommands(
     connectCommand,
     disconnectCommand,
     setProfileCommand,
+    selectTargetCommand,
     uploadCommand,
+    uploadToMultipleCommand,
     uploadCurrentFileCommand,
     downloadCommand,
     downloadProjectCommand,
@@ -2997,6 +2947,7 @@ export function registerCommands(
     showTransferQueueCommand,
     cancelTransferItemCommand,
     retryTransferItemCommand,
+    showTransferErrorCommand,
     clearTransferQueueCommand,
     transferQueueExpandAllCommand,
     transferQueueCollapseAllCommand

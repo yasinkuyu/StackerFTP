@@ -9,6 +9,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { configManager } from '../core/config';
+import { resolveTargetConfig } from '../core/target';
 import { connectionManager } from '../core/connection-manager';
 import { transferManager } from '../core/transfer-manager';
 import { webMasterTools } from '../webmaster/tools';
@@ -35,11 +36,8 @@ export class QuickSearchPanel {
       return;
     }
 
-    const config = configManager.getActiveConfig(workspaceRoot);
-    if (!config) {
-      vscode.window.showErrorMessage('No SFTP configuration found');
-      return;
-    }
+    const config = await resolveTargetConfig(workspaceRoot, 'Quick Search');
+    if (!config) return;
 
     // Determine search path
     let searchPath = config.remotePath;
