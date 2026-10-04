@@ -6,7 +6,7 @@ import { resolveTargetConfig } from '../core/target';
 import { webMasterTools } from '../webmaster/tools';
 import { statusBar } from '../utils/status-bar';
 import { getWorkspaceRoot } from './utils';
-import { CompareViewProvider } from '../providers/compare-view';
+import { getCompareView } from '../providers/compare-tree';
 
 export function registerWebMasterCommands(): vscode.Disposable[] {
   const disposables: vscode.Disposable[] = [];
@@ -172,16 +172,7 @@ export function registerWebMasterCommands(): vscode.Disposable[] {
     }
   });
 
-  // Singleton instance for CompareViewProvider
-  let compareViewProvider: CompareViewProvider | undefined;
-
   const compareFoldersCommand = vscode.commands.registerCommand('stackerftp.webmaster.compareFolders', async (uri?: vscode.Uri) => {
-    // Create provider if not exists
-    if (!compareViewProvider) {
-      const extensionUri = vscode.Uri.parse('');
-      compareViewProvider = new CompareViewProvider(extensionUri);
-    }
-
     try {
       // Folder from context menu -> that folder; file -> side-by-side diff; none -> whole project
       let localPath: string | undefined;
@@ -194,7 +185,7 @@ export function registerWebMasterCommands(): vscode.Disposable[] {
         localPath = uri.fsPath;
       }
 
-      await compareViewProvider.show(localPath);
+      await getCompareView()?.compare(localPath);
     } catch (error: any) {
       statusBar.error(`Folder comparison failed: ${error.message}`);
     }

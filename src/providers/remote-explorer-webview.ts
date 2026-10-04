@@ -847,7 +847,7 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
       background: var(--vscode-menu-background);
       border: 1px solid var(--vscode-menu-border);
       border-radius: 4px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      box-shadow: 0 2px 8px var(--vscode-widget-shadow);
       z-index: 100;
       display: none;
       padding: 4px 0;
@@ -1086,7 +1086,7 @@ export class RemoteExplorerWebviewProvider implements vscode.WebviewViewProvider
       background: var(--vscode-menu-background);
       border: 1px solid var(--vscode-menu-border);
       border-radius: 4px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      box-shadow: 0 2px 8px var(--vscode-widget-shadow);
       z-index: 1000;
       min-width: 160px;
       display: none;
