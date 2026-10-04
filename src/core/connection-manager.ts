@@ -373,11 +373,8 @@ export class ConnectionManager {
    * Falls back to the primary connection if pool creation fails.
    */
   async getPooledConnection(config: FTPConfig): Promise<BaseConnection> {
-    // Ensure primary connection exists first
-    const primary = this.getConnection(config);
-    if (!primary || !primary.connected) {
-      throw new Error(`No active connection for ${config.host}`);
-    }
+    // Reconnect on demand if the connection dropped (e.g. server idle timeout)
+    const primary = await this.ensureConnection(config);
 
     const primaryConfig = primary.getConfig();
 

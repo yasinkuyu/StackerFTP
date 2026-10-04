@@ -12,13 +12,83 @@ import { FileEntry, FTPConfig } from '../types';
 import { logger } from '../utils/logger';
 import { normalizeRemotePath } from '../utils/helpers';
 
+/** basic-ftp applies this timeout to every command/transfer, not only to connecting */
+const MIN_OPERATION_TIMEOUT_MS = 30000;
+const DEFAULT_KEEPALIVE_MS = 30000;
+const MIN_KEEPALIVE_MS = 5000;
+
 export class FTPConnection extends BaseConnection {
   private client: Client;
+  private keepaliveTimer?: NodeJS.Timeout;
+  private lastActivity = 0;
 
   constructor(config: FTPConfig) {
     super(config);
-    this.client = new Client(config.connTimeout || 30000);
+    this.client = new Client(Math.max(config.connTimeout || 0, MIN_OPERATION_TIMEOUT_MS));
     this.client.ftp.verbose = false;
+  }
+
+  /** Also false once the control socket is gone (server idle timeout, network drop) */
+  get connected(): boolean {
+    return this._connected && !this.client.closed;
+  }
+
+  /**
+   * Detect a dead control connection: the server closed it (idle timeout),
+   * the network dropped, or a keepalive failed. Emits "disconnected" once so
+   * the connection manager can auto-reconnect.
+   */
+  private markDisconnected(reason: string): void {
+    if (!this._connected) return;
+    this._connected = false;
+    this.stopKeepalive();
+    logger.warn(`FTP connection to ${this.config.host} lost: ${reason}`);
+    try {
+      this.client.close();
+    } catch {
+      // Already closed
+    }
+    this.emit('disconnected');
+  }
+
+  private watchControlSocket(): void {
+    // After AUTH TLS the socket is replaced, so attach to the current one
+    const socket = this.client.ftp.socket;
+    socket.once('close', () => this.markDisconnected('control connection closed'));
+    socket.once('end', () => this.markDisconnected('server ended the connection'));
+    socket.on('error', (err: Error) => this.markDisconnected(err.message));
+  }
+
+  /** NOOP while idle so servers/firewalls don't drop the control connection */
+  private startKeepalive(): void {
+    this.stopKeepalive();
+    const configured = this.config.keepalive;
+    if (configured === 0) return;
+    const interval = Math.max(configured || DEFAULT_KEEPALIVE_MS, MIN_KEEPALIVE_MS);
+    this.lastActivity = Date.now();
+
+    this.keepaliveTimer = setInterval(() => {
+      if (!this.connected || Date.now() - this.lastActivity < interval) return;
+      this.lastActivity = Date.now();
+      this.enqueue(() => this.client.send('NOOP'))
+        .catch((err: any) => this.markDisconnected(`keepalive failed: ${err?.message || err}`));
+    }, interval);
+  }
+
+  private stopKeepalive(): void {
+    if (this.keepaliveTimer) {
+      clearInterval(this.keepaliveTimer);
+      this.keepaliveTimer = undefined;
+    }
+  }
+
+  protected async enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    this.lastActivity = Date.now();
+    try {
+      return await super.enqueue(operation);
+    } finally {
+      this.lastActivity = Date.now();
+    }
   }
 
   async connect(): Promise<void> {
@@ -42,6 +112,8 @@ export class FTPConnection extends BaseConnection {
 
       this._connected = true;
       this._currentPath = await this.client.pwd();
+      this.watchControlSocket();
+      this.startKeepalive();
 
       logger.info(`FTP${secure ? 'S' : ''} connected to ${this.config.host}:${this.config.port || 21}`);
       this.emit('connected');
@@ -52,9 +124,11 @@ export class FTPConnection extends BaseConnection {
   }
 
   async disconnect(): Promise<void> {
+    const wasConnected = this._connected;
+    this._connected = false; // before close(), so socket events are not treated as a drop
+    this.stopKeepalive();
     this.client.close();
-    this._connected = false;
-    this.emit('disconnected');
+    if (wasConnected) this.emit('disconnected');
   }
 
   async list(remotePath: string): Promise<FileEntry[]> {

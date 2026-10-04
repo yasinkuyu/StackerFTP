@@ -394,10 +394,24 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
         if (error?.code === 'TRANSFER_TIMEOUT' || String(error?.message || '').includes('Transfer timeout')) {
           timedOut = true;
         }
-        item.status = 'error';
-        item.error = error.message;
-        logger.error(`Transfer failed: ${item.remotePath}`, error);
-        if ((item as any).reject) (item as any).reject(error);
+        if (!item.connectionRetried && !this.cancelled && TransferManager.isConnectionError(error, pooledConnection)) {
+          // Dropped connection (idle timeout, network change): reconnect and try once more
+          item.connectionRetried = true;
+          item.status = 'pending';
+          item.progress = 0;
+          item.transferred = 0;
+          logger.warn(`Connection lost during ${item.direction} of ${item.remotePath}, retrying after reconnect`);
+          // Drop a broken pooled connection; the primary one is handled by its own drop detection
+          const isPrimary = item.config && connectionManager.getConnection(item.config) === pooledConnection;
+          if (pooledConnection && pooledConnection.connected && !isPrimary) {
+            try { await pooledConnection.disconnect(); } catch { /* already gone */ }
+          }
+        } else {
+          item.status = 'error';
+          item.error = error.message;
+          logger.error(`Transfer failed: ${item.remotePath}`, error);
+          if ((item as any).reject) (item as any).reject(error);
+        }
       } finally {
         if (timedOut && pooledConnection && item.config) {
           const primary = connectionManager.getConnection(item.config);
@@ -463,6 +477,13 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       this.batchCollisionAction = 'ask';
       this.emit('queueComplete');
     }
+  }
+
+  /** Errors caused by a dead/closed connection rather than by the file or permissions */
+  private static isConnectionError(error: any, connection?: BaseConnection): boolean {
+    if (connection && !connection.connected) return true;
+    const text = `${error?.code || ''} ${error?.message || error || ''}`;
+    return /ECONNRESET|EPIPE|ETIMEDOUT|ECONNABORTED|ENOTCONN|socket hang up|closed|not connected|No active connection|Timeout \(control socket\)|channel open failure/i.test(text);
   }
 
   /**
