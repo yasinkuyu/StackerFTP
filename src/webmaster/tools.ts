@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { BaseConnection } from '../core/connection';
 import { FileEntry, ChecksumResult, SearchResult, FileInfo, FTPConfig, CompareItem, CompareTreeNode, CompareResult } from '../types';
-import { formatFileSize, formatDate, formatPermissions, calculateChecksum, matchesPattern } from '../utils/helpers';
+import { formatFileSize, formatDate, formatPermissions, calculateChecksum, matchesPattern, getLocalPathFromRemote } from '../utils/helpers';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
 import { lookup as lookupMimeType } from 'mime-types';
@@ -352,7 +352,7 @@ export class WebMasterTools {
 
       if (!choice) return;
 
-      const localPath = path.join(workspaceRoot, path.relative(config.remotePath, selected.path));
+      const localPath = getLocalPathFromRemote(workspaceRoot, selected.path, config);
       const localDir = path.dirname(localPath);
 
       if (choice.value === 'download' || choice.value === 'open') {

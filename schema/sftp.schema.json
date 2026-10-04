@@ -3,17 +3,24 @@
   "title": "StackerFTP Configuration",
   "description": "Configuration file for StackerFTP VS Code extension",
   "oneOf": [
-    { "$ref": "#/definitions/config" },
+    {
+      "$ref": "#/definitions/config"
+    },
     {
       "type": "array",
-      "items": { "$ref": "#/definitions/config" },
+      "items": {
+        "$ref": "#/definitions/config"
+      },
       "description": "Multiple server configurations"
     }
   ],
   "definitions": {
     "config": {
       "type": "object",
-      "required": ["host", "username"],
+      "required": [
+        "host",
+        "username"
+      ],
       "properties": {
         "name": {
           "type": "string",
@@ -30,7 +37,11 @@
         },
         "protocol": {
           "type": "string",
-          "enum": ["sftp", "ftp", "ftps"],
+          "enum": [
+            "sftp",
+            "ftp",
+            "ftps"
+          ],
           "default": "sftp",
           "description": "Transfer protocol to use"
         },
@@ -61,7 +72,11 @@
         },
         "context": {
           "type": "string",
-          "description": "Local context path (subdirectory to sync)"
+          "description": "Local folder mapped to remotePath (relative to the workspace, absolute, or ~/...). Empty = workspace root"
+        },
+        "localPath": {
+          "type": "string",
+          "description": "Alias of \"context\" (vscode-sftp style). \"context\" wins if both are set"
         },
         "uploadOnSave": {
           "type": "boolean",
@@ -100,7 +115,9 @@
         },
         "watcher": {
           "oneOf": [
-            { "type": "boolean" },
+            {
+              "type": "boolean"
+            },
             {
               "type": "object",
               "properties": {
@@ -125,8 +142,15 @@
         },
         "ignore": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": [".vscode", ".git", ".DS_Store", "node_modules"],
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            ".vscode",
+            ".git",
+            ".DS_Store",
+            "node_modules"
+          ],
           "description": "Glob patterns of files to ignore"
         },
         "ignoreFile": {
@@ -135,8 +159,16 @@
         },
         "secure": {
           "oneOf": [
-            { "type": "boolean" },
-            { "type": "string", "enum": ["control", "implicit"] }
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "enum": [
+                "control",
+                "implicit"
+              ]
+            }
           ],
           "description": "Use secure connection (for FTP/FTPS)"
         },
@@ -151,10 +183,14 @@
         },
         "interactiveAuth": {
           "oneOf": [
-            { "type": "boolean" },
+            {
+              "type": "boolean"
+            },
             {
               "type": "array",
-              "items": { "type": "string" }
+              "items": {
+                "type": "string"
+              }
             }
           ],
           "description": "Enable keyboard-interactive authentication"
@@ -171,10 +207,14 @@
         },
         "hop": {
           "oneOf": [
-            { "$ref": "#/definitions/hopConfig" },
+            {
+              "$ref": "#/definitions/hopConfig"
+            },
             {
               "type": "array",
-              "items": { "$ref": "#/definitions/hopConfig" }
+              "items": {
+                "$ref": "#/definitions/hopConfig"
+              }
             }
           ],
           "description": "Jump host configuration for connection hopping"
@@ -205,7 +245,10 @@
     },
     "hopConfig": {
       "type": "object",
-      "required": ["host", "username"],
+      "required": [
+        "host",
+        "username"
+      ],
       "properties": {
         "host": {
           "type": "string",

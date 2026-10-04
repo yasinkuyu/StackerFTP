@@ -2,6 +2,12 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.3.1] - 2026-10-04
+
+### Fixed
+- **`localPath` setting**: Was ignored – files were transferred from the workspace root. It now works as an alias of `context` (vscode-sftp style). Both accept `~/...`, and root-prefixed paths like `/dist` that don't exist on disk are resolved inside the workspace. Download from the Remote Explorer tree and opening/downloading Remote Search results now also save to the configured local folder. Thanks to @KamikX (#5).
+- **Diff from the Remote Explorer**: Failed because the remote item was treated as a local file; it now opens the diff, using the correct local path for `context` / `localPath`. Thanks to @KamikX (#5).
+
 ## [1.3.0] - 2026-10-04
 
 ### Added

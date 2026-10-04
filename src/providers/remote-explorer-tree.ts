@@ -515,8 +515,8 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
 
     if (!conn || !config) return;
 
-    const relativePath = path.relative(config.remotePath || '/', item.path);
-    const localPath = path.join(this.workspaceRoot, relativePath);
+    // Same remote → local mapping as all transfers (honours context / localPath)
+    const localPath = getLocalPathFromRemote(this.workspaceRoot, item.path, config);
 
     // If it's a directory or symlink to directory, use downloadDirectory
     if (item.type === 'directory' || (item.type === 'symlink' && item.isSymlinkToDirectory)) {

@@ -382,6 +382,7 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
     }
 
     set('context', this._normalizeContext(adv.context, workspaceRoot));
+    delete config.localPath; // "localPath" alias is migrated to "context" by the form
     set('syncMode', adv.syncMode === 'full' ? 'full' : 'update');
     set('downloadOnOpen', adv.downloadOnOpen ? true : undefined);
     set('watcher', adv.watcher || undefined);

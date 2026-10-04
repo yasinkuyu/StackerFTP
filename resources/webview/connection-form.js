@@ -307,7 +307,7 @@ function loadConfigToForm(config) {
     inputAllowSelfSigned.checked = !!(config.secureOptions && config.secureOptions.rejectUnauthorized === false);
 
     // Advanced
-    inputContext.value = config.context || '';
+    inputContext.value = config.context || config.localPath || '';
     inputSyncMode.value = config.syncMode === 'full' ? 'full' : 'update';
     inputDownloadOnOpen.checked = !!config.downloadOnOpen;
     const watcher = config.watcher === true

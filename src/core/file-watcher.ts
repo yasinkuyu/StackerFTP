@@ -93,11 +93,9 @@ export class FileWatcher implements vscode.Disposable {
   }
 
   private handleFileChange(filePath: string, type: 'create' | 'change' | 'delete'): void {
-    if (this.config.context) {
-      const contextDir = path.resolve(this.workspaceRoot, this.config.context);
-      if (filePath !== contextDir && !filePath.startsWith(contextDir + path.sep)) {
-        return;
-      }
+    const localRoot = getLocalRoot(this.workspaceRoot, this.config);
+    if (filePath !== localRoot && !filePath.startsWith(localRoot + path.sep)) {
+      return;
     }
     const relativePath = getLocalRelativePath(this.workspaceRoot, filePath, this.config);
 

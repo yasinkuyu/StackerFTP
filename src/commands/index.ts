@@ -1504,33 +1504,31 @@ export function registerCommands(
       let fileName: string;
       let activeConfig: any;
 
-      if (item && item.entry) {
+      // From the Remote Explorer the tree item is passed as the first argument
+      const remoteItem = item?.entry ? item : (uri as any)?.entry ? (uri as any) : undefined;
+
+      if (remoteItem) {
         // Called from remote explorer - use item's config
-        activeConfig = item.config;
+        activeConfig = remoteItem.config;
         if (!activeConfig) {
           statusBar.error('No configuration found for this connection');
           return;
         }
-        remotePath = item.entry.path;
+        remotePath = remoteItem.entry.path;
         if (!remotePath) {
           statusBar.error('Remote path is undefined');
           return;
         }
-        fileName = item.entry.name || path.basename(remotePath);
+        fileName = remoteItem.entry.name || path.basename(remotePath);
 
-        // Calculate relative path from remote root
-        const remoteRoot = activeConfig.remotePath || '/';
-        let relativePath = remotePath;
-        if (remotePath.startsWith(remoteRoot)) {
-          relativePath = remotePath.substring(remoteRoot.length);
-        }
-        // Remove leading slash
-        if (relativePath.startsWith('/')) {
-          relativePath = relativePath.substring(1);
-        }
-        localPath = path.join(workspaceRoot, relativePath);
+        // Same remote → local mapping as downloads (honours context / localPath)
+        localPath = getLocalPathFromRemote(workspaceRoot, remotePath, activeConfig);
       } else if (uri) {
         // Called from local file
+        if (!uri.fsPath) {
+          statusBar.error('No local file selected');
+          return;
+        }
         activeConfig = await resolveTargetConfig(workspaceRoot, 'Diff');
         if (!activeConfig) return;
         localPath = uri.fsPath;

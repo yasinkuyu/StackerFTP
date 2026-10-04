@@ -313,7 +313,8 @@ Compare and Sync use the same ignore rules and change detection.
 | `privateKeyPath` | string | - | Path to SSH private key |
 | `passphrase` | string | - | Passphrase for encrypted private key |
 | `remotePath` | string | "/" | Remote directory path |
-| `context` | string | workspace root | Local folder mapped to `remotePath` (relative to the workspace or absolute) |
+| `context` | string | workspace root | Local folder mapped to `remotePath`: relative to the workspace, absolute, or `~/...` |
+| `localPath` | string | - | Alias of `context` (vscode-sftp style); `context` wins if both are set |
 | `uploadOnSave` | boolean | false | Auto-upload on file save |
 | `downloadOnOpen` | boolean | false | Save files opened from the Remote Explorer into the project |
 | `syncMode` | string | "update" | "update" (never deletes) or "full" (sync also deletes files missing on the source side, after confirmation) |

@@ -1,6 +1,7 @@
 import * as path from 'path';
 import { describe, it, expect } from 'vitest';
-import { normalizeRemotePath, sanitizeRelativePath, matchesPattern, formatFileSize, getLocalRelativePath, getLocalRoot, getLocalPathFromRemote } from '../src/utils/helpers';
+import * as os from 'os';
+import { normalizeRemotePath, sanitizeRelativePath, matchesPattern, formatFileSize, getLocalRelativePath, getLocalRoot, getLocalPathFromRemote, resolveConfiguredLocalPath } from '../src/utils/helpers';
 
 describe('helpers', () => {
   it('normalizeRemotePath collapses slashes and backslashes', () => {
@@ -60,5 +61,25 @@ describe('helpers', () => {
   it('formatFileSize formats large bytes', () => {
     expect(formatFileSize(1048576)).toBe('1 MB');
     expect(formatFileSize(1073741824)).toBe('1 GB');
+  });
+
+  it('resolveConfiguredLocalPath resolves relative local paths against workspace root', () => {
+    expect(resolveConfiguredLocalPath('/workspace/site', '.vitepress/dist')).toBe(path.resolve('/workspace/site/.vitepress/dist'));
+  });
+
+  it('resolveConfiguredLocalPath treats missing root-prefixed paths as workspace-relative', () => {
+    expect(resolveConfiguredLocalPath('/workspace/site', '/.vitepress/dist')).toBe(path.resolve('/workspace/site/.vitepress/dist'));
+  });
+
+  it('resolveConfiguredLocalPath keeps existing absolute paths and expands ~', () => {
+    expect(resolveConfiguredLocalPath('/workspace/site', os.tmpdir())).toBe(os.tmpdir());
+    expect(resolveConfiguredLocalPath('/workspace/site', '~/projects')).toBe(path.join(os.homedir(), 'projects'));
+  });
+
+  it('getLocalRoot accepts localPath as an alias of context (context wins)', () => {
+    expect(getLocalRoot('/ws', { localPath: 'dist' })).toBe(path.resolve('/ws/dist'));
+    expect(getLocalRoot('/ws', { context: 'www', localPath: 'dist' })).toBe(path.resolve('/ws/www'));
+    expect(getLocalRelativePath('/ws', path.resolve('/ws/dist/a/b.js'), { localPath: 'dist' })).toBe(path.join('a', 'b.js'));
+    expect(getLocalPathFromRemote('/ws', '/var/www/a.js', { remotePath: '/var/www', localPath: 'dist' })).toBe(path.join(path.resolve('/ws/dist'), 'a.js'));
   });
 });

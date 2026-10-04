@@ -5,6 +5,7 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { minimatch } from 'minimatch';
 import { FilePermissions, FileEntry } from '../types';
 
@@ -351,24 +352,55 @@ export function isSystemFile(filePath: string): boolean {
   return SYSTEM_PATTERNS.some(pattern => filePath.includes(pattern));
 }
 
-export function getLocalRoot(workspaceRoot: string, config?: { context?: string }): string {
-  if (config?.context) {
-    return path.resolve(workspaceRoot, config.context);
-  }
-  return workspaceRoot;
+/** Local folder settings: "context" (preferred) or "localPath" (vscode-sftp style alias) */
+export interface LocalRootConfig {
+  context?: string;
+  localPath?: string;
 }
 
-export function getLocalRelativePath(workspaceRoot: string, localPath: string, config?: { context?: string }): string {
-  if (config?.context) {
-    const contextDir = path.resolve(workspaceRoot, config.context);
-    if (localPath === contextDir || localPath.startsWith(contextDir + path.sep)) {
-      return path.relative(contextDir, localPath);
-    }
+/**
+ * Resolve a configured local folder to an absolute path.
+ *
+ * - Relative paths are resolved from the workspace root ("dist", "./www").
+ * - "~/..." expands to the home directory.
+ * - Root-prefixed paths ("/.vitepress/dist") are used as absolute paths only
+ *   when they exist on disk; otherwise they are treated as workspace-relative,
+ *   a common convention in SFTP configs.
+ */
+export function resolveConfiguredLocalPath(workspaceRoot: string, localPath?: string): string {
+  const value = (localPath || '').trim();
+  if (!value) return workspaceRoot;
+
+  // "~" is explicitly the home directory: no workspace fallback
+  if (value === '~' || value.startsWith('~/') || value.startsWith('~\\')) {
+    return path.join(os.homedir(), value.slice(1));
+  }
+  const expanded = value;
+
+  if (!path.isAbsolute(expanded)) {
+    return path.resolve(workspaceRoot, expanded);
+  }
+  if (fs.existsSync(expanded)) {
+    return expanded;
+  }
+
+  const workspaceRelative = expanded.replace(/^[/\\]+/, '');
+  return workspaceRelative ? path.resolve(workspaceRoot, workspaceRelative) : expanded;
+}
+
+export function getLocalRoot(workspaceRoot: string, config?: LocalRootConfig): string {
+  return resolveConfiguredLocalPath(workspaceRoot, config?.context || config?.localPath);
+}
+
+export function getLocalRelativePath(workspaceRoot: string, localPath: string, config?: LocalRootConfig): string {
+  const localRoot = getLocalRoot(workspaceRoot, config);
+  if (localRoot !== workspaceRoot && (localPath === localRoot || localPath.startsWith(localRoot + path.sep))) {
+    return path.relative(localRoot, localPath);
   }
   return path.relative(workspaceRoot, localPath);
 }
 
-export function getLocalPathFromRemote(workspaceRoot: string, remoteFilePath: string, config: { remotePath: string; context?: string }): string {
+export function getLocalPathFromRemote(workspaceRoot: string, remoteFilePath: string, config: { remotePath: string } & LocalRootConfig): string {
   const normRemoteRoot = normalizeRemotePath(config.remotePath || "/");
   const normRemoteFile = normalizeRemotePath(remoteFilePath);
   const rel = path.posix.relative(normRemoteRoot, normRemoteFile);
