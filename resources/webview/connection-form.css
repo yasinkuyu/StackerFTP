@@ -542,3 +542,29 @@ body {
 .hop-item .form-row {
   margin-bottom: 4px;
 }
+
+/* Help tooltips */
+.help-icon {
+  margin-left: 4px;
+  font-size: 12px !important;
+  vertical-align: middle;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.7;
+  cursor: help;
+}
+
+.help-icon:hover,
+.help-icon:focus {
+  opacity: 1;
+  color: var(--vscode-textLink-foreground);
+  outline: none;
+}
+
+.form-row.has-help {
+  display: flex;
+  align-items: center;
+}
+
+.form-row.has-help .form-checkbox {
+  display: inline-flex;
+}

@@ -11,7 +11,7 @@ All notable changes to the "StackerFTP" extension will be documented in this fil
 - **Sync with Preview**: Sync compares both sides (size + modification time) and shows only the changes to apply, grouped as upload / download / delete. Conflicts (target is newer) are not pre-selected. `syncMode: "full"` deletes orphans after an extra confirmation; local deletes go to the trash.
 - **Compare with Remote**: Compares the whole project, a folder, or a file (diff). New "Sync to Remote / Sync to Local" buttons in the compare view.
 - **Transfer Error Details**: Failed transfers show the error message in the queue, a notification after the run (Show Details / Retry / Show Queue), full details on click (Retry / Copy Error / Show Log), and a persistent "X failed" status bar item and badge.
-- **Advanced Connection Settings**: The connection form has an "Advanced Settings" section for local path (context), sync mode, download on open, file watcher, ignore patterns, timeout, keepalive, auto reconnect, jump hosts, remote explorer sort order and default profile, plus FTPS TLS mode and self-signed certificates. Cleared fields are removed from sftp.json.
+- **Advanced Connection Settings**: The connection form has an "Advanced Settings" section for local path (context), sync mode, download on open, file watcher, ignore patterns, timeout, keepalive, auto reconnect, jump hosts, remote explorer sort order and default profile, plus FTPS TLS mode and self-signed certificates. Cleared fields are removed from sftp.json. Non-obvious settings have a (?) tooltip with an explanation and examples.
 - **Preserve Timestamps**: Uploaded/downloaded files keep the source modification time (`stackerftp.preserveTimestamps`), so Compare and Sync detect changes reliably.
 
 ### Fixed
@@ -20,6 +20,7 @@ All notable changes to the "StackerFTP" extension will be documented in this fil
 - **Remote Terminal**: Uses the target connection, `privateKeyPath`, hop (jump) hosts, and opens in `remotePath`.
 - **Webmaster Tools**: Permissions, checksum and file info used the first connection instead of the selected remote item's connection.
 - **FTPS**: `protocol: "ftps"` now always uses TLS, `secure: "implicit"` really uses implicit TLS, and `connTimeout` is applied to FTP connections.
+- **Download on Open**: Files opened from the Remote Explorer are now saved at the correct local path when `context` is set.
 - **Test Connection**: Testing an existing connection no longer disconnects the live connection with the same name.
 - **File Watcher**: Started before the configuration was loaded, so it never ran.
 

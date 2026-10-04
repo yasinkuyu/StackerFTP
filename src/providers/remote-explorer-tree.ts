@@ -13,7 +13,7 @@ import { BaseConnection } from '../core/connection';
 import { FileEntry, FTPConfig } from '../types';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
-import { formatFileSize, formatDate, normalizeRemotePath, isBinaryFile, isSystemFile } from '../utils/helpers';
+import { formatFileSize, formatDate, normalizeRemotePath, isBinaryFile, isSystemFile, getLocalPathFromRemote } from '../utils/helpers';
 import { RemoteDocumentProvider } from './remote-document-provider';
 import * as os from 'os';
 import * as fs from 'fs';
@@ -656,8 +656,8 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
       let targetPath: string;
 
       if (downloadToWorkspace) {
-        const relativePath = path.relative(config.remotePath || '/', item.path);
-        targetPath = path.join(this.workspaceRoot, relativePath);
+        // Same mapping as downloads (honours "context")
+        targetPath = getLocalPathFromRemote(this.workspaceRoot, item.path, config);
       } else {
         const tempDir = path.join(os.tmpdir(), 'stackerftp', config.host);
         targetPath = path.join(tempDir, path.basename(item.path));

@@ -100,6 +100,49 @@ document.getElementById('toggleKeyAuth').addEventListener('click', () => {
         keyAuthContent.classList.contains('open') ? '▼' : '▶';
 });
 
+// Help tooltips: explanation + example for settings that are not self-explanatory
+const HELP = {
+    privateKey: 'Path to your SSH private key, used instead of (or with) a password.\nExample: ~/.ssh/id_ed25519',
+    remotePath: 'Folder on the server that matches your local folder.\nExamples: /var/www/html, /home/user/public_html',
+    uploadOnSave: 'Upload the file to the target server every time you save it in the editor.',
+    tlsMode: 'Explicit (most common): connects on port 21, then switches to TLS (AUTH TLS).\nImplicit: TLS from the start, usually port 990. Use only if your host requires it.',
+    selfSigned: 'Accept certificates that cannot be verified (self-signed, expired, wrong hostname).\nOnly for servers you trust: it turns off protection against man-in-the-middle attacks.',
+    context: 'Local folder that is mapped to Remote Path. Only files inside it are uploaded and synced.\nExample: "dist" → dist/index.html is uploaded to <Remote Path>/index.html\nRelative to the workspace; absolute paths also work.',
+    syncMode: 'Used by the Sync commands.\nUpdate: copies new and changed files, never deletes anything.\nFull: also deletes files that no longer exist on the source side.\nDeletions are always listed in the sync preview and confirmed first.',
+    downloadOnOpen: 'When you open a file from the Remote Explorer, save it into your project at the matching path instead of a temporary copy, so your edits can be uploaded normally.',
+    watcher: 'Uploads files changed outside the editor: build tools, git checkout, code generators.\nFiles you save in the editor do not need it (use Upload on Save).\nExample: enable with pattern dist/** to deploy build output automatically.',
+    watcherFiles: 'Glob pattern, relative to the local folder.\nExamples:\n**/*  → everything\ndist/**  → only the dist folder\n**/*.{css,js}  → only CSS and JS files',
+    watcherAutoUpload: 'Upload files when they are created or changed.',
+    watcherAutoDelete: 'When a watched file is deleted locally, delete it on the server too.\nCareful: a build step that cleans dist/ before rebuilding will also delete those files on the server.',
+    ignore: 'Files and folders that are never uploaded, downloaded or synced. One pattern per line.\nExamples:\nnode_modules  → this folder at any depth\n*.log  → all files with this extension\nconfig/local.php  → one specific file\nbuild/**  → everything inside build',
+    connTimeout: 'How long to wait for the server while connecting, in milliseconds.\nExample: 10000 = 10 seconds. Increase it for slow or distant servers.',
+    keepalive: 'Sends a small packet every N milliseconds so the server or a firewall does not close an idle SSH connection.\nExample: 10000 = every 10 seconds. 0 turns it off.',
+    autoReconnect: 'Reconnect automatically if the connection drops unexpectedly (network change, sleep).\nConnections you close yourself are never reopened.',
+    hop: 'Connect through one or more intermediate SSH servers when the target cannot be reached directly (like ssh -J).\nExample: you → bastion.company.com → 10.0.0.5\nHere Host is 10.0.0.5 and the jump host is bastion.company.com.',
+    explorerOrder: 'How files are sorted in the Remote Explorer for this connection.',
+    defaultProfile: 'Profiles are named sets of overrides, e.g. dev / staging / prod with a different host or remote path.\nThe default profile is applied when this connection is used, unless you switch profiles.'
+};
+
+document.querySelectorAll('[data-help]').forEach(el => {
+    const text = HELP[el.dataset.help];
+    if (!text) return;
+    const icon = document.createElement('span');
+    icon.className = 'help-icon codicon codicon-question';
+    icon.title = text;
+    icon.setAttribute('aria-label', text);
+    icon.setAttribute('role', 'img');
+    icon.tabIndex = 0;
+
+    const checkboxLabel = el.tagName === 'INPUT' ? el.closest('.form-checkbox') : null;
+    if (checkboxLabel) {
+        // Outside the <label> so clicking the icon does not toggle the checkbox
+        checkboxLabel.after(icon);
+        checkboxLabel.parentElement.classList.add('has-help');
+    } else {
+        el.appendChild(icon);
+    }
+});
+
 // Toggle advanced section
 function setAdvancedOpen(open) {
     advancedContent.classList.toggle('open', open);
