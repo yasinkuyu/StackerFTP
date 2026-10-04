@@ -17,7 +17,7 @@ import * as path from 'path';
 import { BaseConnection } from './connection';
 import { transferManager } from './transfer-manager';
 import { FTPConfig, SyncResult } from '../types';
-import { matchesPattern, normalizeRemotePath } from '../utils/helpers';
+import { matchesPattern, normalizeRemotePath, ALWAYS_IGNORED } from '../utils/helpers';
 import { logger } from '../utils/logger';
 
 export type SyncDirection = 'toRemote' | 'toLocal' | 'both';
@@ -59,7 +59,7 @@ export interface ScanResult {
 }
 
 /** Never transferred, regardless of user config (credentials, VCS, temp files) */
-const MANDATORY_IGNORE = ['.git', '.vscode/sftp.json', '*.stackerftp.tmp', '*.stackerftp-download'];
+const MANDATORY_IGNORE = ALWAYS_IGNORED;
 /** Used when the connection has no "ignore" list */
 const DEFAULT_IGNORE = ['node_modules', '.DS_Store', 'Thumbs.db', '.vscode', '.idea', '__pycache__', '*.pyc'];
 

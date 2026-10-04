@@ -10,7 +10,7 @@ import { connectionManager } from './connection-manager';
 import { TransferItem, SyncResult, FTPConfig, TransferBatchInfo } from '../types';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
-import { generateId, normalizeRemotePath, matchesPattern } from '../utils/helpers';
+import { generateId, normalizeRemotePath, matchesPattern, ALWAYS_IGNORED } from '../utils/helpers';
 import { EventEmitter } from 'stream';
 
 export interface TransferProgress {
@@ -548,7 +548,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       const relativePath = path.relative(localPath, file);
       const remoteFilePath = normalizeRemotePath(path.join(remotePath, relativePath));
 
-      if (config.ignore && matchesPattern(relativePath, config.ignore)) {
+      if (matchesPattern(relativePath.replace(/\\/g, '/'), [...ALWAYS_IGNORED, ...(config.ignore || [])])) {
         result.skipped.push(relativePath);
         return;
       }
@@ -631,7 +631,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
       const relativePath = path.relative(remotePath, file.path);
       const localFilePath = path.join(localPath, relativePath);
 
-      if (config.ignore && matchesPattern(relativePath, config.ignore)) {
+      if (matchesPattern(relativePath.replace(/\\/g, '/'), [...ALWAYS_IGNORED, ...(config.ignore || [])])) {
         result.skipped.push(relativePath);
         return;
       }

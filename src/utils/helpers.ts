@@ -408,6 +408,9 @@ export function getLocalPathFromRemote(workspaceRoot: string, remoteFilePath: st
   return path.join(localBase, rel);
 }
 
+/** Never transferred, whatever the user's ignore list says (credentials, VCS, temp files) */
+export const ALWAYS_IGNORED = ['.git', '.vscode/sftp.json', '*.stackerftp.tmp', '*.stackerftp-download'];
+
 /** Suffix of in-progress download files (never synced, uploaded or watched) */
 export const DOWNLOAD_TEMP_SUFFIX = '.stackerftp-download';
 

@@ -15,11 +15,12 @@ import { resolveTarget, resolveTargetConfig, pickTargetConfig, getTargetConfig }
 import { FTPConfig, Protocol, TransferItem } from '../types';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
-import { normalizeRemotePath, formatFileSize, sanitizeRelativePath, getLocalRelativePath, getLocalRoot, getLocalPathFromRemote } from '../utils/helpers';
+import { normalizeRemotePath, formatFileSize, sanitizeRelativePath, getLocalRelativePath, getLocalRoot, getLocalPathFromRemote, matchesPattern } from '../utils/helpers';
 import { ConnectionWizard } from '../core/connection-wizard';
 import { createGitIntegration } from '../core/git-integration';
 import { getWorkspaceRoot } from './utils';
 import { runSync } from './sync';
+import { getIgnorePatterns } from '../core/sync-engine';
 import { registerWebMasterCommands } from './webmaster';
 import { registerViewCommands } from './view';
 
@@ -1762,10 +1763,35 @@ export function registerCommands(
 
     try {
       const changedFiles = await gitIntegration.getChangedFiles();
-      const uploadableFiles = gitIntegration.filterUploadable(changedFiles);
+
+      // Same rules as every other transfer: only files inside the local folder
+      // (context / localPath) and never ignored ones (incl. .git and sftp.json)
+      const localRoot = getLocalRoot(workspaceRoot, config);
+      const ignorePatterns = getIgnorePatterns(config);
+      let ignoredCount = 0;
+      let outsideCount = 0;
+      const uploadableFiles = gitIntegration.filterUploadable(changedFiles).filter(f => {
+        if (f.absolutePath !== localRoot && !f.absolutePath.startsWith(localRoot + path.sep)) {
+          outsideCount++;
+          return false;
+        }
+        const rel = path.relative(localRoot, f.absolutePath).split(path.sep).join('/');
+        if (matchesPattern(rel, ignorePatterns)) {
+          ignoredCount++;
+          return false;
+        }
+        return true;
+      });
+      const skippedInfo = [
+        ignoredCount ? `${ignoredCount} ignored` : '',
+        outsideCount ? `${outsideCount} outside the local folder` : ''
+      ].filter(Boolean).join(', ');
+      if (skippedInfo) {
+        logger.info(`Upload Changed Files: skipped ${skippedInfo}`);
+      }
 
       if (uploadableFiles.length === 0) {
-        statusBar.success('No changed files to upload');
+        statusBar.success(skippedInfo ? `No changed files to upload (${skippedInfo})` : 'No changed files to upload');
         return;
       }
 
@@ -1774,7 +1800,7 @@ export function registerCommands(
           { label: `$(cloud-upload) Upload All (${uploadableFiles.length} files)`, value: 'all' },
           { label: '$(list-selection) Select Files...', value: 'select' }
         ],
-        { placeHolder: `${uploadableFiles.length} changed files found` }
+        { placeHolder: `${uploadableFiles.length} changed files found${skippedInfo ? ` (skipped: ${skippedInfo})` : ''}` }
       );
 
       if (!choice) return;
@@ -1833,7 +1859,11 @@ export function registerCommands(
           }
         }
 
-        statusBar.success(`Uploaded ${uploaded}/${total} changed files`);
+        if (uploaded === total) {
+          statusBar.success(`Uploaded ${uploaded}/${total} changed files`);
+        } else {
+          statusBar.error(`Uploaded ${uploaded}/${total} changed files`);
+        }
       });
 
     } catch (error: any) {
