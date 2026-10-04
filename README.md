@@ -31,7 +31,7 @@ A professional-grade FTP/SFTP client extension for Visual Studio Code and all it
 
 ### 🔄 Sync & Compare
 - **Sync with Preview**: Sync local → remote, remote → local, or both – only changed files, reviewed before anything is transferred or deleted
-- **Native Compare View**: See modified / only-local / only-remote files side by side with the server, diff them and fix differences one by one
+- **Compare Folders**: See modified / only-local / only-remote files side by side with the server, diff them and fix differences one by one
 - **Upload to Multiple Servers**: Deploy the same files to staging and production in one step, or to all servers
 - **Preserve Timestamps**: Transferred files keep their modification time, so change detection stays accurate
 - **Upload Changed Files**: Upload only files changed in git
@@ -42,7 +42,7 @@ A professional-grade FTP/SFTP client extension for Visual Studio Code and all it
 - **File Information**: Detailed file metadata display
 - **Remote Search**: Search content within remote files
 - **Backup Creation**: Create backups of remote files/directories
-- **Folder Comparison**: Compare local and remote folders in the native Compare view
+- **Folder Comparison**: Compare local and remote folders (split-view panel)
 - **Quick Search**: Ultra-fast file search by name in new tab (parallel traversal, wildcard patterns)
 - **Search & Replace**: Find and replace text across remote files
 - **Cache Purge**: Clear common cache directories on remote server
@@ -157,13 +157,14 @@ Deletions always need an extra confirmation. `.git` and `.vscode/sftp.json` are 
 
 ## Compare
 
-Run **Compare with Remote** from the Command Palette (whole project), or right-click a folder (that folder) or a file (diff). Results appear in the **Compare** view of the StackerFTP sidebar:
+Run **Compare with Remote** from the Command Palette (whole project), or right-click a folder (that folder) or a file (diff). The **Compare Folders** panel shows local and remote side by side:
 
-- **M** modified · **L** only local · **R** only remote – colors follow your theme.
-- Click a file to diff it (modified) or open it; use the inline ↑ / ↓ buttons to upload or download. Multi-select and folders are supported.
-- View toolbar: **Sync to Remote / Sync to Local** (with preview), **Filter**, **Refresh**, and in the `…` menu **Export** (CSV/JSON) and **Close**.
+- Colors follow your theme: modified, only local, only remote (high contrast themes get a clear marker instead of tinted rows).
+- Hover a file for actions: **⇆** diff, **↑** upload, **↓** download, reveal.
+- Toolbar: search, filters (All / Only Local / Only Remote / Different), **Export** (CSV/JSON), **⇧ Sync to Remote**, **⇩ Sync to Local** (with preview) and **↻ Refresh**.
+- A progress bar at the top shows while comparing, transferring or preparing a diff.
 
-Compare and Sync use the same rules, so what Compare shows is exactly what Sync will change.
+Compare and Sync use the same ignore rules and change detection.
 
 ## When a Transfer Fails
 

@@ -699,84 +699,6 @@
         "title": "SFTP: Reset Overwrite / Collision Behavior",
         "category": "StackerFTP",
         "icon": "$(refresh)"
-      },
-      {
-        "command": "stackerftp.compare.refresh",
-        "title": "Refresh Comparison",
-        "category": "StackerFTP",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "stackerftp.compare.filter",
-        "title": "Filter Differences",
-        "category": "StackerFTP",
-        "icon": "$(filter)"
-      },
-      {
-        "command": "stackerftp.compare.clearFilter",
-        "title": "Clear Filter",
-        "category": "StackerFTP",
-        "icon": "$(filter-filled)"
-      },
-      {
-        "command": "stackerftp.compare.export",
-        "title": "Export Comparison...",
-        "category": "StackerFTP",
-        "icon": "$(export)"
-      },
-      {
-        "command": "stackerftp.compare.close",
-        "title": "Close Comparison",
-        "category": "StackerFTP",
-        "icon": "$(close)"
-      },
-      {
-        "command": "stackerftp.compare.syncToRemote",
-        "title": "Sync to Remote...",
-        "category": "StackerFTP",
-        "icon": "$(cloud-upload)"
-      },
-      {
-        "command": "stackerftp.compare.syncToLocal",
-        "title": "Sync to Local...",
-        "category": "StackerFTP",
-        "icon": "$(cloud-download)"
-      },
-      {
-        "command": "stackerftp.compare.diff",
-        "title": "Open Diff",
-        "category": "StackerFTP",
-        "icon": "$(diff)"
-      },
-      {
-        "command": "stackerftp.compare.openLocal",
-        "title": "Open Local File",
-        "category": "StackerFTP",
-        "icon": "$(go-to-file)"
-      },
-      {
-        "command": "stackerftp.compare.openRemote",
-        "title": "Open Remote File",
-        "category": "StackerFTP",
-        "icon": "$(cloud)"
-      },
-      {
-        "command": "stackerftp.compare.revealLocal",
-        "title": "Reveal in Explorer",
-        "category": "StackerFTP",
-        "icon": "$(folder-opened)"
-      },
-      {
-        "command": "stackerftp.compare.upload",
-        "title": "Upload to Remote",
-        "category": "StackerFTP",
-        "icon": "$(arrow-up)"
-      },
-      {
-        "command": "stackerftp.compare.download",
-        "title": "Download to Local",
-        "category": "StackerFTP",
-        "icon": "$(arrow-down)"
       }
     ],
     "menus": {
@@ -800,58 +722,6 @@
         {
           "command": "stackerftp.switchProtocol",
           "when": "workspaceFolderCount > 0"
-        },
-        {
-          "command": "stackerftp.compare.diff",
-          "when": "false"
-        },
-        {
-          "command": "stackerftp.compare.openLocal",
-          "when": "false"
-        },
-        {
-          "command": "stackerftp.compare.openRemote",
-          "when": "false"
-        },
-        {
-          "command": "stackerftp.compare.revealLocal",
-          "when": "false"
-        },
-        {
-          "command": "stackerftp.compare.upload",
-          "when": "false"
-        },
-        {
-          "command": "stackerftp.compare.download",
-          "when": "false"
-        },
-        {
-          "command": "stackerftp.compare.clearFilter",
-          "when": "false"
-        },
-        {
-          "command": "stackerftp.compare.refresh",
-          "when": "stackerftp.compareActive"
-        },
-        {
-          "command": "stackerftp.compare.filter",
-          "when": "stackerftp.compareActive"
-        },
-        {
-          "command": "stackerftp.compare.export",
-          "when": "stackerftp.compareActive"
-        },
-        {
-          "command": "stackerftp.compare.close",
-          "when": "stackerftp.compareActive"
-        },
-        {
-          "command": "stackerftp.compare.syncToRemote",
-          "when": "stackerftp.compareActive"
-        },
-        {
-          "command": "stackerftp.compare.syncToLocal",
-          "when": "stackerftp.compareActive"
         }
       ],
       "explorer/context": [
@@ -1060,41 +930,6 @@
           "command": "stackerftp.transferQueue.collapseAll",
           "when": "view == stackerftp.transferQueue && stackerftp:transferQueueExpanded",
           "group": "navigation@3"
-        },
-        {
-          "command": "stackerftp.compare.syncToRemote",
-          "when": "view == stackerftp.compareView && stackerftp.compareActive && !stackerftp.compareBusy",
-          "group": "navigation@1"
-        },
-        {
-          "command": "stackerftp.compare.syncToLocal",
-          "when": "view == stackerftp.compareView && stackerftp.compareActive && !stackerftp.compareBusy",
-          "group": "navigation@2"
-        },
-        {
-          "command": "stackerftp.compare.filter",
-          "when": "view == stackerftp.compareView && stackerftp.compareActive && !stackerftp.compareBusy && !stackerftp.compareFiltered",
-          "group": "navigation@3"
-        },
-        {
-          "command": "stackerftp.compare.clearFilter",
-          "when": "view == stackerftp.compareView && stackerftp.compareFiltered",
-          "group": "navigation@3"
-        },
-        {
-          "command": "stackerftp.compare.refresh",
-          "when": "view == stackerftp.compareView && stackerftp.compareActive && !stackerftp.compareBusy",
-          "group": "navigation@4"
-        },
-        {
-          "command": "stackerftp.compare.export",
-          "when": "view == stackerftp.compareView && stackerftp.compareActive && !stackerftp.compareBusy",
-          "group": "1_more@1"
-        },
-        {
-          "command": "stackerftp.compare.close",
-          "when": "view == stackerftp.compareView && stackerftp.compareActive",
-          "group": "1_more@2"
         }
       ],
       "view/item/context": [
@@ -1272,61 +1107,6 @@
           "command": "stackerftp.showTransferError",
           "when": "view == stackerftp.transferQueue && viewItem =~ /transfer-(group-)?error/",
           "group": "navigation@0"
-        },
-        {
-          "command": "stackerftp.compare.diff",
-          "when": "view == stackerftp.compareView && viewItem == compare-file-modified",
-          "group": "inline@1"
-        },
-        {
-          "command": "stackerftp.compare.upload",
-          "when": "view == stackerftp.compareView && viewItem =~ /^compare-(file-(localOnly|modified)|folder)$/",
-          "group": "inline@2"
-        },
-        {
-          "command": "stackerftp.compare.download",
-          "when": "view == stackerftp.compareView && viewItem =~ /^compare-(file-(remoteOnly|modified)|folder)$/",
-          "group": "inline@3"
-        },
-        {
-          "command": "stackerftp.compare.diff",
-          "when": "view == stackerftp.compareView && viewItem == compare-file-modified",
-          "group": "1_open@1"
-        },
-        {
-          "command": "stackerftp.compare.openLocal",
-          "when": "view == stackerftp.compareView && viewItem =~ /^compare-file-(localOnly|modified)$/",
-          "group": "1_open@2"
-        },
-        {
-          "command": "stackerftp.compare.openRemote",
-          "when": "view == stackerftp.compareView && viewItem =~ /^compare-file-(remoteOnly|modified)$/",
-          "group": "1_open@3"
-        },
-        {
-          "command": "stackerftp.compare.upload",
-          "when": "view == stackerftp.compareView && viewItem =~ /^compare-(file-(localOnly|modified)|folder)$/",
-          "group": "2_transfer@1"
-        },
-        {
-          "command": "stackerftp.compare.download",
-          "when": "view == stackerftp.compareView && viewItem =~ /^compare-(file-(remoteOnly|modified)|folder)$/",
-          "group": "2_transfer@2"
-        },
-        {
-          "command": "stackerftp.compare.syncToRemote",
-          "when": "view == stackerftp.compareView && viewItem == compare-folder",
-          "group": "3_sync@1"
-        },
-        {
-          "command": "stackerftp.compare.syncToLocal",
-          "when": "view == stackerftp.compareView && viewItem == compare-folder",
-          "group": "3_sync@2"
-        },
-        {
-          "command": "stackerftp.compare.revealLocal",
-          "when": "view == stackerftp.compareView && viewItem =~ /^compare-(file-(localOnly|modified)|folder)$/",
-          "group": "4_reveal@1"
         }
       ],
       "scm/title": [
@@ -1392,14 +1172,6 @@
           "contextualTitle": "StackerFTP",
           "visibility": "collapsed",
           "icon": "$(cloud-upload)"
-        },
-        {
-          "id": "stackerftp.compareView",
-          "name": "Compare",
-          "when": "workspaceFolderCount > 0 && !stackerftp.formVisible",
-          "contextualTitle": "StackerFTP",
-          "visibility": "collapsed",
-          "icon": "$(git-compare)"
         }
       ]
     },
@@ -1445,13 +1217,6 @@
       {
         "fileMatch": ".vscode/sftp.json",
         "url": "./schema/sftp.schema.json"
-      }
-    ],
-    "viewsWelcome": [
-      {
-        "view": "stackerftp.compareView",
-        "contents": "See which files differ between your project and the server before syncing.\n[$(git-compare) Compare with Remote](command:stackerftp.webmaster.compareFolders)\nRight-click a folder in the Explorer to compare only that folder.",
-        "when": "!stackerftp.compareActive"
       }
     ]
   },

@@ -21,7 +21,6 @@ import { fileWatcherManager } from './core/file-watcher';
 import { matchesPattern, getLocalRelativePath, normalizeRemotePath } from './utils/helpers';
 import { TransferQueueTreeProvider } from './providers/transfer-queue-tree';
 import { registerTransferErrorNotifications } from './providers/transfer-error-reporter';
-import { registerCompareView } from './providers/compare-tree';
 
 let remoteExplorerProvider: RemoteExplorerWebviewProvider;
 let remoteTreeProvider: RemoteExplorerTreeProvider;
@@ -199,9 +198,6 @@ export function activate(context: vscode.ExtensionContext): void {
       transferQueueProvider.updateBadge(activeCount);
     }
   });
-
-  // Native compare view (differences between local and remote)
-  registerCompareView(context);
 
   // Failed transfers are reported once per run with details / retry actions
   context.subscriptions.push(registerTransferErrorNotifications(() => {
