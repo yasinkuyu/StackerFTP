@@ -93,6 +93,21 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
           case 'browsePrivateKey':
             await this._handleBrowsePrivateKey();
             break;
+          case 'browseContext':
+            await this._handleBrowseContext();
+            break;
+          case 'manageProfiles':
+            await vscode.commands.executeCommand('stackerftp.manageProfiles');
+            await this._sendConfigs();
+            break;
+          case 'openJson': {
+            const root = await this._resolveWorkspaceRoot(true);
+            if (root && configManager.configExists(root)) {
+              const doc = await vscode.workspace.openTextDocument(configManager.getConfigPath(root));
+              await vscode.window.showTextDocument(doc);
+            }
+            break;
+          }
           case 'showForm':
             vscode.commands.executeCommand('setContext', 'stackerftp.formVisible', true);
             vscode.commands.executeCommand('stackerftp.connectionForm.focus');
@@ -206,21 +221,8 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
         ? configs[editIndex]
         : {};
 
-      // Merge with existing config to preserve fields not in form
-      const newConfig: FTPConfig = {
-        ...existingConfig,  // Preserve existing fields (watcher, ignore, profiles, etc.)
-        name: configData.name || configData.host,
-        host: configData.host,
-        port: parseInt(configData.port) || (configData.protocol === 'sftp' ? 22 : 21),
-        protocol: configData.protocol as Protocol,
-        username: configData.username,
-        password: configData.password || undefined,
-        privateKeyPath: configData.privateKeyPath || undefined,
-        passphrase: configData.passphrase || undefined,
-        remotePath: configData.remotePath || '/',
-        uploadOnSave: configData.uploadOnSave || false,
-        secure: configData.secure || false
-      };
+      // Merge with existing config to preserve fields not in form (profiles, passive, remote …)
+      const newConfig = this._buildConfig(configData, existingConfig as Partial<FTPConfig>, workspaceRoot);
 
       if (typeof editIndex === 'number' && editIndex >= 0) {
         configs[editIndex] = newConfig;
@@ -270,18 +272,9 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
     this._view?.webview.postMessage({ type: 'testing' });
 
     try {
-      const testConfig: FTPConfig = {
-        name: configData.name || 'Test',
-        host: configData.host,
-        port: parseInt(configData.port) || (configData.protocol === 'sftp' ? 22 : 21),
-        protocol: configData.protocol as Protocol,
-        username: configData.username,
-        password: configData.password || undefined,
-        privateKeyPath: configData.privateKeyPath || undefined,
-        passphrase: configData.passphrase || undefined,
-        remotePath: configData.remotePath || '/',
-        secure: configData.secure || false
-      };
+      const workspaceRoot = await this._resolveWorkspaceRoot(false);
+      const testConfig = this._buildConfig(configData, {}, workspaceRoot);
+      testConfig.name = `${testConfig.name || 'Test'} (test)`;
 
       const connection = await connectionManager.connect(testConfig);
       await connection.list(testConfig.remotePath);
@@ -346,6 +339,109 @@ export class ConnectionFormProvider implements vscode.WebviewViewProvider {
     this._editingConfig = configs[index];
     this._editingIndex = index;
     await this._sendConfigs();
+  }
+
+  /**
+   * Form data -> FTPConfig. Every field the form manages is written explicitly;
+   * cleared values are removed from sftp.json instead of being left stale.
+   */
+  private _buildConfig(data: any, existing: Partial<FTPConfig>, workspaceRoot?: string): FTPConfig {
+    const protocol = (data.protocol || 'sftp') as Protocol;
+    const adv = data.advanced || {};
+    const config: any = {
+      ...existing,
+      name: data.name || data.host,
+      host: data.host,
+      port: parseInt(data.port) || (protocol === 'sftp' ? 22 : (data.secureMode === 'implicit' ? 990 : 21)),
+      protocol,
+      username: data.username,
+      password: data.password || undefined,
+      privateKeyPath: protocol === 'sftp' ? (data.privateKeyPath || undefined) : undefined,
+      passphrase: protocol === 'sftp' ? (data.passphrase || undefined) : undefined,
+      remotePath: data.remotePath || '/',
+      uploadOnSave: !!data.uploadOnSave
+    };
+
+    const set = (key: string, value: any) => {
+      const empty = value === undefined || value === null || value === '' ||
+        (Array.isArray(value) && value.length === 0);
+      if (empty) delete config[key];
+      else config[key] = value;
+    };
+
+    // TLS only applies to FTPS
+    if (protocol === 'ftps') {
+      config.secure = data.secureMode === 'implicit' ? 'implicit' : true;
+      const secureOptions = { ...(existing.secureOptions || {}) };
+      if (data.allowSelfSigned) secureOptions.rejectUnauthorized = false;
+      else delete secureOptions.rejectUnauthorized;
+      set('secureOptions', Object.keys(secureOptions).length ? secureOptions : undefined);
+    } else {
+      delete config.secure;
+      delete config.secureOptions;
+    }
+
+    set('context', this._normalizeContext(adv.context, workspaceRoot));
+    set('syncMode', adv.syncMode === 'full' ? 'full' : 'update');
+    set('downloadOnOpen', adv.downloadOnOpen ? true : undefined);
+    set('watcher', adv.watcher || undefined);
+    set('ignore', Array.isArray(adv.ignore) ? adv.ignore : undefined);
+    set('connTimeout', adv.connTimeout || undefined);
+    set('keepalive', protocol === 'sftp' && typeof adv.keepalive === 'number' && !isNaN(adv.keepalive) ? adv.keepalive : undefined);
+    config.autoReconnect = adv.autoReconnect !== false;
+    set('remoteExplorerOrder', adv.remoteExplorerOrder || undefined);
+    set('defaultProfile', adv.defaultProfile && existing.profiles?.[adv.defaultProfile] ? adv.defaultProfile : undefined);
+
+    if (protocol === 'sftp' && Array.isArray(adv.hop) && adv.hop.length > 0) {
+      // Keep secrets the form does not show (hop passphrase)
+      const previous = existing.hop ? (Array.isArray(existing.hop) ? existing.hop : [existing.hop]) : [];
+      const hops = adv.hop.map((h: any) => {
+        const old = previous.find(p => p.host === h.host && p.username === h.username);
+        return {
+          ...(old || {}),
+          host: h.host,
+          port: h.port || 22,
+          username: h.username,
+          privateKeyPath: h.privateKeyPath || undefined,
+          password: h.password || undefined
+        };
+      });
+      config.hop = hops.length === 1 ? hops[0] : hops;
+    } else {
+      delete config.hop;
+    }
+
+    return config as FTPConfig;
+  }
+
+  /** Store context relative to the workspace when possible (portable config) */
+  private _normalizeContext(context: string | undefined, workspaceRoot?: string): string | undefined {
+    const value = (context || '').trim();
+    if (!value || value === '.' || value === './') return undefined;
+    if (workspaceRoot && path.isAbsolute(value)) {
+      const rel = path.relative(workspaceRoot, value);
+      if (!rel) return undefined;
+      if (!rel.startsWith('..') && !path.isAbsolute(rel)) return rel.split(path.sep).join('/');
+    }
+    return value;
+  }
+
+  private async _handleBrowseContext() {
+    const workspaceRoot = await this._resolveWorkspaceRoot(false);
+    const result = await vscode.window.showOpenDialog({
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: false,
+      defaultUri: workspaceRoot ? vscode.Uri.file(workspaceRoot) : undefined,
+      title: 'Select Local Folder for this Connection'
+    });
+
+    if (result && result[0]) {
+      this._view?.webview.postMessage({
+        type: 'contextSelected',
+        path: this._normalizeContext(result[0].fsPath, workspaceRoot) || ''
+      });
+    }
   }
 
   private async _handleBrowsePrivateKey() {

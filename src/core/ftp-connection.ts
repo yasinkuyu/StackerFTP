@@ -17,13 +17,16 @@ export class FTPConnection extends BaseConnection {
 
   constructor(config: FTPConfig) {
     super(config);
-    this.client = new Client();
+    this.client = new Client(config.connTimeout || 30000);
     this.client.ftp.verbose = false;
   }
 
   async connect(): Promise<void> {
     try {
-      const secure = this.config.secure === true || this.config.secure === 'implicit';
+      // "ftps" implies TLS; "implicit" must be passed through as-is (port 990)
+      const secure: boolean | 'implicit' = this.config.secure === 'implicit'
+        ? 'implicit'
+        : (this.config.protocol === 'ftps' || this.config.secure === true || this.config.secure === 'control');
 
       await this.client.access({
         host: this.config.host,

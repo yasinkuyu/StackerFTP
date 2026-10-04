@@ -21,13 +21,36 @@ const inputPrivateKey = document.getElementById('inputPrivateKey');
 const inputPassphrase = document.getElementById('inputPassphrase');
 const inputRemotePath = document.getElementById('inputRemotePath');
 const inputUploadOnSave = document.getElementById('inputUploadOnSave');
-const inputSecure = document.getElementById('inputSecure');
+const inputSecureMode = document.getElementById('inputSecureMode');
+const inputAllowSelfSigned = document.getElementById('inputAllowSelfSigned');
+
+// Advanced inputs
+const advancedContent = document.getElementById('advancedContent');
+const inputContext = document.getElementById('inputContext');
+const inputSyncMode = document.getElementById('inputSyncMode');
+const inputDownloadOnOpen = document.getElementById('inputDownloadOnOpen');
+const inputWatcherEnabled = document.getElementById('inputWatcherEnabled');
+const watcherOptions = document.getElementById('watcherOptions');
+const inputWatcherFiles = document.getElementById('inputWatcherFiles');
+const inputWatcherAutoUpload = document.getElementById('inputWatcherAutoUpload');
+const inputWatcherAutoDelete = document.getElementById('inputWatcherAutoDelete');
+const inputIgnore = document.getElementById('inputIgnore');
+const inputConnTimeout = document.getElementById('inputConnTimeout');
+const inputKeepalive = document.getElementById('inputKeepalive');
+const keepaliveRow = document.getElementById('keepaliveRow');
+const inputAutoReconnect = document.getElementById('inputAutoReconnect');
+const hopSection = document.getElementById('hopSection');
+const hopList = document.getElementById('hopList');
+const inputExplorerOrder = document.getElementById('inputExplorerOrder');
+const inputDefaultProfile = document.getElementById('inputDefaultProfile');
+const profilesHint = document.getElementById('profilesHint');
 
 // State
 let configs = [];
 let editingIndex = null;
 let selectedProtocol = 'sftp';
 let showForm = false;
+let hops = [];
 
 // Load initial state from cache for instant display
 const previousState = vscode.getState();
@@ -58,8 +81,13 @@ document.querySelectorAll('.protocol-tab').forEach(tab => {
 });
 
 function updateFormForProtocol() {
-    sftpAuthSection.classList.toggle('hidden', selectedProtocol !== 'sftp');
+    const isSftp = selectedProtocol === 'sftp';
+    sftpAuthSection.classList.toggle('hidden', !isSftp);
     ftpsOptions.classList.toggle('hidden', selectedProtocol !== 'ftps');
+    // Keepalive and jump hosts are SSH features
+    keepaliveRow.classList.toggle('hidden', !isSftp);
+    keepaliveRow.parentElement.classList.toggle('single', !isSftp);
+    hopSection.classList.toggle('hidden', !isSftp);
     if (!inputPort.value || inputPort.value === '22' || inputPort.value === '21' || inputPort.value === '990') {
         inputPort.placeholder = selectedProtocol === 'sftp' ? '22' : '21';
     }
@@ -71,6 +99,80 @@ document.getElementById('toggleKeyAuth').addEventListener('click', () => {
     document.getElementById('toggleKeyAuth').querySelector('span').textContent =
         keyAuthContent.classList.contains('open') ? '▼' : '▶';
 });
+
+// Toggle advanced section
+function setAdvancedOpen(open) {
+    advancedContent.classList.toggle('open', open);
+    document.getElementById('toggleAdvanced').querySelector('span').textContent = open ? '▼' : '▶';
+}
+document.getElementById('toggleAdvanced').addEventListener('click', () => {
+    setAdvancedOpen(!advancedContent.classList.contains('open'));
+});
+
+inputWatcherEnabled.addEventListener('change', () => {
+    watcherOptions.classList.toggle('hidden', !inputWatcherEnabled.checked);
+});
+
+document.getElementById('btnBrowseContext').addEventListener('click', () => {
+    vscode.postMessage({ type: 'browseContext' });
+});
+document.getElementById('btnManageProfiles').addEventListener('click', () => {
+    vscode.postMessage({ type: 'manageProfiles' });
+});
+document.getElementById('btnOpenJson').addEventListener('click', () => {
+    vscode.postMessage({ type: 'openJson' });
+});
+
+// Jump hosts editor
+function renderHops() {
+    hopList.innerHTML = '';
+    hops.forEach((hop, i) => {
+        const item = document.createElement('div');
+        item.className = 'hop-item';
+        item.innerHTML = `
+      <div class="hop-item-header">
+        <span>Hop ${i + 1}</span>
+        <button type="button" class="btn-icon" data-remove title="Remove"><span class="codicon codicon-close"></span></button>
+      </div>
+      <div class="form-row form-row-inline">
+        <input type="text" class="form-input" data-field="host" placeholder="bastion.example.com">
+        <input type="number" class="form-input" data-field="port" placeholder="22">
+      </div>
+      <div class="form-row">
+        <input type="text" class="form-input" data-field="username" placeholder="Username">
+      </div>
+      <div class="form-row">
+        <input type="text" class="form-input" data-field="privateKeyPath" placeholder="Private key path (optional)">
+      </div>
+      <div class="form-row">
+        <input type="password" class="form-input" data-field="password" placeholder="Password (optional)">
+      </div>`;
+        item.querySelectorAll('[data-field]').forEach(input => {
+            input.value = hop[input.dataset.field] || '';
+            input.addEventListener('input', () => { hops[i][input.dataset.field] = input.value; });
+        });
+        item.querySelector('[data-remove]').addEventListener('click', () => {
+            hops.splice(i, 1);
+            renderHops();
+        });
+        hopList.appendChild(item);
+    });
+}
+document.getElementById('btnAddHop').addEventListener('click', () => {
+    hops.push({ host: '', port: '', username: '', privateKeyPath: '', password: '' });
+    renderHops();
+});
+
+function setProfiles(config) {
+    const names = Object.keys((config && config.profiles) || {});
+    inputDefaultProfile.innerHTML = '<option value="">None</option>' +
+        names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+    inputDefaultProfile.value = (config && config.defaultProfile && names.includes(config.defaultProfile)) ? config.defaultProfile : '';
+    inputDefaultProfile.disabled = names.length === 0;
+    profilesHint.textContent = names.length
+        ? `${names.length} profile(s): ${names.join(', ')}`
+        : 'No profiles yet. Profiles override settings per environment (e.g. dev / prod).';
+}
 
 // Header buttons
 document.getElementById('btnHeaderNew').addEventListener('click', showNewForm);
@@ -109,7 +211,25 @@ function clearForm() {
     inputPassphrase.value = '';
     inputRemotePath.value = '/';
     inputUploadOnSave.checked = false;
-    inputSecure.checked = false;
+    inputSecureMode.value = 'explicit';
+    inputAllowSelfSigned.checked = false;
+    inputContext.value = '';
+    inputSyncMode.value = 'update';
+    inputDownloadOnOpen.checked = false;
+    inputWatcherEnabled.checked = false;
+    inputWatcherFiles.value = '**/*';
+    inputWatcherAutoUpload.checked = true;
+    inputWatcherAutoDelete.checked = false;
+    watcherOptions.classList.add('hidden');
+    inputIgnore.value = '';
+    inputConnTimeout.value = '';
+    inputKeepalive.value = '';
+    inputAutoReconnect.checked = true;
+    inputExplorerOrder.value = '';
+    hops = [];
+    renderHops();
+    setProfiles(null);
+    setAdvancedOpen(false);
     selectedProtocol = 'sftp';
     document.querySelectorAll('.protocol-tab').forEach(t => {
         t.classList.toggle('active', t.dataset.protocol === 'sftp');
@@ -140,7 +260,32 @@ function loadConfigToForm(config) {
     inputPassphrase.value = config.passphrase || '';
     inputRemotePath.value = config.remotePath || '/';
     inputUploadOnSave.checked = config.uploadOnSave || false;
-    inputSecure.checked = config.secure || false;
+    inputSecureMode.value = config.secure === 'implicit' ? 'implicit' : 'explicit';
+    inputAllowSelfSigned.checked = !!(config.secureOptions && config.secureOptions.rejectUnauthorized === false);
+
+    // Advanced
+    inputContext.value = config.context || '';
+    inputSyncMode.value = config.syncMode === 'full' ? 'full' : 'update';
+    inputDownloadOnOpen.checked = !!config.downloadOnOpen;
+    const watcher = config.watcher === true
+        ? { files: '**/*', autoUpload: true, autoDelete: false }
+        : (config.watcher || null);
+    inputWatcherEnabled.checked = !!watcher;
+    inputWatcherFiles.value = (watcher && watcher.files) || '**/*';
+    inputWatcherAutoUpload.checked = watcher ? watcher.autoUpload !== false : true;
+    inputWatcherAutoDelete.checked = !!(watcher && watcher.autoDelete);
+    watcherOptions.classList.toggle('hidden', !watcher);
+    inputIgnore.value = Array.isArray(config.ignore) ? config.ignore.join('\n') : '';
+    inputConnTimeout.value = config.connTimeout || '';
+    inputKeepalive.value = config.keepalive || '';
+    inputAutoReconnect.checked = config.autoReconnect !== false;
+    inputExplorerOrder.value = config.remoteExplorerOrder || '';
+    hops = (config.hop ? (Array.isArray(config.hop) ? config.hop : [config.hop]) : []).map(h => ({
+        host: h.host || '', port: h.port || '', username: h.username || '',
+        privateKeyPath: h.privateKeyPath || '', password: h.password || ''
+    }));
+    renderHops();
+    setProfiles(config);
 
     selectedProtocol = config.protocol || 'sftp';
     document.querySelectorAll('.protocol-tab').forEach(t => {
@@ -166,7 +311,31 @@ function getFormData() {
         passphrase: inputPassphrase.value || undefined,
         remotePath: inputRemotePath.value.trim() || '/',
         uploadOnSave: inputUploadOnSave.checked,
-        secure: inputSecure.checked
+        secureMode: inputSecureMode.value,
+        allowSelfSigned: inputAllowSelfSigned.checked,
+        advanced: {
+            context: inputContext.value.trim(),
+            syncMode: inputSyncMode.value,
+            downloadOnOpen: inputDownloadOnOpen.checked,
+            watcher: inputWatcherEnabled.checked ? {
+                files: inputWatcherFiles.value.trim() || '**/*',
+                autoUpload: inputWatcherAutoUpload.checked,
+                autoDelete: inputWatcherAutoDelete.checked
+            } : null,
+            ignore: inputIgnore.value.split('\n').map(l => l.trim()).filter(Boolean),
+            connTimeout: parseInt(inputConnTimeout.value, 10) || null,
+            keepalive: inputKeepalive.value === '' ? null : parseInt(inputKeepalive.value, 10),
+            autoReconnect: inputAutoReconnect.checked,
+            hop: hops.filter(h => h.host && h.host.trim()).map(h => ({
+                host: h.host.trim(),
+                port: parseInt(h.port, 10) || 22,
+                username: (h.username || '').trim(),
+                privateKeyPath: (h.privateKeyPath || '').trim() || undefined,
+                password: h.password || undefined
+            })),
+            remoteExplorerOrder: inputExplorerOrder.value,
+            defaultProfile: inputDefaultProfile.value
+        }
     };
 }
 
@@ -190,6 +359,11 @@ function validateForm(data) {
 
     if (!data.host) showError('inputHost', 'Host is required');
     if (!data.username) showError('inputUsername', 'Username is required');
+    if (selectedProtocol === 'sftp' && data.advanced.hop.some(h => !h.username)) {
+        showFormMessage('Each jump host needs a username.');
+        setAdvancedOpen(true);
+        return false;
+    }
 
     if (!isValid) showFormMessage('Please fix the highlighted fields before saving.');
     return isValid;
@@ -367,6 +541,10 @@ window.addEventListener('message', event => {
 
         case 'privateKeySelected':
             inputPrivateKey.value = msg.path;
+            break;
+
+        case 'contextSelected':
+            inputContext.value = msg.path;
             break;
     }
 });

@@ -839,6 +839,12 @@ export function registerCommands(
 
   // ==================== Transfer Commands ====================
 
+  const manageProfilesCommand = vscode.commands.registerCommand('stackerftp.manageProfiles', async () => {
+    const workspaceRoot = getWorkspaceRoot();
+    if (!workspaceRoot) return;
+    await manageProfiles(workspaceRoot);
+  });
+
   const selectTargetCommand = vscode.commands.registerCommand('stackerftp.selectTarget', async () => {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
@@ -2901,6 +2907,7 @@ export function registerCommands(
     disconnectCommand,
     setProfileCommand,
     selectTargetCommand,
+    manageProfilesCommand,
     uploadCommand,
     uploadToMultipleCommand,
     uploadCurrentFileCommand,

@@ -94,10 +94,129 @@
   <!-- FTPS Options -->
   <div id="ftpsOptions" class="hidden">
     <div class="form-row">
+      <label class="form-label">TLS Mode</label>
+      <select class="form-select" id="inputSecureMode">
+        <option value="explicit">Explicit (AUTH TLS, port 21)</option>
+        <option value="implicit">Implicit (port 990)</option>
+      </select>
+    </div>
+    <div class="form-row">
       <label class="form-checkbox">
-        <input type="checkbox" id="inputSecure">
-        Use TLS/SSL
+        <input type="checkbox" id="inputAllowSelfSigned">
+        Allow self-signed / invalid certificates
       </label>
+    </div>
+  </div>
+
+  <!-- Advanced Settings -->
+  <div class="collapsible-header" id="toggleAdvanced">
+    <span>▶</span> Advanced Settings
+  </div>
+  <div class="collapsible-content" id="advancedContent">
+
+    <div class="form-group-title">Local Folder</div>
+    <div class="form-row">
+      <label class="form-label">Local Path (context)</label>
+      <div class="form-input-group">
+        <input type="text" class="form-input" id="inputContext" placeholder="Workspace root">
+        <button class="btn btn-secondary" id="btnBrowseContext">Browse</button>
+      </div>
+      <div class="form-hint">Local folder mapped to Remote Path. Empty = workspace root.</div>
+    </div>
+
+    <div class="form-group-title">Sync &amp; Automation</div>
+    <div class="form-row">
+      <label class="form-label">Sync Mode</label>
+      <select class="form-select" id="inputSyncMode">
+        <option value="update">Update – only add/overwrite changed files</option>
+        <option value="full">Full – also delete files missing on the source side</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label class="form-checkbox">
+        <input type="checkbox" id="inputDownloadOnOpen">
+        Download on Open (refresh file from remote when opened)
+      </label>
+    </div>
+    <div class="form-row">
+      <label class="form-checkbox">
+        <input type="checkbox" id="inputWatcherEnabled">
+        File Watcher (sync external changes, e.g. build output)
+      </label>
+    </div>
+    <div id="watcherOptions" class="form-subsection hidden">
+      <div class="form-row">
+        <label class="form-label">Watch Pattern</label>
+        <input type="text" class="form-input" id="inputWatcherFiles" placeholder="**/*">
+      </div>
+      <div class="form-row">
+        <label class="form-checkbox">
+          <input type="checkbox" id="inputWatcherAutoUpload">
+          Upload created / changed files
+        </label>
+      </div>
+      <div class="form-row">
+        <label class="form-checkbox">
+          <input type="checkbox" id="inputWatcherAutoDelete">
+          Delete remote file when deleted locally
+        </label>
+      </div>
+    </div>
+
+    <div class="form-group-title">Ignore</div>
+    <div class="form-row">
+      <label class="form-label">Ignore Patterns (one per line)</label>
+      <textarea class="form-input form-textarea" id="inputIgnore" rows="5" placeholder=".git&#10;node_modules&#10;*.log"></textarea>
+      <div class="form-hint">Empty = defaults (node_modules, .vscode, .DS_Store …). .git and sftp.json are always ignored.</div>
+    </div>
+
+    <div class="form-group-title">Connection</div>
+    <div class="form-row form-row-half">
+      <div>
+        <label class="form-label">Timeout (ms)</label>
+        <input type="number" class="form-input" id="inputConnTimeout" placeholder="10000" min="1000" step="1000">
+      </div>
+      <div id="keepaliveRow">
+        <label class="form-label">Keepalive (ms)</label>
+        <input type="number" class="form-input" id="inputKeepalive" placeholder="10000" min="0" step="1000">
+      </div>
+    </div>
+    <div class="form-row">
+      <label class="form-checkbox">
+        <input type="checkbox" id="inputAutoReconnect">
+        Auto Reconnect when the connection drops
+      </label>
+    </div>
+
+    <div id="hopSection">
+      <div class="form-group-title">Jump Hosts (SSH hop)</div>
+      <div id="hopList"></div>
+      <button type="button" class="btn btn-secondary btn-small" id="btnAddHop">+ Add Jump Host</button>
+    </div>
+
+    <div class="form-group-title">Remote Explorer</div>
+    <div class="form-row">
+      <label class="form-label">Sort Order</label>
+      <select class="form-select" id="inputExplorerOrder">
+        <option value="">Default (name)</option>
+        <option value="name">Name</option>
+        <option value="size">Size</option>
+        <option value="date">Date</option>
+        <option value="type">Type</option>
+      </select>
+    </div>
+
+    <div class="form-group-title">Profiles</div>
+    <div class="form-row">
+      <label class="form-label">Default Profile</label>
+      <select class="form-select" id="inputDefaultProfile">
+        <option value="">None</option>
+      </select>
+      <div class="form-hint" id="profilesHint">Profiles override settings per environment (e.g. dev / prod).</div>
+    </div>
+    <div class="form-row form-actions-inline">
+      <button type="button" class="btn btn-secondary btn-small" id="btnManageProfiles">Manage Profiles…</button>
+      <button type="button" class="btn btn-secondary btn-small" id="btnOpenJson">Open sftp.json</button>
     </div>
   </div>
 

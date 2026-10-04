@@ -267,6 +267,11 @@
         "icon": "$(plug)"
       },
       {
+        "command": "stackerftp.manageProfiles",
+        "title": "Manage Connection Profiles",
+        "category": "StackerFTP"
+      },
+      {
         "command": "stackerftp.selectTarget",
         "title": "Select Target Connection",
         "category": "StackerFTP",

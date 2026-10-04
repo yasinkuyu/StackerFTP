@@ -472,3 +472,73 @@ body {
 .hidden {
   display: none !important;
 }
+
+/* Advanced settings */
+.form-group-title {
+  margin: 14px 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-descriptionForeground);
+  border-bottom: 1px solid var(--vscode-panel-border);
+  padding-bottom: 3px;
+}
+
+.form-hint {
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 60px;
+  font-family: var(--vscode-editor-font-family);
+  line-height: 1.4;
+}
+
+.form-subsection {
+  margin-left: 20px;
+}
+
+.form-row-half {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.form-row-half.single {
+  grid-template-columns: 1fr;
+}
+
+.form-actions-inline {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.btn-small {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.hop-item {
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 3px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+}
+
+.hop-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  margin-bottom: 4px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.hop-item .form-row {
+  margin-bottom: 4px;
+}
