@@ -699,6 +699,17 @@
         "title": "SFTP: Reset Overwrite / Collision Behavior",
         "category": "StackerFTP",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "stackerftp.copyRemotePath",
+        "title": "Copy Path",
+        "category": "StackerFTP",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "stackerftp.copyRemoteRelativePath",
+        "title": "Copy Relative Path",
+        "category": "StackerFTP"
       }
     ],
     "menus": {
@@ -722,6 +733,14 @@
         {
           "command": "stackerftp.switchProtocol",
           "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "stackerftp.copyRemotePath",
+          "when": "focusedView == stackerftp.remoteExplorerTree"
+        },
+        {
+          "command": "stackerftp.copyRemoteRelativePath",
+          "when": "focusedView == stackerftp.remoteExplorerTree"
         }
       ],
       "explorer/context": [
@@ -1107,6 +1126,16 @@
           "command": "stackerftp.showTransferError",
           "when": "view == stackerftp.transferQueue && viewItem =~ /transfer-(group-)?error/",
           "group": "navigation@0"
+        },
+        {
+          "command": "stackerftp.copyRemotePath",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /(file|directory|symlink|-connected)$/",
+          "group": "6_copypath@1"
+        },
+        {
+          "command": "stackerftp.copyRemoteRelativePath",
+          "when": "view == stackerftp.remoteExplorerTree && viewItem =~ /(file|directory|symlink|-connected)$/",
+          "group": "6_copypath@2"
         }
       ],
       "scm/title": [
@@ -1211,6 +1240,18 @@
         "key": "ctrl+alt+u",
         "mac": "cmd+alt+u",
         "when": "workspaceFolderCount > 0"
+      },
+      {
+        "command": "stackerftp.copyRemotePath",
+        "key": "shift+alt+c",
+        "mac": "alt+cmd+c",
+        "when": "focusedView == stackerftp.remoteExplorerTree"
+      },
+      {
+        "command": "stackerftp.copyRemoteRelativePath",
+        "key": "ctrl+k ctrl+shift+alt+c",
+        "mac": "alt+shift+cmd+c",
+        "when": "focusedView == stackerftp.remoteExplorerTree"
       }
     ],
     "jsonValidation": [

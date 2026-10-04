@@ -26,6 +26,7 @@ A professional-grade FTP/SFTP client extension for Visual Studio Code and all it
 - **File Details**: View file size, permissions, and modification date
 - **File Icons**: Native VS Code file type icons
 - **Hidden Files**: Option to show/hide hidden files (dotfiles)
+- **Copy Path / Copy Relative Path**: Copy remote paths from the Remote Explorer (multi-select supported)
 - **Remote-to-Remote Transfer**: Copy files between different remote servers
 - **Edit in Local**: Edit remote files in a temp directory with auto-upload on save
 

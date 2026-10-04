@@ -840,6 +840,40 @@ export function registerCommands(
 
   // ==================== Transfer Commands ====================
 
+  // ==================== Copy Remote Path ====================
+
+  /** Remote paths of the clicked/selected Remote Explorer items (or the focused selection for keybindings) */
+  const getRemotePathTargets = (item?: any, selectedItems?: any[]): { path: string; root: string }[] => {
+    const items = selectedItems && selectedItems.length > 0
+      ? selectedItems
+      : (item ? [item] : [...(container.treeView?.selection || [])]);
+    return items
+      .map((i: any) => {
+        const root = normalizeRemotePath(i?.config?.remotePath || '/');
+        const remote = i?.entry?.path ? normalizeRemotePath(i.entry.path) : (i?.config ? root : undefined);
+        return remote ? { path: remote, root } : undefined;
+      })
+      .filter((t: { path: string; root: string } | undefined): t is { path: string; root: string } => !!t);
+  };
+
+  const copyPaths = async (paths: string[], label: string) => {
+    if (paths.length === 0) {
+      statusBar.warn('Select a file or folder in the Remote Explorer');
+      return;
+    }
+    await vscode.env.clipboard.writeText(paths.join('\n'));
+    statusBar.success(paths.length === 1 ? `Copied: ${paths[0]}` : `Copied ${paths.length} ${label}`);
+  };
+
+  const copyRemotePathCommand = vscode.commands.registerCommand('stackerftp.copyRemotePath', async (item?: any, selectedItems?: any[]) => {
+    await copyPaths(getRemotePathTargets(item, selectedItems).map(t => t.path), 'paths');
+  });
+
+  const copyRemoteRelativePathCommand = vscode.commands.registerCommand('stackerftp.copyRemoteRelativePath', async (item?: any, selectedItems?: any[]) => {
+    // Relative to the connection's Remote Path, e.g. "assets/css/app.css"
+    await copyPaths(getRemotePathTargets(item, selectedItems).map(t => path.posix.relative(t.root, t.path) || '.'), 'relative paths');
+  });
+
   const manageProfilesCommand = vscode.commands.registerCommand('stackerftp.manageProfiles', async () => {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
@@ -2936,6 +2970,8 @@ export function registerCommands(
     setProfileCommand,
     selectTargetCommand,
     manageProfilesCommand,
+    copyRemotePathCommand,
+    copyRemoteRelativePathCommand,
     uploadCommand,
     uploadToMultipleCommand,
     uploadCurrentFileCommand,
