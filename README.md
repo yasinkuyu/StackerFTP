@@ -12,11 +12,13 @@ A professional-grade FTP/SFTP client extension for Visual Studio Code and all it
 - **FTPS** (FTP over SSL/TLS) - Port 21 - Secure with certificates
 - **Quick Protocol Switch**: Change protocols without re-entering credentials
 - **Upload on Save**: Automatically upload files when saved
-- **Download on Open**: Automatically download files when opened from remote
+- **Download on Open**: Save files opened from the Remote Explorer into your project
 - **Connection Profiles**: Switch between multiple server configurations
 - **Multi-Connection Support**: Connect to multiple servers simultaneously
-- [x] **Connection Hopping**: Connect through intermediate servers
+- **Target Connection Selection**: With several connections, choose once where transfers go – no more silent uploads to the first server
+- **Connection Hopping**: Connect through intermediate (jump) servers
 - **File Watcher**: Monitor local files for changes and auto-upload
+- **Advanced Settings Form**: Manage every connection setting from the Connections panel, with (?) help tooltips and examples
 
 ### 📁 File Management
 - **Full File Operations**: Upload, download, delete, rename, duplicate files and folders
@@ -27,9 +29,11 @@ A professional-grade FTP/SFTP client extension for Visual Studio Code and all it
 - **Remote-to-Remote Transfer**: Copy files between different remote servers
 - **Edit in Local**: Edit remote files in a temp directory with auto-upload on save
 
-### 🔄 Sync Features
-- **Bi-directional Sync**: Sync local → remote, remote → local, or both directions
-- **Sync to All Profiles**: Upload to multiple server profiles at once
+### 🔄 Sync & Compare
+- **Sync with Preview**: Sync local → remote, remote → local, or both – only changed files, reviewed before anything is transferred or deleted
+- **Native Compare View**: See modified / only-local / only-remote files side by side with the server, diff them and fix differences one by one
+- **Upload to Multiple Servers**: Deploy the same files to staging and production in one step, or to all servers
+- **Preserve Timestamps**: Transferred files keep their modification time, so change detection stays accurate
 - **Upload Changed Files**: Upload only files changed in git
 
 ### 🛠️ Web Master Tools (SFTP Only)
@@ -38,7 +42,7 @@ A professional-grade FTP/SFTP client extension for Visual Studio Code and all it
 - **File Information**: Detailed file metadata display
 - **Remote Search**: Search content within remote files
 - **Backup Creation**: Create backups of remote files/directories
-- **Folder Comparison**: Compare local and remote folders (split-view panel)
+- **Folder Comparison**: Compare local and remote folders in the native Compare view
 - **Quick Search**: Ultra-fast file search by name in new tab (parallel traversal, wildcard patterns)
 - **Search & Replace**: Find and replace text across remote files
 - **Cache Purge**: Clear common cache directories on remote server
@@ -46,8 +50,9 @@ A professional-grade FTP/SFTP client extension for Visual Studio Code and all it
 ### 👨‍💻 Developer Features
 - **Diff View**: Compare local and remote file versions
 - **Compare Remotes**: Compare files between different remote servers
-- **Remote Terminal**: Open SSH terminal to remote server (SFTP only)
+- **Remote Terminal**: Open an SSH terminal in the project's remote folder – uses your private key and jump hosts (SFTP only)
 - **Transfer Queue**: Monitor and manage active transfers
+- **Clear Error Reporting**: Failed transfers show the reason, a notification with Retry, full details on click, and a persistent "X failed" indicator
 - **Progress Indicators**: Visual feedback for all operations
 - **Logging**: Comprehensive logging for debugging
 - **Git Integration**: Upload only git-changed files
@@ -117,6 +122,55 @@ StackerFTP is designed to work seamlessly with Visual Studio Code and all its ma
 - **Download**: Right-click a remote file → "Download"
 - **Sync**: Right-click a folder → "Sync Local → Remote" or "Sync Remote → Local"
 - **Edit**: Double-click a remote file to edit locally with auto-upload on save
+
+## Working with Multiple Servers
+
+When more than one connection is configured, StackerFTP asks **once** which server to use and remembers your choice. All transfers, Upload on Save, the file watcher and the status bar use that **target connection**.
+
+- **Change the target**: `StackerFTP: Select Target Connection`, or click the connection name in the status bar.
+- **How long it is remembered**: `stackerftp.rememberTargetConnection`
+  - `session` (default) – until you disconnect from it or reload the window
+  - `workspace` – kept across reloads and restarts
+- **Upload on Save / File Watcher** never guess: if no target is chosen yet, nothing is uploaded in the background.
+
+### Upload to multiple servers
+Right-click files or folders (or use the editor context menu) → **StackerFTP** →
+- **Upload to Multiple Servers…** – pick servers, e.g. staging + production. The selection is remembered for next time.
+- **Upload to All Servers** – every configured connection, after a confirmation.
+
+A per-server summary shows what was uploaded, skipped or failed.
+
+## Sync
+
+`SFTP: Sync Local → Remote`, `SFTP: Sync Remote → Local` and `SFTP: Sync Both Directions` (also on folders in the Explorer) work in three steps:
+
+1. **Scan** both sides (ignored folders are skipped entirely).
+2. **Preview** only the changes, grouped as *Upload*, *Download* and *Delete*. Uncheck anything you don't want. Conflicts – e.g. the server copy is newer than yours – are shown with ⚠ and are **not** selected by default.
+3. **Apply** the selection through the Transfer Queue.
+
+| | Local → Remote | Remote → Local | Both |
+|---|---|---|---|
+| New / changed files | uploaded | downloaded | newer side wins |
+| Files missing on the source side | deleted on the server only with `"syncMode": "full"` | moved to trash only with `"syncMode": "full"` | never deleted |
+
+Deletions always need an extra confirmation. `.git` and `.vscode/sftp.json` are never transferred. Turn the preview off with `stackerftp.confirmSync: false` to apply the recommended changes directly.
+
+## Compare
+
+Run **Compare with Remote** from the Command Palette (whole project), or right-click a folder (that folder) or a file (diff). Results appear in the **Compare** view of the StackerFTP sidebar:
+
+- **M** modified · **L** only local · **R** only remote – colors follow your theme.
+- Click a file to diff it (modified) or open it; use the inline ↑ / ↓ buttons to upload or download. Multi-select and folders are supported.
+- View toolbar: **Sync to Remote / Sync to Local** (with preview), **Filter**, **Refresh**, and in the `…` menu **Export** (CSV/JSON) and **Close**.
+
+Compare and Sync use the same rules, so what Compare shows is exactly what Sync will change.
+
+## When a Transfer Fails
+
+- The Transfer Queue shows the reason next to the file, e.g. `↑ Error: Permission denied`.
+- After the run, a notification offers **Show Details**, **Retry** and **Show Queue**.
+- Click a failed item for the full error, server, local and remote path – with **Retry**, **Copy Error** and **Show Log**.
+- The status bar shows a red **X failed** indicator until the failures are retried or cleared.
 
 ## Configuration Options
 
@@ -194,17 +248,13 @@ StackerFTP is designed to work seamlessly with Visual Studio Code and all its ma
   "host": "ftp.example.com",
   "protocol": "ftps",
   "port": 21,
-  "secure": true,
   "username": "user",
   "password": "pass",
   "remotePath": "/public_html"
 }
 ```
 
-
-```json
-
-```
+`"protocol": "ftps"` always uses TLS (explicit, port 21). For implicit TLS (usually port 990) set `"secure": "implicit"`. For self-signed certificates on servers you trust, add `"secureOptions": { "rejectUnauthorized": false }`.
 
 ### File Watcher Configuration
 ```json
@@ -234,7 +284,7 @@ StackerFTP is designed to work seamlessly with Visual Studio Code and all its ma
   "privateKeyPath": "~/.ssh/id_rsa",
   "passphrase": "key-passphrase",
   "remotePath": "/home/user/project",
-  "localPath": "./src",
+  "context": "src",
   "uploadOnSave": true,
   "downloadOnOpen": false,
   "syncMode": "update",
@@ -262,19 +312,21 @@ StackerFTP is designed to work seamlessly with Visual Studio Code and all its ma
 | `privateKeyPath` | string | - | Path to SSH private key |
 | `passphrase` | string | - | Passphrase for encrypted private key |
 | `remotePath` | string | "/" | Remote directory path |
-| `localPath` | string | "./" | Local directory path |
+| `context` | string | workspace root | Local folder mapped to `remotePath` (relative to the workspace or absolute) |
 | `uploadOnSave` | boolean | false | Auto-upload on file save |
-| `downloadOnOpen` | boolean | false | Auto-download when opening from remote |
-| `syncMode` | string | "update" | Sync mode: "update" or "full" |
-| `ignore` | array | [] | Glob patterns to ignore |
+| `downloadOnOpen` | boolean | false | Save files opened from the Remote Explorer into the project |
+| `syncMode` | string | "update" | "update" (never deletes) or "full" (sync also deletes files missing on the source side, after confirmation) |
+| `ignore` | array | node_modules, .vscode, … | Patterns never transferred. `.git` and `.vscode/sftp.json` are always ignored |
 | `watcher` | object | - | File watcher configuration |
 | `profiles` | object | - | Multiple server profiles |
 | `defaultProfile` | string | - | Default profile to use |
 | `hop` | object/array | - | Jump host configuration |
 | `connTimeout` | number | 10000 | Connection timeout in ms |
 | `keepalive` | number | 10000 | Keepalive interval in ms |
-| `passive` | boolean | true | Use passive mode for FTP |
-| `secure` | boolean | false | Use TLS for FTPS |
+| `autoReconnect` | boolean | true | Reconnect when the connection drops unexpectedly |
+| `remoteExplorerOrder` | string | "name" | Remote Explorer sort: "name", "size", "date" or "type" |
+| `secure` | boolean / "implicit" | true for ftps | TLS mode for FTPS |
+| `secureOptions` | object | - | TLS options, e.g. `{ "rejectUnauthorized": false }` |
 
 ## Keyboard Shortcuts
 
@@ -293,7 +345,10 @@ Open VS Code settings and search for "StackerFTP":
 |---------|------|---------|-------------|
 | `stackerftp.showHiddenFiles` | boolean | false | Show hidden files in remote explorer |
 | `stackerftp.confirmDelete` | boolean | true | Confirm before deleting remote files |
-| `stackerftp.confirmSync` | boolean | true | Confirm before syncing directories |
+| `stackerftp.confirmSync` | boolean | true | Show the sync preview before applying changes |
+| `stackerftp.rememberTargetConnection` | string | "session" | Remember the target connection for the "session" or the "workspace" |
+| `stackerftp.rememberMultiTargets` | boolean | true | Pre-select the servers last used with "Upload to Multiple Servers" |
+| `stackerftp.preserveTimestamps` | boolean | true | Keep modification times on transferred files |
 | `stackerftp.autoRefresh` | boolean | true | Auto refresh remote explorer after operations |
 | `stackerftp.transferConcurrency` | number | 4 | Number of concurrent file transfers |
 | `stackerftp.showWebMasterTools` | boolean | true | Show web master tools in context menu |
