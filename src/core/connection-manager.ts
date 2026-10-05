@@ -20,6 +20,7 @@ export class ConnectionManager {
   private manualDisconnects: Set<string> = new Set();
   private reconnectTimers: Map<string, NodeJS.Timeout> = new Map();
   private reconnectAttempts: Map<string, number> = new Map();
+  private static readonly MAX_RECONNECT_ATTEMPTS = 8;
   private ongoingConnections: Map<string, Promise<BaseConnection>> = new Map();
   private targetLabel: string | undefined;
 
@@ -136,7 +137,10 @@ export class ConnectionManager {
     this.updateStatusBar();
   }
 
-  async connect(config: FTPConfig): Promise<BaseConnection> {
+  /**
+   * @param background automatic reconnect: failures are logged, not shown as notifications
+   */
+  async connect(config: FTPConfig, background = false): Promise<BaseConnection> {
     const key = this.getConnectionKey(config);
     const displayName = config.name || config.host;
 
@@ -210,6 +214,10 @@ export class ConnectionManager {
         });
 
         connection.on('disconnected', () => {
+          // A failed attempt or a replaced connection closing must not touch the state of
+          // the current one (it would show a live connection as disconnected and start
+          // another reconnect loop). Failed attempts are handled by their caller.
+          if (this.connections.get(key) !== connection) return;
           logger.info(`Disconnected from ${config.host}`);
           statusBar.info(`Disconnected: ${displayName}`);
           // Auto-reconnect if enabled and not a manual disconnect
@@ -231,7 +239,9 @@ export class ConnectionManager {
 
         connection.on('error', (error) => {
           logger.error(`Connection error on ${config.host}`, error);
-          statusBar.error(`Error: ${error.message}`, true);
+          // Only a connection the user is working with deserves a notification
+          const isCurrent = this.connections.get(key) === connection;
+          statusBar.error(`Error: ${error.message}`, !background || isCurrent);
         });
 
         // Connect
@@ -242,6 +252,9 @@ export class ConnectionManager {
           return connection;
         } catch (error: any) {
           progress.fail(`Connection failed: ${displayName}`);
+          // Make sure a half-open attempt does not linger (and fire events later)
+          connection.removeAllListeners('disconnected');
+          try { await connection.disconnect(); } catch { /* already closed */ }
           throw error;
         }
       } finally {
@@ -258,6 +271,8 @@ export class ConnectionManager {
     const disconnected: FTPConfig[] = [];
     if (config) {
       const key = this.getConnectionKey(config);
+      // Stop a pending auto-reconnect even when no live connection exists
+      this.clearReconnectState(key);
       const connection = this.connections.get(key);
       if (connection) {
         disconnected.push(connection.getConfig());
@@ -275,6 +290,9 @@ export class ConnectionManager {
       }
     } else {
       // Disconnect all
+      for (const key of [...this.reconnectTimers.keys(), ...this.reconnectAttempts.keys()]) {
+        this.clearReconnectState(key);
+      }
       await connectionPool.drainAll();
       for (const [key, connection] of this.connections) {
         disconnected.push(connection.getConfig());
@@ -336,6 +354,18 @@ export class ConnectionManager {
     if (this.reconnectTimers.has(key)) return;
 
     const attempt = (this.reconnectAttempts.get(key) || 0) + 1;
+    if (attempt > ConnectionManager.MAX_RECONNECT_ATTEMPTS) {
+      this.clearReconnectState(key);
+      const name = config.name || config.host;
+      logger.warn(`Giving up reconnecting to ${config.host} after ${attempt - 1} attempts`);
+      vscode.window.showWarningMessage(`StackerFTP: Lost connection to ${name} and could not reconnect.`, 'Reconnect')
+        .then(choice => {
+          if (choice === 'Reconnect') {
+            this.connect(config).catch(err => statusBar.error(`Connection failed: ${err.message}`, true));
+          }
+        });
+      return;
+    }
     this.reconnectAttempts.set(key, attempt);
 
     const delay = Math.min(30000, 2000 * attempt);
@@ -349,8 +379,10 @@ export class ConnectionManager {
           this.clearReconnectState(key);
           return;
         }
-        await this.connect(config);
+        await this.connect(config, true);
       } catch (error) {
+        // Cancelled meanwhile (manual disconnect / connect succeeded elsewhere): stop the loop
+        if (this.reconnectAttempts.get(key) !== attempt) return;
         logger.warn(`Reconnect attempt ${attempt} failed for ${config.host}`, error);
         this.scheduleReconnect(config, key);
       }
