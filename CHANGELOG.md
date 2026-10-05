@@ -2,6 +2,18 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.4.0] - 2026-10-05
+
+### Added
+- **Upload Commit Files (Beta)**: New command `StackerFTP: Upload Commit Files...` (also in the Source Control title menu) opens a window with the files changed by the commits you pick, ready to upload. Nothing is uploaded until you confirm.
+  - **Which file goes where**: A file goes to the server whose `context` folder contains it; when several contexts contain it, the deepest one wins (e.g. `app_landing/dist` beats the project root). The destination is `remotePath` + the path relative to `context`, shown under every file. The server's `ignore` list is applied last. Servers sharing the same folder stay off unless flagged or the current target.
+  - **Confirmation**: The final dialog lists every file with its server and remote path.
+  - **Protected files**: Files matching `stackerftp.commitUploadProtected` (default `config`, `.env*`, `*.server.php`, `*.pem`, `*.key`, `id_rsa*`) are marked ⚠ and start unchecked.
+  - **Deleted files are never removed** from the server. Renames upload the new path only.
+  - **`uploadOnCommit`** (per connection) pre-selects a server; with `stackerftp.commitUploadPrompt` on (off by default) the window opens after each commit in workspaces with such a connection.
+
+> **Beta:** this feature can overwrite files on live servers. Test it on a staging server first and read the confirmation dialog carefully.
+
 ## [1.3.2] - 2026-10-05
 
 ### Added
