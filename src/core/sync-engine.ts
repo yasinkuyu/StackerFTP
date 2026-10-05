@@ -80,10 +80,15 @@ export function isSameFile(a: FileStamp, b: FileStamp, toleranceMs: number): boo
 async function scanLocal(root: string, ignore: string[], token?: vscode.CancellationToken): Promise<Map<string, FileStamp>> {
   const files = new Map<string, FileStamp>();
 
+  const visited = new Set<string>(); // real paths, guards against symlink loops
+
   const walk = async (dir: string): Promise<void> => {
     if (token?.isCancellationRequested) return;
     let entries: fs.Dirent[];
     try {
+      const real = await fs.promises.realpath(dir);
+      if (visited.has(real)) return;
+      visited.add(real);
       entries = await fs.promises.readdir(dir, { withFileTypes: true });
     } catch {
       return;
@@ -97,12 +102,17 @@ async function scanLocal(root: string, ignore: string[], token?: vscode.Cancella
 
       if (entry.isDirectory()) {
         subdirs.push(full);
-      } else if (entry.isFile()) {
+      } else if (entry.isFile() || entry.isSymbolicLink()) {
         try {
+          // stat follows symlinks: a linked folder is walked like a folder
           const st = await fs.promises.stat(full);
-          files.set(rel, { size: st.size, mtime: st.mtimeMs });
+          if (st.isDirectory()) {
+            subdirs.push(full);
+          } else if (st.isFile()) {
+            files.set(rel, { size: st.size, mtime: st.mtimeMs });
+          }
         } catch {
-          // Vanished or unreadable - skip
+          // Vanished, unreadable or broken link - skip
         }
       }
     }

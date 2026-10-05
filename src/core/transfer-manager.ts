@@ -611,7 +611,7 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
   private static isConnectionError(error: any, connection?: BaseConnection): boolean {
     if (connection && !connection.connected) return true;
     const text = `${error?.code || ''} ${error?.message || error || ''}`;
-    return /ECONNRESET|EPIPE|ETIMEDOUT|ECONNABORTED|ENOTCONN|socket hang up|closed|not connected|No active connection|Timeout \(control socket\)|channel open failure/i.test(text);
+    return /ECONNRESET|EPIPE|ETIMEDOUT|ECONNABORTED|ENOTCONN|socket hang up|closed|not connected|No active connection|Timeout \(control socket\)|channel open failure|waiting for handshake|ECONNREFUSED|EHOSTUNREACH/i.test(text);
   }
 
   /**
@@ -831,8 +831,19 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
     const MAX_FILES = 100000;
     const MAX_DEPTH = 50;
 
+    // Real paths of visited directories, so symlink loops (a -> ..) are not followed forever
+    const visited = new Set<string>();
+
     const traverse = async (currentDir: string, depth: number) => {
       if (depth > MAX_DEPTH || files.length >= MAX_FILES) return;
+
+      try {
+        const real = await fs.promises.realpath(currentDir);
+        if (visited.has(real)) return;
+        visited.add(real);
+      } catch {
+        return;
+      }
 
       const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
       const subdirs: string[] = [];
@@ -843,7 +854,19 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
 
         if (entry.isDirectory()) {
           subdirs.push(fullPath);
-        } else {
+        } else if (entry.isSymbolicLink()) {
+          // Upload what the link points to: a linked folder is walked, a broken link is skipped
+          try {
+            const target = await fs.promises.stat(fullPath);
+            if (target.isDirectory()) {
+              subdirs.push(fullPath);
+            } else if (target.isFile()) {
+              files.push(fullPath);
+            }
+          } catch {
+            logger.warn(`Skipping broken symlink: ${fullPath}`);
+          }
+        } else if (entry.isFile()) {
           files.push(fullPath);
         }
       }
@@ -877,6 +900,11 @@ export class TransferManager extends EventEmitter implements vscode.Disposable {
         if (entry.type === 'directory') {
           files.push({ ...entry, path: fullPath });
           subdirs.push(fullPath);
+        } else if (entry.isSymlinkToDirectory) {
+          files.push({ ...entry, path: fullPath });
+          // Follow linked folders whose target is known, but not links back to an ancestor (would loop)
+          const target = entry.target ? path.posix.resolve(currentPath, entry.target) : undefined;
+          if (target && target !== '/' && !`${currentPath}/`.startsWith(`${target}/`)) subdirs.push(fullPath);
         } else {
           files.push({ ...entry, path: fullPath });
         }

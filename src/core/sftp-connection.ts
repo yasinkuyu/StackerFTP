@@ -164,6 +164,7 @@ export class SFTPConnection extends BaseConnection {
 
             let type: 'file' | 'directory' | 'symlink' = 'file';
             let isSymlinkToDirectory = false;
+            let target: string | undefined;
 
             if (attrs.isDirectory()) {
               type = 'directory';
@@ -178,6 +179,7 @@ export class SFTPConnection extends BaseConnection {
               } catch {
                 // If we can't stat the target, treat as file
               }
+              target = await this._readLink(entryPath);
             }
 
             entries.push({
@@ -194,7 +196,8 @@ export class SFTPConnection extends BaseConnection {
               owner: attrs.uid,
               group: attrs.gid,
               path: entryPath,
-              isSymlinkToDirectory
+              isSymlinkToDirectory,
+              target
             });
           } catch (itemErr) {
             // Skip problematic entries
@@ -204,6 +207,16 @@ export class SFTPConnection extends BaseConnection {
 
         resolve(entries);
       });
+    });
+  }
+
+  private _readLink(remotePath: string): Promise<string | undefined> {
+    return new Promise((resolve) => {
+      if (!this.sftp) {
+        resolve(undefined);
+        return;
+      }
+      this.sftp.readlink(remotePath, (err: any, linkTarget: string) => resolve(err ? undefined : linkTarget));
     });
   }
 
