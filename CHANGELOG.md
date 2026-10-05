@@ -2,6 +2,21 @@
 
 All notable changes to the "StackerFTP" extension will be documented in this file.
 
+## [1.3.2] - 2026-10-05
+
+### Added
+- **Upload To...**: With more than one server configured, the Explorer and editor context menus get an "Upload To..." entry right below "Upload" to pick the server from a list.
+- **Editable address bars in Compare Folders**: Both panels show the compared folder as an editable path. Press Enter to compare another folder (Esc undoes); the local side also has a folder picker. Sync is disabled for folder pairs that don't follow the sftp.json mapping.
+- **Retry for downloads that never reached the queue**: If the connection or a folder listing fails, the error now offers Retry.
+
+### Fixed
+- **Symlinked folders on upload**: Uploading a folder that contains a symlink to a directory failed with `EISDIR: illegal operation on a directory, read`. Linked folders are now uploaded like regular folders, broken links are skipped and link loops are not followed. Sync / Compare also see files behind symlinks.
+- **Symlinks in the Remote Explorer**: Linked folders had no icon. They now use the symlink folder icon, and SFTP listings show where a link points.
+- **Endless "Timed out while waiting for handshake" notifications**: A failed connection attempt started an auto-reconnect loop that never stopped (even after Disconnect) and showed a notification on every attempt. When such an attempt closed, it could also mark a working connection as disconnected. Auto-reconnect now only runs for connections that dropped after connecting, stops after 8 attempts (then offers Reconnect), stops on Disconnect and no longer shows a notification for each background attempt.
+- Handshake timeouts and refused connections now count as connection errors, so the transfer reconnects and retries once.
+- Downloading a folder that contains linked folders now downloads their contents.
+- **Compare Folders picks the wrong remote folder**: With several servers that each map a different local folder (`context`), comparing a folder used the current target's mapping and could show an unrelated remote path (e.g. `/public_html/sites/app/public`). The folder is now compared with the server whose `context` contains it, the server name is shown on the remote address bar, and editing one address bar updates the other according to the mapping.
+
 ## [1.3.1] - 2026-10-04
 
 ### Added
