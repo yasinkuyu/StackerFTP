@@ -16,7 +16,8 @@ import { connectionManager } from './core/connection-manager';
 import { transferManager } from './core/transfer-manager';
 import { logger } from './utils/logger';
 import { statusBar } from './utils/status-bar';
-import { registerCommands } from './commands';
+import { registerCommands, uploadCommitJobs } from './commands';
+import { registerCommitWatcher } from './providers/commit-upload-panel';
 import { fileWatcherManager } from './core/file-watcher';
 import { matchesPattern, getLocalRelativePath, normalizeRemotePath } from './utils/helpers';
 import { TransferQueueTreeProvider } from './providers/transfer-queue-tree';
@@ -99,6 +100,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // 3. Register All Feature Commands (before early exit)
   registerCommands(context, providerContainer);
+  registerCommitWatcher(context, uploadCommitJobs);
 
   // 4. Workspace Check & Feature-specific Initialization
   const workspaceFolders = vscode.workspace.workspaceFolders;

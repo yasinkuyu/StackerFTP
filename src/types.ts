@@ -26,6 +26,8 @@ export interface FTPConfig {
   context?: string;
   localPath?: string;
   uploadOnSave?: boolean;
+  /** Pre-select this server in the commit upload window */
+  uploadOnCommit?: boolean;
   downloadOnOpen?: boolean;
   remoteExplorerOrder?: 'name' | 'size' | 'date' | 'type';
   syncMode?: 'update' | 'full';

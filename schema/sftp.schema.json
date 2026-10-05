@@ -83,6 +83,11 @@
           "default": false,
           "description": "Automatically upload files when saved"
         },
+        "uploadOnCommit": {
+          "type": "boolean",
+          "default": false,
+          "description": "Pre-select this server in the Upload Commit Files window (and open it after each commit when stackerftp.commitUploadPrompt is on). Nothing is uploaded without confirmation"
+        },
         "downloadOnOpen": {
           "type": "boolean",
           "default": false,

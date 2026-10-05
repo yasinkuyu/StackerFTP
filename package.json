@@ -1,7 +1,7 @@
 {
   "name": "stackerftp",
   "displayName": "StackerFTP - Professional SFTP/FTP Client",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "publisher": "yasinkuyu",
   "author": "Insya, Yasin Kuyu",
   "license": "MIT",
@@ -116,6 +116,17 @@
           "type": "boolean",
           "default": true,
           "description": "Pre-select the servers last used with \"Upload to Multiple Servers\""
+        },
+        "stackerftp.commitUploadPrompt": {
+          "type": "boolean",
+          "default": false,
+          "description": "After each commit, open the Upload Commit Files window when a connection has \"uploadOnCommit\": true. Nothing is uploaded until you confirm"
+        },
+        "stackerftp.commitUploadProtected": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["config", ".env*", "*.server.php", "*.pem", "*.key", "id_rsa*"],
+          "description": "Files matching these patterns are marked as protected in the Upload Commit Files window and start unchecked, so they are never uploaded by accident. Tick them to upload anyway"
         },
         "stackerftp.autoReconnect": {
           "type": "boolean",
@@ -626,6 +637,12 @@
         "title": "Upload Changed Files",
         "category": "StackerFTP",
         "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "stackerftp.uploadCommit",
+        "title": "Upload Commit Files...",
+        "category": "StackerFTP",
+        "icon": "$(git-commit)"
       },
       {
         "command": "stackerftp.list",
@@ -1162,6 +1179,11 @@
       "scm/title": [
         {
           "command": "stackerftp.uploadChangedFiles",
+          "group": "stackerftp",
+          "when": "scmProvider == git"
+        },
+        {
+          "command": "stackerftp.uploadCommit",
           "group": "stackerftp",
           "when": "scmProvider == git"
         }

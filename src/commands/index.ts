@@ -18,6 +18,7 @@ import { statusBar } from '../utils/status-bar';
 import { normalizeRemotePath, formatFileSize, sanitizeRelativePath, getLocalRelativePath, getLocalRoot, getLocalPathFromRemote, matchesPattern } from '../utils/helpers';
 import { ConnectionWizard } from '../core/connection-wizard';
 import { createGitIntegration } from '../core/git-integration';
+import { CommitUploadPanel, CommitUploadJob } from '../providers/commit-upload-panel';
 import { getWorkspaceRoot } from './utils';
 import { runSync } from './sync';
 import { getIgnorePatterns } from '../core/sync-engine';
@@ -464,6 +465,13 @@ async function uploadToServers(workspaceRoot: string, localPaths: string[], conf
       }
     });
     logger.error(`Multi-server upload:\n${summary.join('\n')}`);
+  }
+}
+
+/** One upload per server, each with its own files (servers map different local folders) */
+export async function uploadCommitJobs(workspaceRoot: string, jobs: CommitUploadJob[]): Promise<void> {
+  for (const job of jobs) {
+    await uploadToServers(workspaceRoot, job.localPaths, [job.config]);
   }
 }
 
@@ -1928,6 +1936,13 @@ export function registerCommands(
     }
   });
 
+  // Opens the commit upload window: files of the chosen commits, grouped by the server they belong to
+  const uploadCommitCommand = vscode.commands.registerCommand('stackerftp.uploadCommit', async () => {
+    const workspaceRoot = getWorkspaceRoot();
+    if (!workspaceRoot) return;
+    await CommitUploadPanel.show(workspaceRoot, uploadCommitJobs);
+  });
+
   const uploadProjectCommand = vscode.commands.registerCommand('stackerftp.uploadProject', async () => {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) return;
@@ -3085,6 +3100,7 @@ export function registerCommands(
     forceDownloadCommand,
     listRemoteRevisionsCommand,
     uploadChangedFilesCommand,
+    uploadCommitCommand,
     uploadProjectCommand,
     listCommand,
     listAllCommand,

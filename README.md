@@ -141,6 +141,27 @@ Right-click files or folders (or use the editor context menu) → **StackerFTP**
 
 A per-server summary shows what was uploaded, skipped or failed.
 
+### Upload commit files (Beta)
+
+> ⚠️ **Beta feature – test carefully.** It uploads files to your servers and can overwrite live files. Try it on a **staging** server first, check every line of the confirmation dialog and keep a backup of anything you cannot recreate. Please report problems in the issue tracker.
+
+`StackerFTP: Upload Commit Files...` (Command Palette, or the Source Control title menu) opens a window with the files changed by the commits you pick (the latest commit is preselected; you can tick several). Nothing is uploaded until you press **Upload** and confirm.
+
+**Which file goes to which connection**
+
+1. A file belongs to the connection whose `context` (local folder) contains it. If several contexts contain it, the **deepest folder wins** – e.g. `app_landing/dist/index.html` goes to the connection with `"context": ".../app_landing/dist"`, not to the one with the project root.
+2. The remote path is `remotePath` + the file's path relative to that `context`. It is shown under every file and again in the confirmation dialog.
+3. The connection's `ignore` list is applied last; ignored files are not re-routed to another connection.
+4. Connections that share the same `context` stay switched off unless they have `"uploadOnCommit": true` (or are the current target) – you choose.
+
+**Safety rules**
+
+- Deleted files are **never** removed from the server; renames upload the new path only.
+- Files matching `stackerftp.commitUploadProtected` (default: `config`, `.env*`, `*.server.php`, `*.pem`, `*.key`, `id_rsa*`) are marked ⚠ and start **unchecked**.
+- Switch a whole connection off, or uncheck single files, before uploading.
+
+**Optional automation** (off by default): set `"uploadOnCommit": true` on a connection to preselect it, and enable `stackerftp.commitUploadPrompt` to open the window after every commit. It still only asks – it never uploads on its own.
+
 ## Sync
 
 `SFTP: Sync Local → Remote`, `SFTP: Sync Remote → Local` and `SFTP: Sync Both Directions` (also on folders in the Explorer) work in three steps:

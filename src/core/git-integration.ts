@@ -15,6 +15,24 @@ export interface GitChangedFile {
   absolutePath: string;
 }
 
+export interface GitCommit {
+  hash: string;
+  shortHash: string;
+  subject: string;
+  author: string;
+  date: string;
+}
+
+function runGit(cwd: string, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const { execFile } = require('child_process');
+    execFile('git', args, { cwd, maxBuffer: 32 * 1024 * 1024 }, (error: any, stdout: string) => {
+      if (error) reject(error);
+      else resolve(stdout);
+    });
+  });
+}
+
 export class GitIntegration {
   private workspaceRoot: string;
 
@@ -197,6 +215,66 @@ export class GitIntegration {
       case 'AM': return 'added';
       default: return 'modified';
     }
+  }
+
+  /**
+   * Most recent commits on the current branch, newest first
+   */
+  async getRecentCommits(limit = 30): Promise<GitCommit[]> {
+    try {
+      const out = await runGit(this.workspaceRoot, [
+        'log', `-n${limit}`, '--date=short', '--pretty=format:%H%x1f%h%x1f%s%x1f%an%x1f%ad'
+      ]);
+      return out.split('\n').filter(Boolean).map(line => {
+        const [hash, shortHash, subject, author, date] = line.split('\x1f');
+        return { hash, shortHash, subject, author, date };
+      });
+    } catch (error: any) {
+      logger.error('Failed to read git log', error);
+      return [];
+    }
+  }
+
+  /**
+   * Files touched by the given commits. Commits are applied oldest first, so a file's
+   * final status is the one from the newest commit that touched it. A renamed file
+   * counts as the old path deleted plus the new path added.
+   */
+  async getFilesForCommits(hashes: string[]): Promise<GitChangedFile[]> {
+    const order = await runGit(this.workspaceRoot, ['rev-list', '--no-walk=sorted', '--reverse', ...hashes]);
+    const ordered = order.split('\n').filter(Boolean);
+    const byPath = new Map<string, GitChangedFile>();
+    // diff-tree paths are relative to the repository root, which may sit above the workspace
+    const repoRoot = (await runGit(this.workspaceRoot, ['rev-parse', '--show-toplevel'])).trim();
+
+    for (const hash of ordered) {
+      // -z: NUL separated, paths are never quoted; --root covers the first commit
+      const out = await runGit(this.workspaceRoot, [
+        'diff-tree', '--no-commit-id', '--name-status', '-r', '-z', '-M', '--root', hash
+      ]);
+      const parts = out.split('\0').filter(Boolean);
+      for (let i = 0; i < parts.length;) {
+        const code = parts[i++];
+        const kind = code[0];
+        if (kind === 'R' || kind === 'C') {
+          const from = parts[i++];
+          const to = parts[i++];
+          if (kind === 'R') this.record(byPath, repoRoot, from, 'deleted');
+          this.record(byPath, repoRoot, to, 'added');
+        } else {
+          const file = parts[i++];
+          this.record(byPath, repoRoot, file, kind === 'D' ? 'deleted' : kind === 'A' ? 'added' : 'modified');
+        }
+      }
+    }
+    return [...byPath.values()];
+  }
+
+  private record(map: Map<string, GitChangedFile>, repoRoot: string, relPath: string, status: GitChangedFile['status']): void {
+    const prev = map.get(relPath);
+    // Added then modified in a later commit is still new relative to the range
+    const merged = prev && prev.status === 'added' && status === 'modified' ? 'added' : status;
+    map.set(relPath, { path: relPath, status: merged, absolutePath: path.join(repoRoot, relPath) });
   }
 
   /**
