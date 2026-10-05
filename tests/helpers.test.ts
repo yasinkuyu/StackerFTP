@@ -76,6 +76,11 @@ describe('helpers', () => {
     expect(resolveConfiguredLocalPath('/workspace/site', '~/projects')).toBe(path.join(os.homedir(), 'projects'));
   });
 
+  it('getLocalRoot drops a trailing slash of an absolute context', () => {
+    const dir = os.tmpdir();
+    expect(getLocalRoot('/ws', { context: dir + path.sep })).toBe(path.resolve(dir));
+  });
+
   it('getLocalRoot accepts localPath as an alias of context (context wins)', () => {
     expect(getLocalRoot('/ws', { localPath: 'dist' })).toBe(path.resolve('/ws/dist'));
     expect(getLocalRoot('/ws', { context: 'www', localPath: 'dist' })).toBe(path.resolve('/ws/www'));

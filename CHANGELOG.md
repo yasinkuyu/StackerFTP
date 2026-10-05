@@ -9,6 +9,7 @@ All notable changes to the "StackerFTP" extension will be documented in this fil
   - **Which file goes where**: A file goes to the server whose `context` folder contains it; when several contexts contain it, the deepest one wins (e.g. `app_landing/dist` beats the project root). The destination is `remotePath` + the path relative to `context`, shown under every file. The server's `ignore` list is applied last. Servers sharing the same folder stay off unless flagged or the current target.
   - **Confirmation**: The final dialog lists every file with its server and remote path.
   - **Protected files**: Files matching `stackerftp.commitUploadProtected` (default `config`, `.env*`, `*.server.php`, `*.pem`, `*.key`, `id_rsa*`) are marked ⚠ and start unchecked.
+  - **Unselected by default**: Files matching `stackerftp.commitUploadUnselected` (default `AGENTS.md`) are listed but start unchecked.
   - **Deleted files are never removed** from the server. Renames upload the new path only.
   - **`uploadOnCommit`** (per connection) pre-selects a server; with `stackerftp.commitUploadPrompt` on (off by default) the window opens after each commit in workspaces with such a connection.
 

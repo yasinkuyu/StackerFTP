@@ -35,6 +35,7 @@ interface ServerEntry {
 interface FileEntry {
   path: string;
   protected?: boolean;
+  unselected?: boolean;
   remote: string;
   absolutePath: string;
   status: string;
@@ -141,6 +142,8 @@ export class CommitUploadPanel {
     const inside = (file: string, root: string) => file === root || file.startsWith(root + path.sep);
     const protectedPatterns = vscode.workspace.getConfiguration('stackerftp')
       .get<string[]>('commitUploadProtected', ['config', '.env*', '*.server.php', '*.pem', '*.key', 'id_rsa*']);
+    const unselectedPatterns = vscode.workspace.getConfiguration('stackerftp')
+      .get<string[]>('commitUploadUnselected', ['AGENTS.md']);
     const tied = new Set<number>();
     this.servers.forEach(s => { s.files = []; });
     const skipped = this.servers.map(() => ({ deleted: 0, missing: 0, ignored: 0, outside: 0, moreSpecific: 0 }));
@@ -165,6 +168,7 @@ export class CommitUploadPanel {
           absolutePath: f.absolutePath,
           status: f.status,
           protected: matchesPattern(shown, protectedPatterns),
+          unselected: matchesPattern(shown, unselectedPatterns),
           remote: normalizeRemotePath(path.join(server.config.remotePath, sanitizeRelativePath(getLocalRelativePath(this.workspaceRoot, f.absolutePath, server.config))))
         });
       });
@@ -206,6 +210,7 @@ export class CommitUploadPanel {
           path: f.path,
           status: f.status,
           protected: !!f.protected,
+          unselected: !!f.unselected,
           remote: f.remote,
           // Same file also lands on these other servers (overlapping contexts)
           also: this.servers.filter((o, k) => k !== i && o.files.some(of => of.absolutePath === f.absolutePath)).map(o => o.label)
@@ -355,7 +360,14 @@ export class CommitUploadPanel {
   function renderSummary() {
     const ps = picks();
     const n = ps.reduce((a, p) => a + p.ids.length, 0);
-    $('summary').textContent = n + ' file' + (n === 1 ? '' : 's') + ' → ' + ps.length + ' server' + (ps.length === 1 ? '' : 's');
+    const total = state.servers.reduce((a, s) => a + s.files.length, 0);
+    let why = '';
+    if (n === 0) {
+      if (total === 0) why = 'No uploadable files in the selected commits';
+      else if (enabled.size === 0) why = 'Switch on a server above to upload';
+      else why = 'No file is checked (protected files and AGENTS.md start unchecked)';
+    }
+    $('summary').textContent = n ? n + ' file' + (n === 1 ? '' : 's') + ' → ' + ps.length + ' server' + (ps.length === 1 ? '' : 's') : why;
     $('upload').disabled = n === 0;
     $('upload').textContent = n ? 'Upload ' + n + ' file' + (n > 1 ? 's' : '') : 'Upload';
   }
@@ -372,7 +384,7 @@ export class CommitUploadPanel {
         '<label class="row"><input type="checkbox" data-s="' + i + '" data-f="' + f.id + '"' + (unchecked.has(i + ':' + f.id) ? '' : ' checked') + (on ? '' : ' disabled') + '>' +
         '<span class="path">' + esc(f.path) + '<div class="remote">→ ' + esc(f.remote) + '</div>' +
         (f.also.length ? '<div class="also">same folder as: ' + esc(f.also.join(', ')) + '</div>' : '') + '</span>' +
-        '<span class="sub">' + (f.protected ? '<span class="tag warn" title="Protected: may overwrite live settings. Tick to upload.">⚠ protected</span> ' : '') + '<span class="tag ' + esc(f.status) + '">' + esc(f.status) + '</span></span></label>').join('')
+        '<span class="sub">' + (f.unselected && !f.protected ? '<span class="tag" title="Not selected by default (stackerftp.commitUploadUnselected). Tick to upload.">off by default</span> ' : '') + (f.protected ? '<span class="tag warn" title="Protected: may overwrite live settings. Tick to upload.">⚠ protected</span> ' : '') + '<span class="tag ' + esc(f.status) + '">' + esc(f.status) + '</span></span></label>').join('')
         : '<div class="row meta">No files of these commits belong to this server</div>';
       return '<div class="server' + (on ? '' : ' off') + (has ? '' : ' empty') + '">' +
         '<label class="shead"><input type="checkbox" data-server="' + i + '"' + (on ? ' checked' : '') + (has ? '' : ' disabled') + '>' +
@@ -394,7 +406,7 @@ export class CommitUploadPanel {
       enabled.clear(); unchecked.clear();
       m.servers.forEach((s, i) => {
         if (s.enabled) enabled.add(i);
-        s.files.forEach(f => { if (f.protected) unchecked.add(i + ':' + f.id); });   // protected files stay off until ticked
+        s.files.forEach(f => { if (f.protected || f.unselected) unchecked.add(i + ':' + f.id); });   // start off until ticked
       });
       render();
     }

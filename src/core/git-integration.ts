@@ -248,10 +248,13 @@ export class GitIntegration {
     const repoRoot = (await runGit(this.workspaceRoot, ['rev-parse', '--show-toplevel'])).trim();
 
     for (const hash of ordered) {
+      // A merge commit has no diff of its own (diff-tree prints nothing): compare it with its first
+      // parent instead, which is what the merge brought into the branch.
+      const parents = (await runGit(this.workspaceRoot, ['rev-list', '--parents', '-n1', hash])).trim().split(' ').slice(1);
       // -z: NUL separated, paths are never quoted; --root covers the first commit
-      const out = await runGit(this.workspaceRoot, [
-        'diff-tree', '--no-commit-id', '--name-status', '-r', '-z', '-M', '--root', hash
-      ]);
+      const out = parents.length > 1
+        ? await runGit(this.workspaceRoot, ['diff-tree', '-r', '--name-status', '-z', '-M', parents[0], hash])
+        : await runGit(this.workspaceRoot, ['diff-tree', '--no-commit-id', '--name-status', '-r', '-z', '-M', '--root', hash]);
       const parts = out.split('\0').filter(Boolean);
       for (let i = 0; i < parts.length;) {
         const code = parts[i++];

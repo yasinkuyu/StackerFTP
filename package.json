@@ -128,6 +128,12 @@
           "default": ["config", ".env*", "*.server.php", "*.pem", "*.key", "id_rsa*"],
           "description": "Files matching these patterns are marked as protected in the Upload Commit Files window and start unchecked, so they are never uploaded by accident. Tick them to upload anyway"
         },
+        "stackerftp.commitUploadUnselected": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["AGENTS.md"],
+          "description": "Files matching these patterns are listed in the Upload Commit Files window but start unchecked (no warning). Tick them to upload"
+        },
         "stackerftp.autoReconnect": {
           "type": "boolean",
           "default": true,

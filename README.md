@@ -158,6 +158,7 @@ A per-server summary shows what was uploaded, skipped or failed.
 
 - Deleted files are **never** removed from the server; renames upload the new path only.
 - Files matching `stackerftp.commitUploadProtected` (default: `config`, `.env*`, `*.server.php`, `*.pem`, `*.key`, `id_rsa*`) are marked ⚠ and start **unchecked**.
+- Files matching `stackerftp.commitUploadUnselected` (default: `AGENTS.md`) are listed but start **unchecked**, without a warning.
 - Switch a whole connection off, or uncheck single files, before uploading.
 
 **Optional automation** (off by default): set `"uploadOnCommit": true` on a connection to preselect it, and enable `stackerftp.commitUploadPrompt` to open the window after every commit. It still only asks – it never uploads on its own.

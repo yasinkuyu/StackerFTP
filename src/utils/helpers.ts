@@ -381,7 +381,8 @@ export function resolveConfiguredLocalPath(workspaceRoot: string, localPath?: st
     return path.resolve(workspaceRoot, expanded);
   }
   if (fs.existsSync(expanded)) {
-    return expanded;
+    // Drop a trailing slash ("/proj/" -> "/proj") so "root + sep" prefix checks work
+    return path.resolve(expanded);
   }
 
   const workspaceRelative = expanded.replace(/^[/\\]+/, '');
