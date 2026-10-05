@@ -59,7 +59,7 @@ export class RemoteTreeItem extends vscode.TreeItem {
     } else if (entry.type === 'symlink') {
       // Symlinks get special handling
       if (entry.isSymlinkToDirectory) {
-        this.iconPath = new vscode.ThemeIcon('folder-symlink');
+        this.iconPath = new vscode.ThemeIcon('file-symlink-directory');
       } else {
         this.iconPath = new vscode.ThemeIcon('file-symlink-file');
       }
@@ -511,16 +511,33 @@ export class RemoteExplorerTreeProvider implements vscode.TreeDataProvider<Remot
   async downloadFile(itemParam: RemoteTreeItem | FileEntry, configParam?: FTPConfig): Promise<void> {
     const item = itemParam instanceof RemoteTreeItem ? itemParam.entry : itemParam;
     const config = (itemParam instanceof RemoteTreeItem ? itemParam.config : configParam) || this.currentConfig;
-    const conn = connectionManager.getConnection(config!) || this.connection;
+    if (!config) return;
 
-    if (!conn || !config) return;
+    // Errors outside the transfer queue are tagged so the caller can offer a retry
+    // (queue failures are reported with Retry by the transfer error reporter)
+    const unqueued = (error: any) => {
+      if (error && typeof error === 'object') error.unqueued = true;
+      return error;
+    };
+
+    let conn: BaseConnection;
+    try {
+      // Reconnect on demand if the connection dropped meanwhile
+      conn = await connectionManager.ensureConnection(config);
+    } catch (error) {
+      throw unqueued(error);
+    }
 
     // Same remote → local mapping as all transfers (honours context / localPath)
     const localPath = getLocalPathFromRemote(this.workspaceRoot, item.path, config);
 
     // If it's a directory or symlink to directory, use downloadDirectory
     if (item.type === 'directory' || (item.type === 'symlink' && item.isSymlinkToDirectory)) {
-      await transferManager.downloadDirectory(conn, item.path, localPath, config);
+      try {
+        await transferManager.downloadDirectory(conn, item.path, localPath, config);
+      } catch (error) {
+        throw unqueued(error);
+      }
       return;
     }
 

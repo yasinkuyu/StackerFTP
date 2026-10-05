@@ -144,6 +144,7 @@ export class ConfigManager {
       });
 
       this.configs.set(workspaceRoot, configsWithDefaults);
+      this.updateContextKeys();
       logger.info(`Loaded ${configsWithDefaults.length} configuration(s) from ${configPath}`);
 
       return configsWithDefaults;
@@ -167,6 +168,7 @@ export class ConfigManager {
       fs.writeFileSync(configPath, content, 'utf-8');
 
       this.configs.set(workspaceRoot, configs);
+      this.updateContextKeys();
       logger.info(`Saved configuration to ${configPath}`);
     } catch (error) {
       logger.error('Failed to save configuration', error);
@@ -196,6 +198,12 @@ export class ConfigManager {
       'StackerFTP: Configuration file created. Please update it with your server details.',
       'Got it'
     );
+  }
+
+  /** Enables "Upload To..." menu entries only when there is more than one server to choose from */
+  private updateContextKeys(): void {
+    const multiple = [...this.configs.values()].some(configs => configs.length > 1);
+    vscode.commands.executeCommand('setContext', 'stackerftp.multipleConnections', multiple);
   }
 
   getConfigs(workspaceRoot: string): FTPConfig[] {

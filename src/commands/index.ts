@@ -345,6 +345,18 @@ function collectLocalPaths(items: any[]): string[] {
   return localPaths;
 }
 
+/** Error toast with a Retry action that runs the same download again */
+function offerDownloadRetry(message: string, commandArgs: any[]): void {
+  logger.error(message);
+  vscode.window.showErrorMessage(`StackerFTP: ${message}`, 'Retry', 'Show Log').then(choice => {
+    if (choice === 'Retry') {
+      vscode.commands.executeCommand('stackerftp.download', ...commandArgs);
+    } else if (choice === 'Show Log') {
+      vscode.commands.executeCommand('stackerftp.viewLogs');
+    }
+  });
+}
+
 interface UploadCounts { uploaded: number; skipped: number; failed: number }
 
 /** Upload local files/folders to one server, mirroring the workspace-relative layout */
@@ -1005,6 +1017,9 @@ export function registerCommands(
       let downloadedCount = 0;
       let failedCount = 0;
       let handledCount = 0;
+      // Failures that never reached the transfer queue (e.g. a folder could not be listed);
+      // queue failures are reported with Retry by the transfer error reporter
+      const unqueuedErrors: string[] = [];
 
       for (const itemOrResource of items) {
         if (!itemOrResource) continue;
@@ -1048,9 +1063,14 @@ export function registerCommands(
 
         try {
           if (isDirectory) {
-            const result = await transferManager.downloadDirectory(itemConnection, remotePath, localPath, itemConfig);
-            downloadedCount += result.downloaded.length;
-            failedCount += result.failed.length;
+            try {
+              const result = await transferManager.downloadDirectory(itemConnection, remotePath, localPath, itemConfig);
+              downloadedCount += result.downloaded.length;
+              failedCount += result.failed.length;
+            } catch (err: any) {
+              unqueuedErrors.push(`${remotePath}: ${err?.message || err}`);
+              throw err;
+            }
           } else {
             // Ensure local directory exists
             const localDir = path.dirname(localPath);
@@ -1075,8 +1095,11 @@ export function registerCommands(
       } else {
         statusBar.error(`Downloaded: ${downloadedCount}, Failed: ${failedCount}`);
       }
+      if (unqueuedErrors.length > 0) {
+        offerDownloadRetry(`Download failed – ${unqueuedErrors[0]}`, commandArgs);
+      }
     } catch (error: any) {
-      statusBar.error(`Download failed: ${error.message}`, true);
+      offerDownloadRetry(`Download failed: ${error.message}`, commandArgs);
     }
   });
 
@@ -2487,6 +2510,41 @@ export function registerCommands(
     await uploadToServers(workspaceRoot, localPaths, configs);
   });
 
+  // Upload to one server picked from a list, without changing the current target
+  const uploadToCommand = vscode.commands.registerCommand('stackerftp.uploadTo', async (...commandArgs: any[]) => {
+    const selection = await getUploadSelection(commandArgs);
+    if (!selection) return;
+    const { workspaceRoot, localPaths } = selection;
+
+    const rawConfigs = configManager.getConfigs(workspaceRoot);
+    if (rawConfigs.length === 0) {
+      statusBar.error('No SFTP configurations found', true);
+      return;
+    }
+
+    const current = getTargetConfig(workspaceRoot);
+    const picks = rawConfigs.map(raw => {
+      const config = configManager.withProfile(workspaceRoot, raw);
+      const connected = connectionManager.isConnected(config);
+      const isTarget = !!current && connectionManager.isSameTarget(configManager.withProfile(workspaceRoot, current), config);
+      return {
+        label: `${connected ? '$(vm-running)' : '$(vm-outline)'} ${config.name || config.host}`,
+        description: `${config.protocol.toUpperCase()} • ${config.username}@${config.host}:${config.remotePath}`,
+        detail: [connected ? 'Connected' : undefined, isTarget ? 'Current target' : undefined].filter(Boolean).join(' • ') || undefined,
+        config
+      };
+    });
+
+    const selected = await vscode.window.showQuickPick(picks, {
+      title: `Upload ${localPaths.length} item(s) to...`,
+      placeHolder: 'Select a server',
+      matchOnDescription: true
+    });
+    if (!selected) return;
+
+    await uploadToServers(workspaceRoot, localPaths, [selected.config]);
+  });
+
   // Upload to a chosen set of servers (e.g. staging + production); the set is remembered
   const uploadToMultipleCommand = vscode.commands.registerCommand('stackerftp.uploadToMultiple', async (...commandArgs: any[]) => {
     const selection = await getUploadSelection(commandArgs);
@@ -2911,12 +2969,35 @@ export function registerCommands(
 
     if (container.remoteExplorer) {
       let downloadedCount = 0;
+      const failed: { item: any; error: string }[] = [];
       for (const item of items) {
-        await container.remoteExplorer.downloadFile(item);
-        downloadedCount++;
+        try {
+          await container.remoteExplorer.downloadFile(item);
+          downloadedCount++;
+        } catch (error: any) {
+          // Queue failures are already reported (with Retry) by the transfer error reporter
+          if (error?.unqueued) failed.push({ item, error: error.message || String(error) });
+        }
       }
       if (downloadedCount > 1) {
         statusBar.success(`Downloaded: ${downloadedCount} items`);
+      }
+      if (failed.length > 0) {
+        const first = failed[0];
+        const name = first.item?.entry?.name || first.item?.name || 'item';
+        logger.error(`Download failed: ${failed.map(f => f.error).join('; ')}`);
+        const choice = await vscode.window.showErrorMessage(
+          failed.length === 1
+            ? `StackerFTP: Download failed – ${name}: ${first.error}`
+            : `StackerFTP: ${failed.length} downloads failed (e.g. ${name}: ${first.error})`,
+          'Retry', 'Show Log'
+        );
+        if (choice === 'Retry') {
+          const retryItems = failed.map(f => f.item);
+          vscode.commands.executeCommand('stackerftp.tree.download', retryItems[0], retryItems);
+        } else if (choice === 'Show Log') {
+          vscode.commands.executeCommand('stackerftp.viewLogs');
+        }
       }
     }
   });
@@ -2973,6 +3054,7 @@ export function registerCommands(
     copyRemotePathCommand,
     copyRemoteRelativePathCommand,
     uploadCommand,
+    uploadToCommand,
     uploadToMultipleCommand,
     uploadCurrentFileCommand,
     downloadCommand,

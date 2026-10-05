@@ -1,7 +1,7 @@
 {
   "name": "stackerftp",
   "displayName": "StackerFTP - Professional SFTP/FTP Client",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "publisher": "yasinkuyu",
   "author": "Insya, Yasin Kuyu",
   "license": "MIT",
@@ -300,6 +300,12 @@
       {
         "command": "stackerftp.upload",
         "title": "Upload",
+        "category": "StackerFTP",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "stackerftp.uploadTo",
+        "title": "Upload To...",
         "category": "StackerFTP",
         "icon": "$(cloud-upload)"
       },
@@ -754,6 +760,11 @@
           "group": "7_stackerftp@1"
         },
         {
+          "command": "stackerftp.uploadTo",
+          "group": "7_stackerftp@1",
+          "when": "stackerftp.multipleConnections"
+        },
+        {
           "command": "stackerftp.download",
           "group": "7_stackerftp@2"
         },
@@ -830,6 +841,11 @@
           "command": "stackerftp.uploadCurrentFile",
           "group": "7_stackerftp@1",
           "when": "resourceScheme == file"
+        },
+        {
+          "command": "stackerftp.uploadTo",
+          "group": "7_stackerftp@1",
+          "when": "resourceScheme == file && stackerftp.multipleConnections"
         },
         {
           "command": "stackerftp.download",
