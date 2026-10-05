@@ -17,7 +17,7 @@ import { transferManager } from '../core/transfer-manager';
 import { webMasterTools } from '../webmaster/tools';
 import { getWorkspaceRoot } from '../commands/utils';
 import { CompareResult, CompareTreeNode, CompareItem } from '../types';
-import { formatFileSize, formatDate, normalizeRemotePath, sanitizeRelativePath, getLocalRoot, getLocalRelativePath } from '../utils/helpers';
+import { formatFileSize, formatDate, normalizeRemotePath, getLocalRoot, mapLocalToRemote, mapRemoteToLocal, findConfigForLocalPath } from '../utils/helpers';
 import { logger } from '../utils/logger';
 import { statusBar } from '../utils/status-bar';
 
@@ -51,17 +51,18 @@ export class CompareViewProvider {
       return;
     }
 
-    const config = await resolveTargetConfig(workspaceRoot, 'Compare');
+    // A folder belongs to the server whose "context" contains it (each server can map
+    // a different local folder); otherwise use the current target
+    const owner = localPath
+      ? findConfigForLocalPath(workspaceRoot, localPath, configManager.getConfigs(workspaceRoot).map(c => configManager.withProfile(workspaceRoot, c)))
+      : undefined;
+    const config = owner || await resolveTargetConfig(workspaceRoot, 'Compare');
     if (!config) return;
 
     // Default: whole project (honours "context"); otherwise the given folder
     const projectRoot = getLocalRoot(workspaceRoot, config);
     const selectedLocalPath = localPath || projectRoot;
-    let remoteRoot = normalizeRemotePath(config.remotePath);
-    if (selectedLocalPath !== projectRoot) {
-      const rel = sanitizeRelativePath(getLocalRelativePath(workspaceRoot, selectedLocalPath, config)).replace(/\\/g, '/');
-      remoteRoot = normalizeRemotePath(path.posix.join(config.remotePath, rel));
-    }
+    const remoteRoot = mapLocalToRemote(workspaceRoot, selectedLocalPath, config) || normalizeRemotePath(config.remotePath);
 
     this._workspaceRoot = selectedLocalPath;
     this._remoteRoot = remoteRoot;
@@ -289,11 +290,80 @@ export class CompareViewProvider {
         await this._withBusy('Comparing…', () => this._refresh());
         break;
 
+      case 'setRoot':
+        await this._withBusy('Comparing…', () => this._setRoot(data.side === 'remote' ? 'remote' : 'local', String(data.path || '')));
+        break;
+
+      case 'browseLocal': {
+        const picked = await vscode.window.showOpenDialog({
+          canSelectFolders: true,
+          canSelectFiles: false,
+          defaultUri: this._workspaceRoot ? vscode.Uri.file(this._workspaceRoot) : undefined,
+          openLabel: 'Compare This Folder'
+        });
+        if (picked?.[0]) {
+          await this._withBusy('Comparing…', () => this._setRoot('local', picked[0].fsPath));
+        }
+        break;
+      }
+
       case 'sync':
         await this._sync(data.direction === 'toLocal' ? 'toLocal' : 'toRemote');
         break;
     }
   };
+
+  /** Remote folder that the config maps to a local folder */
+  private _mappedRemoteRoot(localPath: string): string | undefined {
+    if (!this._originalWorkspaceRoot || !this._config) return undefined;
+    return mapLocalToRemote(this._originalWorkspaceRoot, localPath, this._config);
+  }
+
+  /** Sync follows the config mapping, so it is only offered when both roots match it */
+  private _rootsFollowMapping(): boolean {
+    return !!this._workspaceRoot && this._mappedRemoteRoot(this._workspaceRoot) === this._remoteRoot;
+  }
+
+  /** Change one side of the comparison from the address bar, then compare again */
+  private async _setRoot(side: 'local' | 'remote', input: string): Promise<void> {
+    const value = input.trim();
+    if (!value) return;
+
+    if (side === 'local') {
+      const resolved = path.resolve(this._originalWorkspaceRoot || '', value.replace(/^~(?=$|[\\/])/, os.homedir()));
+      const stat = await fs.promises.stat(resolved).catch(() => null);
+      if (!stat?.isDirectory()) {
+        vscode.window.showErrorMessage(`Local folder not found: ${resolved}`);
+        this._updateView(); // restore the address bar
+        return;
+      }
+      // Keep both sides in step: the remote side follows the sftp.json mapping
+      this._workspaceRoot = resolved;
+      const mapped = this._mappedRemoteRoot(resolved);
+      if (mapped) this._remoteRoot = mapped;
+    } else {
+      const remote = normalizeRemotePath(value.startsWith('/') ? value : path.posix.join(this._remoteRoot || this._config?.remotePath || '/', value));
+      try {
+        if (!this._connection || !this._connection.connected) {
+          this._connection = await connectionManager.ensureConnection(this._config);
+        }
+        const stat = await this._connection.stat(remote);
+        if (!stat || (stat.type !== 'directory' && !stat.isSymlinkToDirectory)) throw new Error('not a folder');
+      } catch {
+        vscode.window.showErrorMessage(`Remote folder not found: ${remote}`);
+        this._updateView();
+        return;
+      }
+      this._remoteRoot = remote;
+      // ...and the local side follows the remote one
+      const mappedLocal = this._originalWorkspaceRoot && mapRemoteToLocal(this._originalWorkspaceRoot, remote, this._config);
+      if (mappedLocal) this._workspaceRoot = mappedLocal;
+    }
+
+    this._expandedFolders.clear();
+    this._compareResult = undefined;
+    await this._refresh();
+  }
 
   private _remotePathFor(filePath: string): string {
     return normalizeRemotePath(path.posix.join(this._remoteRoot || this._config.remotePath, filePath.replace(/\\/g, '/')));
@@ -304,6 +374,10 @@ export class CompareViewProvider {
    */
   private async _sync(direction: 'toRemote' | 'toLocal'): Promise<void> {
     if (!this._workspaceRoot || !this._config || !this._originalWorkspaceRoot) return;
+    if (!this._rootsFollowMapping()) {
+      vscode.window.showWarningMessage('Sync uses the folder mapping from sftp.json. Use the Upload/Download buttons in the tree for custom folder pairs.');
+      return;
+    }
     const result = await runSync(direction, vscode.Uri.file(this._workspaceRoot), {
       workspaceRoot: this._originalWorkspaceRoot,
       config: this._config
@@ -649,8 +723,10 @@ export class CompareViewProvider {
    * Get the main HTML
    */
   private _getHtml(tree: CompareTreeNode | null, stats: { onlyLocal: number; onlyRemote: number; different: number }): string {
-    const localRoot = this._workspaceRoot ? path.basename(this._workspaceRoot) : 'Local';
+    const localRoot = this._workspaceRoot || '';
     const remoteRoot = this._remoteRoot || this._config?.remotePath || '/';
+    const canSync = this._rootsFollowMapping();
+    const syncTitle = canSync ? '' : 'Custom folder pair – sync follows the sftp.json mapping';
 
     return `<!DOCTYPE html>
 <html>
@@ -770,6 +846,49 @@ export class CompareViewProvider {
     }
 
     .panel.local { border-right: 1px solid var(--vscode-panel-border); }
+
+    .address-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
+    }
+
+    .address-bar .side-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      opacity: 0.7;
+      flex-shrink: 0;
+    }
+
+    .address-input {
+      flex: 1;
+      min-width: 0;
+      font-family: var(--vscode-editor-font-family);
+      font-size: 12px;
+      padding: 3px 6px;
+      color: var(--vscode-input-foreground);
+      background: var(--vscode-input-background);
+      border: 1px solid var(--vscode-input-border, transparent);
+      border-radius: 2px;
+      outline: none;
+    }
+
+    .address-input:focus { border-color: var(--vscode-focusBorder); }
+
+    .address-btn {
+      flex-shrink: 0;
+      padding: 2px 8px;
+      color: var(--vscode-button-secondaryForeground);
+      background: var(--vscode-button-secondaryBackground);
+      border: none;
+      border-radius: 2px;
+      cursor: pointer;
+    }
+
+    .address-btn:hover { background: var(--vscode-button-secondaryHoverBackground); }
+
+    .action-btn:disabled { opacity: 0.5; cursor: default; }
 
     /* Tree items */
     .tree-item {
@@ -957,18 +1076,25 @@ export class CompareViewProvider {
     <button class="filter-btn ${this._filter === 'remote' ? 'active' : ''}" onclick="setFilter('remote')">Only Remote</button>
     <button class="filter-btn ${this._filter === 'different' ? 'active' : ''}" onclick="setFilter('different')">Different</button>
     <button class="export-btn" onclick="exportResults()">Export</button>
-    <button class="action-btn" onclick="vscode.postMessage({ type: 'sync', direction: 'toRemote' })" style="margin-left: auto;" title="Review and upload local changes">⇧ Sync to Remote</button>
-    <button class="action-btn" onclick="vscode.postMessage({ type: 'sync', direction: 'toLocal' })" title="Review and download remote changes">⇩ Sync to Local</button>
+    <button class="action-btn" onclick="vscode.postMessage({ type: 'sync', direction: 'toRemote' })" style="margin-left: auto;" title="${canSync ? 'Review and upload local changes' : syncTitle}" ${canSync ? '' : 'disabled'}>⇧ Sync to Remote</button>
+    <button class="action-btn" onclick="vscode.postMessage({ type: 'sync', direction: 'toLocal' })" title="${canSync ? 'Review and download remote changes' : syncTitle}" ${canSync ? '' : 'disabled'}>⇩ Sync to Local</button>
     <button class="action-btn" onclick="refresh()">↻ Refresh</button>
   </div>
 
   <div class="main">
     <div class="panel local">
-      <div class="panel-header">📁 ${this._escapeHtml(localRoot)} (Local)</div>
+      <div class="panel-header address-bar">
+        <span class="side-label">Local</span>
+        <input class="address-input" data-side="local" value="${this._escapeHtml(localRoot)}" data-original="${this._escapeHtml(localRoot)}" spellcheck="false" title="Edit and press Enter to compare another local folder (Esc to undo)">
+        <button class="address-btn" onclick="vscode.postMessage({ type: 'browseLocal' })" title="Choose a local folder">…</button>
+      </div>
       ${this._renderTree(tree, 'local')}
     </div>
     <div class="panel remote">
-      <div class="panel-header">📁 ${this._escapeHtml(remoteRoot)} (Remote)</div>
+      <div class="panel-header address-bar">
+        <span class="side-label" title="${this._escapeHtml(`${this._config?.username || ''}@${this._config?.host || ''}`)}">${this._escapeHtml(this._config?.name || this._config?.host || 'Remote')}</span>
+        <input class="address-input" data-side="remote" value="${this._escapeHtml(remoteRoot)}" data-original="${this._escapeHtml(remoteRoot)}" spellcheck="false" title="Edit and press Enter to compare another remote folder (Esc to undo)">
+      </div>
       ${this._renderTree(tree, 'remote')}
     </div>
   </div>
@@ -1016,6 +1142,21 @@ export class CompareViewProvider {
         }, 300); // 300ms debounce
       });
     }
+
+    // Address bars: Enter compares the typed folder, Esc restores it
+    document.querySelectorAll('.address-input').forEach(input => {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (input.value.trim() && input.value !== input.dataset.original) {
+            vscode.postMessage({ type: 'setRoot', side: input.dataset.side, path: input.value });
+          }
+        } else if (e.key === 'Escape') {
+          input.value = input.dataset.original;
+          input.blur();
+        }
+      });
+    });
 
     function toggleFolder(path) {
       vscode.postMessage({ type: 'toggleFolder', path });

@@ -408,6 +408,47 @@ export function getLocalPathFromRemote(workspaceRoot: string, remoteFilePath: st
   return path.join(localBase, rel);
 }
 
+function isInside(parent: string, child: string): boolean {
+  const rel = path.relative(parent, child);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+/**
+ * Remote folder a local path maps to (context/localPath ↔ remotePath).
+ * Undefined when the path is outside the config's local root.
+ */
+export function mapLocalToRemote(workspaceRoot: string, localPath: string, config: { remotePath: string } & LocalRootConfig): string | undefined {
+  const localRoot = getLocalRoot(workspaceRoot, config);
+  if (!isInside(localRoot, localPath)) return undefined;
+  const rel = path.relative(localRoot, localPath).split(path.sep).join('/');
+  return normalizeRemotePath(path.posix.join(config.remotePath || '/', rel));
+}
+
+/** Local folder a remote path maps to. Undefined when it is outside the config's remotePath. */
+export function mapRemoteToLocal(workspaceRoot: string, remotePath: string, config: { remotePath: string } & LocalRootConfig): string | undefined {
+  const root = normalizeRemotePath(config.remotePath || '/');
+  const rel = path.posix.relative(root, normalizeRemotePath(remotePath));
+  if (rel.startsWith('..') || path.posix.isAbsolute(rel)) return undefined;
+  return path.join(getLocalRoot(workspaceRoot, config), ...rel.split('/').filter(Boolean));
+}
+
+/**
+ * Config whose local root contains the path, most specific first
+ * (e.g. "sites/app" wins over the workspace root).
+ */
+export function findConfigForLocalPath<T extends LocalRootConfig>(workspaceRoot: string, localPath: string, configs: T[]): T | undefined {
+  let best: T | undefined;
+  let bestLength = -1;
+  for (const config of configs) {
+    const root = getLocalRoot(workspaceRoot, config);
+    if (isInside(root, localPath) && root.length > bestLength) {
+      best = config;
+      bestLength = root.length;
+    }
+  }
+  return best;
+}
+
 /** Never transferred, whatever the user's ignore list says (credentials, VCS, temp files) */
 export const ALWAYS_IGNORED = ['.git', '.vscode/sftp.json', '*.stackerftp.tmp', '*.stackerftp-download'];
 

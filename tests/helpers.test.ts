@@ -1,7 +1,7 @@
 import * as path from 'path';
 import { describe, it, expect } from 'vitest';
 import * as os from 'os';
-import { normalizeRemotePath, sanitizeRelativePath, matchesPattern, formatFileSize, getLocalRelativePath, getLocalRoot, getLocalPathFromRemote, resolveConfiguredLocalPath } from '../src/utils/helpers';
+import { normalizeRemotePath, sanitizeRelativePath, matchesPattern, formatFileSize, getLocalRelativePath, getLocalRoot, getLocalPathFromRemote, resolveConfiguredLocalPath, mapLocalToRemote, mapRemoteToLocal, findConfigForLocalPath } from '../src/utils/helpers';
 
 describe('helpers', () => {
   it('normalizeRemotePath collapses slashes and backslashes', () => {
@@ -81,5 +81,33 @@ describe('helpers', () => {
     expect(getLocalRoot('/ws', { context: 'www', localPath: 'dist' })).toBe(path.resolve('/ws/www'));
     expect(getLocalRelativePath('/ws', path.resolve('/ws/dist/a/b.js'), { localPath: 'dist' })).toBe(path.join('a', 'b.js'));
     expect(getLocalPathFromRemote('/ws', '/var/www/a.js', { remotePath: '/var/www', localPath: 'dist' })).toBe(path.join(path.resolve('/ws/dist'), 'a.js'));
+  });
+});
+
+describe('compare folder mapping', () => {
+  const ws = '/ws';
+  const app = { remotePath: '/home/app/public_html', context: 'sites/app' };
+  const landing = { remotePath: '/public_html', context: 'sites/landing/dist' };
+  const plain = { remotePath: '/srv' };
+
+  it('maps a local folder inside the context to the remote side', () => {
+    expect(mapLocalToRemote(ws, '/ws/sites/app/public/assets', app)).toBe('/home/app/public_html/public/assets');
+    expect(mapLocalToRemote(ws, '/ws/sites/app', app)).toBe('/home/app/public_html');
+  });
+
+  it('does not map a folder outside the context', () => {
+    expect(mapLocalToRemote(ws, '/ws/sites/app/public', landing)).toBeUndefined();
+    expect(mapLocalToRemote(ws, '/ws/sites/application', app)).toBeUndefined();
+  });
+
+  it('maps a remote folder back to the local side', () => {
+    expect(mapRemoteToLocal(ws, '/home/app/public_html/public', app)).toBe('/ws/sites/app/public');
+    expect(mapRemoteToLocal(ws, '/home/app', app)).toBeUndefined();
+  });
+
+  it('picks the server whose context contains the folder', () => {
+    expect(findConfigForLocalPath(ws, '/ws/sites/app/public', [plain, landing, app])).toBe(app);
+    expect(findConfigForLocalPath(ws, '/ws/other', [landing, app, plain])).toBe(plain);
+    expect(findConfigForLocalPath(ws, '/ws/other', [landing, app])).toBeUndefined();
   });
 });
