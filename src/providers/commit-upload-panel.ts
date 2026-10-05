@@ -37,6 +37,8 @@ interface FileEntry {
   protected?: boolean;
   unselected?: boolean;
   remote: string;
+  ctx: string;
+  rel: string;
   absolutePath: string;
   status: string;
 }
@@ -169,6 +171,8 @@ export class CommitUploadPanel {
           status: f.status,
           protected: matchesPattern(shown, protectedPatterns),
           unselected: matchesPattern(shown, unselectedPatterns),
+          ctx: path.relative(this.workspaceRoot, roots[i]).split(path.sep).join('/'),
+          rel: path.relative(roots[i], f.absolutePath).split(path.sep).join('/'),
           remote: normalizeRemotePath(path.join(server.config.remotePath, sanitizeRelativePath(getLocalRelativePath(this.workspaceRoot, f.absolutePath, server.config))))
         });
       });
@@ -212,6 +216,8 @@ export class CommitUploadPanel {
           protected: !!f.protected,
           unselected: !!f.unselected,
           remote: f.remote,
+          ctx: f.ctx,
+          rel: f.rel,
           // Same file also lands on these other servers (overlapping contexts)
           also: this.servers.filter((o, k) => k !== i && o.files.some(of => of.absolutePath === f.absolutePath)).map(o => o.label)
         }))
@@ -241,39 +247,7 @@ export class CommitUploadPanel {
           if (paths.length > 0) jobs.push({ config: server.config, localPaths: paths });
         }
         if (jobs.length === 0) return;
-        const total = jobs.reduce((n, j) => n + j.localPaths.length, 0);
-        const risky = picks.flatMap(pk => (pk.ids || []).map(id => this.servers[pk.server]?.files[id]).filter(f => f?.protected).map(f => f!.path));
-        // Spell out every file: local path -> server -> remote path. The list is capped so the
-        // dialog stays readable; the counts per server always cover everything.
-        const MAX_LINES = 30;
-        const lines: string[] = [];
-        for (const pick of picks) {
-          const server = this.servers[pick.server];
-          if (!server) continue;
-          const chosen = (pick.ids || []).map(id => server.files[id]).filter((f): f is FileEntry => !!f);
-          if (chosen.length === 0) continue;
-          lines.push(`■ ${server.label}  (${server.config.protocol.toUpperCase()} ${server.config.username}@${server.config.host}) — ${chosen.length} file(s)`);
-          for (const f of chosen) {
-            if (lines.length < MAX_LINES) lines.push(`   ${f.protected ? '⚠ ' : ''}${f.path}  →  ${f.remote}`);
-          }
-          if (lines.length >= MAX_LINES) {
-            const shown = lines.filter(l => l.startsWith('   ')).length;
-            const all = jobs.reduce((n, j) => n + j.localPaths.length, 0);
-            lines.push(`   … and ${all - shown} more (see the panel)`);
-            break;
-          }
-          lines.push('');
-        }
-        const confirm = await vscode.window.showWarningMessage(
-          `Upload ${total} file(s) to ${jobs.length} server${jobs.length > 1 ? 's' : ''}?`,
-          {
-            modal: true,
-            detail: lines.join('\n') +
-              (risky.length ? `\n\n⚠ ${risky.length} protected file(s) included — they may overwrite live settings.` : '')
-          },
-          'Upload'
-        );
-        if (confirm !== 'Upload') return;
+        // The review screen in the panel is the confirmation; nothing reaches here without it
         this.post({ type: 'uploading' });
         await this.upload(this.workspaceRoot, jobs);
         this.webviewPanel.dispose();
@@ -303,6 +277,7 @@ export class CommitUploadPanel {
   h2 { font-size: 1.1em; margin: 16px 0 6px; font-weight: 600; }
   .box { border: 1px solid var(--vscode-panel-border); border-radius: 4px; max-height: 220px; overflow: auto; }
   .row { display: flex; gap: 8px; align-items: baseline; padding: 4px 8px; cursor: pointer; }
+  .row { user-select: none; }
   .row:hover { background: var(--vscode-list-hoverBackground); }
   .row .meta { color: var(--vscode-descriptionForeground); font-size: 0.9em; }
   .row .sub { margin-left: auto; color: var(--vscode-descriptionForeground); font-size: 0.85em; white-space: nowrap; }
@@ -317,11 +292,24 @@ export class CommitUploadPanel {
   .shead .name { font-weight: 600; }
   .shead .sub { margin-left: auto; color: var(--vscode-descriptionForeground); font-size: 0.85em; }
   .files { max-height: 260px; overflow: auto; }
+  .dim { color: var(--vscode-descriptionForeground); }
+  .m { color: var(--vscode-terminal-ansiGreen, var(--vscode-gitDecoration-addedResourceForeground)); }
+  .m b { font-weight: 700; }
   .row .remote { color: var(--vscode-descriptionForeground); font-size: 0.85em; font-family: var(--vscode-editor-font-family); }
   .row .also { color: var(--vscode-editorWarning-foreground); font-size: 0.85em; }
   .row .path { flex: 1; word-break: break-all; }
   .note { color: var(--vscode-descriptionForeground); margin: 6px 0; font-size: 0.9em; }
   .error { color: var(--vscode-errorForeground); }
+  #review { position: fixed; inset: 0; background: var(--vscode-editor-background); display: flex; flex-direction: column; z-index: 10; }
+  #review[hidden] { display: none; }
+  #review .body { flex: 1; overflow: auto; padding: 0 16px 16px; }
+  #review .rs { margin-top: 14px; font-weight: 600; }
+  #review .rs .meta { font-weight: normal; color: var(--vscode-descriptionForeground); }
+  #review table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  #review td { padding: 3px 8px; vertical-align: top; border-bottom: 1px solid var(--vscode-panel-border); word-break: break-all; }
+  #review td.remote { font-family: var(--vscode-editor-font-family); font-size: 0.9em; }
+  #review td.arrow { width: 1.5em; color: var(--vscode-descriptionForeground); }
+  #review .warnrow td { background: var(--vscode-inputValidation-warningBackground); }
   .bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 8px; align-items: center; padding: 10px 16px; background: var(--vscode-editor-background); border-top: 1px solid var(--vscode-panel-border); }
   .bar .spacer { flex: 1; }
   button { padding: 5px 14px; border: 1px solid transparent; cursor: pointer; background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
@@ -338,6 +326,18 @@ export class CommitUploadPanel {
   <div class="note">A file goes to the server whose <code>context</code> folder contains it (the deepest folder wins), under that server's <code>remotePath</code>; its <code>ignore</code> list is applied last. Switch a server off to skip it.</div>
   <div id="servers"></div>
   <div id="error" class="error"></div>
+  <div id="review" hidden>
+    <div class="body">
+      <h2>Review before uploading</h2>
+      <div class="note">Check every file, server and remote path. Nothing is uploaded until you confirm.</div>
+      <div id="reviewList"></div>
+    </div>
+    <div class="bar">
+      <span id="reviewSummary"></span><span class="spacer"></span>
+      <button id="back" class="secondary">Back</button>
+      <button id="confirm">Confirm &amp; Upload</button>
+    </div>
+  </div>
   <div class="bar">
     <span id="summary"></span><span class="spacer"></span>
     <button id="cancel" class="secondary">Cancel</button>
@@ -351,6 +351,19 @@ export class CommitUploadPanel {
   const unchecked = new Set();   // "server:fileId" the user took out
 
   const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  // Matching part (path relative to the server's context) is green on both sides; what the
+  // context and remotePath add around it is dimmed. File name in bold.
+  function hl(rel) {
+    const i = rel.lastIndexOf('/');
+    return '<span class="m">' + esc(rel.slice(0, i + 1)) + '<b>' + esc(rel.slice(i + 1)) + '</b></span>';
+  }
+  function localHtml(f) { return (f.ctx ? '<span class="dim">' + esc(f.ctx) + '/</span>' : '') + hl(f.rel); }
+  function remoteHtml(f) {
+    return f.remote.endsWith(f.rel)
+      ? '<span class="dim">' + esc(f.remote.slice(0, f.remote.length - f.rel.length)) + '</span>' + hl(f.rel)
+      : esc(f.remote);
+  }
 
   function picks() {
     return state.servers.map((s, i) => ({ server: i, ids: s.files.filter(f => !unchecked.has(i + ':' + f.id)).map(f => f.id) }))
@@ -382,7 +395,7 @@ export class CommitUploadPanel {
       const tags = (s.isTarget ? ' <span class="tag">current target</span>' : '') + (s.onCommit ? ' <span class="tag">uploadOnCommit</span>' : '');
       const rows = has ? s.files.map(f =>
         '<label class="row"><input type="checkbox" data-s="' + i + '" data-f="' + f.id + '"' + (unchecked.has(i + ':' + f.id) ? '' : ' checked') + (on ? '' : ' disabled') + '>' +
-        '<span class="path">' + esc(f.path) + '<div class="remote">→ ' + esc(f.remote) + '</div>' +
+        '<span class="path">' + localHtml(f) + '<div class="remote">→ ' + remoteHtml(f) + '</div>' +
         (f.also.length ? '<div class="also">same folder as: ' + esc(f.also.join(', ')) + '</div>' : '') + '</span>' +
         '<span class="sub">' + (f.unselected && !f.protected ? '<span class="tag" title="Not selected by default (stackerftp.commitUploadUnselected). Tick to upload.">off by default</span> ' : '') + (f.protected ? '<span class="tag warn" title="Protected: may overwrite live settings. Tick to upload.">⚠ protected</span> ' : '') + '<span class="tag ' + esc(f.status) + '">' + esc(f.status) + '</span></span></label>').join('')
         : '<div class="row meta">No files of these commits belong to this server</div>';
@@ -399,7 +412,7 @@ export class CommitUploadPanel {
   window.addEventListener('message', e => {
     const m = e.data;
     if (m.type === 'loading') { $('upload').disabled = true; }
-    else if (m.type === 'uploading') { $('upload').disabled = true; $('upload').textContent = 'Uploading...'; $('cancel').disabled = true; }
+    else if (m.type === 'uploading') { $('upload').disabled = true; $('confirm').textContent = 'Uploading...'; $('upload').textContent = 'Uploading...'; $('cancel').disabled = true; }
     else if (m.type === 'error') { $('error').textContent = m.message; }
     else if (m.type === 'state') {
       state = m;
@@ -412,6 +425,35 @@ export class CommitUploadPanel {
     }
   });
 
+  // Shift+click selects a range, like in a file list: the boxes between the last clicked one
+  // and this one take the state of this one. Works for commits and for the files of a server.
+  let lastCommit = null;
+  $('commits').addEventListener('click', e => {
+    const t = e.target;
+    if (!(t instanceof HTMLInputElement) || t.dataset.hash === undefined) return;
+    const boxes = [...document.querySelectorAll('#commits input[data-hash]')];
+    if (e.shiftKey && lastCommit && lastCommit !== t) {
+      const a = boxes.indexOf(lastCommit), b = boxes.indexOf(t);
+      boxes.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(x => { x.checked = t.checked; });
+    }
+    lastCommit = t;
+  });
+  let lastFile = null;
+  $('servers').addEventListener('click', e => {
+    const t = e.target;
+    if (!(t instanceof HTMLInputElement) || t.dataset.f === undefined) return;
+    if (e.shiftKey && lastFile && lastFile !== t && lastFile.dataset.s === t.dataset.s) {
+      const boxes = [...document.querySelectorAll('#servers input[data-s="' + t.dataset.s + '"]')];
+      const a = boxes.indexOf(lastFile), b = boxes.indexOf(t);
+      boxes.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(x => {
+        x.checked = t.checked;
+        const k = x.dataset.s + ':' + x.dataset.f;
+        t.checked ? unchecked.delete(k) : unchecked.add(k);
+      });
+    }
+    lastFile = t;
+  });
+
   $('commits').addEventListener('change', () => {
     const hashes = [...document.querySelectorAll('#commits input:checked')].map(i => i.dataset.hash);
     vscode.postMessage({ type: 'selectCommits', hashes });
@@ -421,7 +463,28 @@ export class CommitUploadPanel {
     if (t.dataset.server !== undefined) { const i = Number(t.dataset.server); t.checked ? enabled.add(i) : enabled.delete(i); render(); }
     else if (t.dataset.f !== undefined) { const k = t.dataset.s + ':' + t.dataset.f; t.checked ? unchecked.delete(k) : unchecked.add(k); renderSummary(); }
   });
-  $('upload').addEventListener('click', () => vscode.postMessage({ type: 'upload', picks: picks() }));
+  function openReview() {
+    const ps = picks();
+    let total = 0, risky = 0;
+    $('reviewList').innerHTML = ps.map(p => {
+      const srv = state.servers[p.server];
+      const files = srv.files.filter(f => p.ids.includes(f.id));
+      total += files.length;
+      risky += files.filter(f => f.protected).length;
+      return '<div class="rs">' + esc(srv.label) + ' <span class="meta">' + esc(srv.detail) + ' · ' + files.length + ' file' + (files.length === 1 ? '' : 's') + '</span></div>' +
+        '<table>' + files.map(f =>
+          '<tr' + (f.protected ? ' class="warnrow"' : '') + '><td>' + (f.protected ? '⚠ ' : '') + localHtml(f) + '</td><td class="arrow">→</td><td class="remote">' + remoteHtml(f) + '</td></tr>').join('') + '</table>';
+    }).join('');
+    $('reviewSummary').textContent = total + ' file' + (total === 1 ? '' : 's') + ' → ' + ps.length + ' server' + (ps.length === 1 ? '' : 's') +
+      (risky ? ' · ⚠ ' + risky + ' protected (may overwrite live settings)' : '');
+    $('review').hidden = false;
+  }
+  $('upload').addEventListener('click', openReview);
+  $('back').addEventListener('click', () => { $('review').hidden = true; });
+  $('confirm').addEventListener('click', () => {
+    $('confirm').disabled = true; $('back').disabled = true; $('confirm').textContent = 'Uploading...';
+    vscode.postMessage({ type: 'upload', picks: picks() });
+  });
   $('cancel').addEventListener('click', () => vscode.postMessage({ type: 'cancel' }));
   vscode.postMessage({ type: 'ready' });
 </script>
